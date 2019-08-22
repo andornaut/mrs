@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/andornaut/mrs/internal/prompt"
@@ -53,6 +54,9 @@ var deleteVault = &cobra.Command{
 	Args:  cobra.NoArgs,
 	RunE: func(c *cobra.Command, args []string) error {
 		name := flagOrPromptName()
+		if !prompt.Bool(fmt.Sprintf("Delete vault %s?", name), false) {
+			return errors.New("Cancelled")
+		}
 		if err := vault.Delete(name); err != nil {
 			return err
 		}
