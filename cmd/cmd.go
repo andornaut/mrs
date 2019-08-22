@@ -59,7 +59,7 @@ func flagOrPromptConfirmedPassword() (string, error) {
 	p := prompt.Password("Vault password")
 	c := prompt.Password("Confirm password")
 	if p != c {
-		return "", errors.New("Passord mismatch")
+		return "", errors.New("Password mismatch")
 	}
 	return p, nil
 }

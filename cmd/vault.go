@@ -39,6 +39,10 @@ var changeVaultPassword = &cobra.Command{
 			return err
 		}
 		newPassword := prompt.Password("New password")
+		confirmPassword := prompt.Password("Confirm password")
+		if newPassword != confirmPassword {
+			return errors.New("Password mismatch")
+		}
 		v, err := vault.ChangePassword(name, oldPassword, newPassword)
 		if err != nil {
 			return err
