@@ -13,7 +13,7 @@ import (
 
 var add = &cobra.Command{
 	Use:   "add",
-	Short: "Add secrets",
+	Short: "Add secrets to a vault",
 	Args:  cobra.NoArgs,
 	RunE: func(c *cobra.Command, args []string) error {
 		v, err := getUnlockedVault()
@@ -36,7 +36,7 @@ var add = &cobra.Command{
 var edit = &cobra.Command{
 	Use:   "edit",
 	Short: "Edit secrets",
-	Long:  "Use the editor defined by $EDITOR to edit decrypted vaults",
+	Long:  "Use an editor ($EDITOR) to edit your secrets",
 	Args:  cobra.NoArgs,
 	RunE: func(c *cobra.Command, args []string) error {
 		v, err := getUnlockedVault()
