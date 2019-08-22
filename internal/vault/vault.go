@@ -13,53 +13,76 @@ import (
 
 // All returns a slice of all vaults
 func All() ([]Vault, error) {
-	var vaults []Vault
 	paths, err := findPaths("")
 	if err != nil {
 		return nil, err
 	}
+
+        var vaults []Vault
 	for _, p := range paths {
-		if err := validatePath(p); err != nil {
+                var (
+                        v   Vault
+                        err error
+                )
+                if v, err = toVault(p); err != nil {
 			return nil, err
 		}
-		vaults = append(vaults, Vault(p))
+                vaults = append(vaults, v)
+
 	}
 	return vaults, nil
 }
 
-// Default returns the default vault or nil
+// Default returns the default vault.
+// If a default vault name is not configured, then return the first vault found or BadVault.
+// If a default vault name is configured, but cannot be found, then return an error.
 func Default() (Vault, error) {
-	return Find("")
+        paths, err := findPaths(config.DefaultVaultName)
+        if err != nil {
+                return BadVault, err
+        }
+        if paths == nil {
+                // If a default vault name is not configured, then we should not return an error, because
+                // the default vault's existance is not necessarily expected.
+                if config.DefaultVaultName == "" {
+                        return BadVault, nil
+                }
+                return BadVault, fmt.Errorf("Default vault \"%s\" not found", config.DefaultVaultName)
+        }
+        return toVault(paths[0])
 }
 
-// Find returns the first vault to match the given vault name prefix.
-// If the prefix is empty, then it returns the default vault.
-// If it cannot find a vault and prefix is empty, then it returns empty string.
-// If it cannot find a vault and prefix is not empty, then it returns an error.
+// Find returns the first vault to match the vault name prefix or an error
 func Find(prefix string) (Vault, error) {
 	if prefix == "" {
-		prefix = config.DefaultVaultName
+                return BadVault, fmt.Errorf("vault name cannot be empty")
 	}
 
 	paths, err := findPaths(prefix)
 	if err != nil {
 		return BadVault, err
 	}
-
 	if paths == nil {
-		if prefix == "" {
-			return BadVault, nil
-		}
-		return BadVault, fmt.Errorf("could not find a vault with a name that begins with \"%s\"", prefix)
+                return BadVault, fmt.Errorf("vault \"%s\" not found. run `mrs create-vault` to create one", prefix)
 	}
-	p := paths[0]
-	if err := validatePath(p); err != nil {
-		return BadVault, err
-	}
-	return Vault(p), nil
+        return toVault(paths[0])
 }
 
-// Create creates an UnlockedVault
+// ChangePassword changes a vault's password
+func ChangePassword(name, oldPassword, newPassword string) (UnlockedVault, error) {
+        v, err := Find(name)
+        if err != nil {
+                return BadUnlockedVault, err
+	}
+        u := v.Unlocked(oldPassword)
+        err = u.changePassword(newPassword)
+        if err != nil {
+                return BadUnlockedVault, err
+        }
+        return u, nil
+}
+
+// Create creates a vault
 func Create(name, password, importFile string) (UnlockedVault, error) {
 	if err := validateName(name); err != nil {
 		return BadUnlockedVault, err
@@ -84,7 +107,7 @@ func Create(name, password, importFile string) (UnlockedVault, error) {
 		b, err := ioutil.ReadFile(importFile)
 		content = string(b)
 		if err != nil {
-			return BadUnlockedVault, fmt.Errorf("could not read from import file %s: %s", importFile, err)
+                        return BadUnlockedVault, fmt.Errorf("could not read from import file at %s: %s", importFile, err)
 		}
 	}
 
@@ -124,11 +147,11 @@ func Export(name, password string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	s, err := ioutil.ReadAll(r)
+        b, err := ioutil.ReadAll(r)
 	if err != nil {
 		return "", err
 	}
-	return string(s), nil
+        return string(b), nil
 }
 
 // Rename renames a vault
@@ -179,6 +202,13 @@ func findPaths(prefix string) ([]string, error) {
 	return matchedPaths, nil
 }
 
-func toPath(name string) string {
-	return path.Join(config.VaultDir, name)
+func toPath(n string) string {
+        return path.Join(config.VaultDir, n)
+}
+
+func toVault(p string) (Vault, error) {
+        if err := validatePath(p); err != nil {
+                return BadVault, err
+        }
+        return Vault(p), nil
 }

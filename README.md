@@ -8,6 +8,7 @@
 - Edit your secrets via the editor of your choice
 - Search through your secrets using regular expressions
 - Import and export your secrets
+- Encrypt your secrets with [256-bit AES-GCM](https://tools.ietf.org/html/rfc5288)
 
 ## Usage
 
@@ -17,17 +18,23 @@ Mr. Secretary - Organise and secure your secrets
 Usage:
   mrs [command]
 
+Examples:
+        mrs create-vault --vault name
+        mrs edit
+        mrs search 'secret stuff'
+
 Available Commands:
-  add               Add secrets
-  create-vault      Create a vault
-  delete-vault      Delete a vault
-  edit              Edit secrets
-  export-vault      Export secrets from a vault
-  get-default-vault Print the default vault
-  help              Help about any command
-  list-vaults       Print all vaults
-  rename-vault      Rename a vault
-  search            Search for secrets using regular expressions
+  add             Add secrets
+  change-password Change a vault password
+  create-vault    Create a vault
+  delete-vault    Delete a vault
+  edit            Edit secrets
+  export-vault    Export secrets from a vault
+  get-default     Print the default vault
+  help            Help about any command
+  list-vaults     Print all vaults
+  rename-vault    Rename a vault
+  search          Search through your secrets
 
 Flags:
   -h, --help   help for mrs
@@ -42,9 +49,10 @@ You can use environment variables to customize some settings.
 Environment variable | Description
 ---|---
 EDITOR | The editor to use to add or edit secrets (default: nano)
-MRS_DEFAULT_VAULT_NAME | The vault to use when `--vault NAME` is not specified (default: the first vault in `${HOME}/.local/share/mrs/vaults`)
-MRS_HIDE_EDITOR_INSTRUCTIONS | If set to any value, then the instruction comments will not be included when adding or editing secrets
-MRS_HOME | The directory where mrs stores its files (default: `${HOME}/.local/share/mrs`)
+MRS_DEFAULT_VAULT_NAME | The vault to use when `--vault` is not specified (default: `$MRS_DEFAULT_VAULT_NAME` or the first vault)
+MRS_HIDE_EDITOR_INSTRUCTIONS | If set to any value, then instructions comments will not be included when adding or editing secrets
+MRS_HOME | The directory where `mrs` stores encrypted vault files (default: `${HOME}/.local/share/mrs`)
+MRS_TEMP | The directory where `mrs` stores temporary decrypted files (default `$XDG_RUNTIME_DIR`)
 
 ## Developing
 

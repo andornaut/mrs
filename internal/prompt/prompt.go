@@ -8,7 +8,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"syscall"
 
 	"github.com/andornaut/mrs/internal/config"
 	"golang.org/x/crypto/ssh/terminal"
@@ -41,7 +40,7 @@ func Editor(p string) error {
 // Password prompts the user to enter a password without echoing their input
 func Password(msg string) string {
 	fmt.Print(msg + ": ")
-	b, err := terminal.ReadPassword(int(syscall.Stdin))
+        b, err := terminal.ReadPassword(int(os.Stdin.Fd()))
 	// Since user input is not echoed, we must add a newline manually
 	fmt.Print("\n")
 	if err != nil {

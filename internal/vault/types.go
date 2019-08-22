@@ -11,8 +11,12 @@ import (
 // Vault is a secrets store
 type Vault string
 
-// BadVault is an invalid Vault
-var BadVault = Vault("")
+var (
+        // BadVault is an invalid Vault
+        BadVault Vault
+        // BadUnlockedVault is an invalid UnlockedVault
+        BadUnlockedVault UnlockedVault
+)
 
 // Name returns the name of the vault
 func (v Vault) Name() string {
@@ -38,17 +42,27 @@ func (v Vault) Unlocked(password string) UnlockedVault {
 
 const preample = "# Secrets \"vault\" managed by Mr. Secretary: github.com/andornaut/mrs\n"
 
-// BadUnlockedVault is an invalid UnlockedVault
-var BadUnlockedVault = UnlockedVault{}
-
 // UnlockedVault is a vault that can be read from and written to
 type UnlockedVault struct {
 	Vault
 	password string
 }
 
+func (v *UnlockedVault) changePassword(p string) error {
+        r, err := v.NewReader()
+        if err != nil {
+                return err
+        }
+        b, err := ioutil.ReadAll(r)
+        if err != nil {
+                return err
+        }
+        v.password = p
+        return v.Write(string(b))
+}
+
 // NewReader returns a io.Reader reading from the vault
-func (v UnlockedVault) NewReader() (io.Reader, error) {
+func (v *UnlockedVault) NewReader() (io.Reader, error) {
 	b, err := ioutil.ReadFile(v.Path())
 	if err != nil {
 		return nil, err
@@ -61,7 +75,7 @@ func (v UnlockedVault) NewReader() (io.Reader, error) {
 }
 
 // Write writes the given string to the vault
-func (v UnlockedVault) Write(s string) error {
+func (v *UnlockedVault) Write(s string) error {
 	b := []byte(preample + s)
 	b, err := encrypt(b, v.password)
 	if err != nil {

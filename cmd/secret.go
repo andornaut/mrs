@@ -1,11 +1,13 @@
 package cmd
 
 import (
+        "errors"
 	"fmt"
 	"regexp"
 	"strings"
 
 	"github.com/andornaut/mrs/internal/secret"
+        "github.com/andornaut/mrs/internal/vault"
 	"github.com/spf13/cobra"
 )
 
@@ -14,7 +16,7 @@ var add = &cobra.Command{
 	Short: "Add secrets",
 	Args:  cobra.NoArgs,
 	RunE: func(c *cobra.Command, args []string) error {
-		v, err := getOrCreateUnlockedVault()
+                v, err := getUnlockedVault()
 		if err != nil {
 			return err
 		}
@@ -37,7 +39,7 @@ var edit = &cobra.Command{
 	Long:  "Use the editor defined by $EDITOR to edit the decrypted vault file",
 	Args:  cobra.NoArgs,
 	RunE: func(c *cobra.Command, args []string) error {
-		v, err := getOrCreateUnlockedVault()
+                v, err := getUnlockedVault()
 		if err != nil {
 			return err
 		}
@@ -50,10 +52,9 @@ var edit = &cobra.Command{
 }
 
 var search = &cobra.Command{
-	Use:                   "search [regular expression]",
-	Short:                 "Search through your secrets",
-	Args:                  cobra.MinimumNArgs(1),
-	DisableFlagsInUseLine: true,
+        Use:   "search [regular expression]",
+        Short: "Search through your secrets",
+        Args:  cobra.MinimumNArgs(1),
 	RunE: func(c *cobra.Command, args []string) error {
 		// Internal whitespace is stripped by cobra, so search for any amount of internal whitespace.
 		// Users can surround a single argument with quotation marks for more precise control of internal whitespace.
@@ -66,6 +67,9 @@ var search = &cobra.Command{
 		if err != nil {
 			return err
 		}
+                if v == vault.BadUnlockedVault {
+                        return errors.New("No vaults found")
+                }
 		secrets, err := secret.Search(v, *r, includeValues)
 		if err != nil {
 			return err
@@ -78,4 +82,31 @@ var search = &cobra.Command{
 		}
 		return nil
 	},
+}
+
+func getVault() (vault.Vault, error) {
+        if namePrefix == "" {
+                v, err := vault.Default()
+                if err != nil {
+                        return v, err
+                }
+                if v != vault.BadVault {
+                        return v, nil
+                }
+                namePrefix = promptName()
+        }
+        return vault.Find(namePrefix)
+}
+
+// Get a Vault and then unlock it.
+func getUnlockedVault() (vault.UnlockedVault, error) {
+        v, err := getVault()
+        if err != nil {
+                return vault.BadUnlockedVault, err
+        }
+        p, err := flagOrPromptPassword()
+        if err != nil {
+                return vault.BadUnlockedVault, err
+        }
+        return v.Unlocked(p), nil
 }

@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 
+        "github.com/andornaut/mrs/internal/prompt"
 	"github.com/andornaut/mrs/internal/vault"
 	"github.com/spf13/cobra"
 )
@@ -13,7 +14,10 @@ var createVault = &cobra.Command{
 	Args:  cobra.NoArgs,
 	RunE: func(c *cobra.Command, args []string) error {
 		name := flagOrPromptName()
-		password := flagOrPromptPassword()
+                password, err := flagOrPromptConfirmedPassword()
+                if err != nil {
+                        return err
+                }
 		v, err := vault.Create(name, password, importFile)
 		if err != nil {
 			return err
@@ -21,6 +25,26 @@ var createVault = &cobra.Command{
 		fmt.Printf("Created vault %s\n", v)
 		return nil
 	},
+}
+
+var changeVaultPassword = &cobra.Command{
+        Use:   "change-password",
+        Short: "Change a vault password",
+        Args:  cobra.NoArgs,
+        RunE: func(c *cobra.Command, args []string) error {
+                name := flagOrPromptName()
+                oldPassword, err := flagOrPromptPassword()
+                if err != nil {
+                        return err
+                }
+                newPassword := prompt.Password("New password")
+                v, err := vault.ChangePassword(name, oldPassword, newPassword)
+                if err != nil {
+                        return err
+                }
+                fmt.Printf("Changed password of vault %s\n", v)
+                return nil
+        },
 }
 
 var deleteVault = &cobra.Command{
@@ -43,7 +67,10 @@ var exportVault = &cobra.Command{
 	Args:  cobra.NoArgs,
 	RunE: func(c *cobra.Command, args []string) error {
 		name := flagOrPromptName()
-		password := flagOrPromptPassword()
+                password, err := flagOrPromptConfirmedPassword()
+                if err != nil {
+                        return err
+                }
 		s, err := vault.Export(name, password)
 		if err != nil {
 			return err
@@ -54,7 +81,7 @@ var exportVault = &cobra.Command{
 }
 
 var getDefaultVault = &cobra.Command{
-	Use:   "get-default-vault",
+        Use:   "get-default",
 	Short: "Print the default vault",
 	Long:  "Print either the first vault or the one defined by $MRS_DEFAULT_VAULT_NAME",
 	Args:  cobra.NoArgs,

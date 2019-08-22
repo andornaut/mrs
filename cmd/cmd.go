@@ -2,17 +2,17 @@ package cmd
 
 import (
 	"errors"
+        "fmt"
 	"io/ioutil"
-	"log"
 
 	"github.com/andornaut/mrs/internal/prompt"
-	"github.com/andornaut/mrs/internal/vault"
 	"github.com/spf13/cobra"
 )
 
 // Cmd implements the root ./mrs command
 var Cmd = &cobra.Command{
-	Use:          "mrs [command]",
+        Use:          "mrs",
+        Example:      "\tmrs create-vault --vault name\n\tmrs edit\n\tmrs search 'secret stuff'",
 	Short:        "Mr. Secretary",
 	Long:         "Mr. Secretary - Organise and secure your secrets",
 	SilenceUsage: true,
@@ -27,7 +27,7 @@ var (
 )
 
 func promptName() string {
-	return prompt.TrimmedLine("Enter the vault name")
+        return prompt.TrimmedLine("Vault name")
 }
 
 func flagOrPromptName() string {
@@ -37,45 +37,38 @@ func flagOrPromptName() string {
 	return namePrefix
 }
 
-func flagOrPromptPassword() string {
-	if passwordFile == "" {
-		return prompt.Password("Enter a password")
-	}
+func readPasswordFile() (string, error) {
 	password, err := ioutil.ReadFile(passwordFile)
 	if err != nil {
-		log.Fatalf("Could not read from password file %s", passwordFile)
+                return "", fmt.Errorf("Could not read from password file %s: %s", passwordFile, err)
 	}
-	return string(password)
+        return string(password), nil
 }
 
-func getUnlockedVault() (vault.UnlockedVault, error) {
-	n := flagOrPromptName()
-	v, err := vault.Find(n)
-	if err != nil {
-		return vault.BadUnlockedVault, err
+func flagOrPromptPassword() (string, error) {
+        if passwordFile != "" {
+                return readPasswordFile()
 	}
-	return v.Unlocked(flagOrPromptPassword()), nil
+        return prompt.Password("Vault password"), nil
 }
 
-func getOrCreateUnlockedVault() (vault.UnlockedVault, error) {
-	v, err := vault.Find(namePrefix)
-	if err != nil {
-		return vault.BadUnlockedVault, err
+func flagOrPromptConfirmedPassword() (string, error) {
+        if passwordFile != "" {
+                return readPasswordFile()
 	}
-	if v != vault.BadVault {
-		return v.Unlocked(flagOrPromptPassword()), nil
+        p := prompt.Password("Vault password")
+        c := prompt.Password("Confirm password")
+        if p != c {
+                return "", errors.New("Passord mismatch")
 	}
-	if !prompt.Bool("You need to create a vault in order to continue. Create one now?", true) {
-		return vault.BadUnlockedVault, errors.New("run `mrs create-vault` to create a vault")
-	}
-	return vault.Create(promptName(), flagOrPromptPassword(), "")
+        return p, nil
 }
 
 func init() {
-	for _, c := range []*cobra.Command{add, createVault, deleteVault, edit, exportVault, search} {
+        for _, c := range []*cobra.Command{add, changeVaultPassword, createVault, deleteVault, edit, exportVault, search} {
 		c.Flags().StringVarP(&namePrefix, "vault", "v", "", "name of vault")
 	}
-	for _, c := range []*cobra.Command{add, createVault, edit, exportVault, search} {
+        for _, c := range []*cobra.Command{add, changeVaultPassword, createVault, edit, exportVault, search} {
 		c.Flags().StringVarP(&passwordFile, "password-file", "p", "", "path to a file that contains your password")
 	}
 
@@ -83,5 +76,5 @@ func init() {
 	getDefaultVault.Flags().BoolVarP(&isPath, "path", "p", false, "print the path instead of the name")
 	listVaults.Flags().BoolVarP(&isPath, "path", "p", false, "print paths instead of names")
 
-	Cmd.AddCommand(add, createVault, deleteVault, edit, exportVault, getDefaultVault, listVaults, renameVault, search)
+        Cmd.AddCommand(add, changeVaultPassword, createVault, deleteVault, edit, exportVault, getDefaultVault, listVaults, renameVault, search)
 }
