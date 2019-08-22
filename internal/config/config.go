@@ -60,10 +60,10 @@ func createVaultDir() string {
 // interfering with other instances of mrs, so we create an instance-specific temp dir using ioutil.TempDir,
 // which means that we have to create the directory as a side-effect of determining its path.
 func createTempDir() string {
-        p := os.Getenv("MRS_TEMP")
-        if p == "" {
-                p = os.Getenv("XDG_RUNTIME_DIR")
-        }
+	p := os.Getenv("MRS_TEMP")
+	if p == "" {
+		p = os.Getenv("XDG_RUNTIME_DIR")
+	}
 	if p == "" {
 		p = os.TempDir()
 	}

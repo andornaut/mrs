@@ -12,10 +12,10 @@ import (
 type Vault string
 
 var (
-        // BadVault is an invalid Vault
-        BadVault Vault
-        // BadUnlockedVault is an invalid UnlockedVault
-        BadUnlockedVault UnlockedVault
+	// BadVault is an invalid Vault
+	BadVault Vault
+	// BadUnlockedVault is an invalid UnlockedVault
+	BadUnlockedVault UnlockedVault
 )
 
 // Name returns the name of the vault
@@ -49,16 +49,16 @@ type UnlockedVault struct {
 }
 
 func (v *UnlockedVault) changePassword(p string) error {
-        r, err := v.NewReader()
-        if err != nil {
-                return err
-        }
-        b, err := ioutil.ReadAll(r)
-        if err != nil {
-                return err
-        }
-        v.password = p
-        return v.Write(string(b))
+	r, err := v.NewReader()
+	if err != nil {
+		return err
+	}
+	b, err := ioutil.ReadAll(r)
+	if err != nil {
+		return err
+	}
+	v.password = p
+	return v.Write(string(b))
 }
 
 // NewReader returns a io.Reader reading from the vault
