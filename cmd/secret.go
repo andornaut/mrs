@@ -36,7 +36,7 @@ var add = &cobra.Command{
 var edit = &cobra.Command{
 	Use:   "edit",
 	Short: "Edit secrets",
-	Long:  "Use the editor defined by $EDITOR to edit the decrypted vault file",
+	Long:  "Use the editor defined by $EDITOR to edit decrypted vaults",
 	Args:  cobra.NoArgs,
 	RunE: func(c *cobra.Command, args []string) error {
 		v, err := getUnlockedVault()

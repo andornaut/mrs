@@ -11,6 +11,8 @@ import (
 // Vault is a secrets store
 type Vault string
 
+const preample = "# Secrets \"vault\" managed by Mr. Secretary: github.com/andornaut/mrs\n"
+
 var (
 	// BadVault is an invalid Vault
 	BadVault Vault
@@ -39,8 +41,6 @@ func (v Vault) String() string {
 func (v Vault) Unlocked(password string) UnlockedVault {
 	return UnlockedVault{v, password}
 }
-
-const preample = "# Secrets \"vault\" managed by Mr. Secretary: github.com/andornaut/mrs\n"
 
 // UnlockedVault is a vault that can be read from and written to
 type UnlockedVault struct {

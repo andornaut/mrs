@@ -70,6 +70,9 @@ func Find(prefix string) (Vault, error) {
 
 // ChangePassword changes a vault's password
 func ChangePassword(name, oldPassword, newPassword string) (UnlockedVault, error) {
+	if err := validatePassword(newPassword); err != nil {
+		return BadUnlockedVault, fmt.Errorf("invalid new password: %s", err)
+	}
 	v, err := Find(name)
 	if err != nil {
 		return BadUnlockedVault, err
@@ -101,14 +104,13 @@ func Create(name, password, importFile string) (UnlockedVault, error) {
 	}
 
 	v := Vault(p).Unlocked(password)
-
 	content := ""
 	if importFile != "" {
 		b, err := ioutil.ReadFile(importFile)
-		content = string(b)
 		if err != nil {
 			return BadUnlockedVault, fmt.Errorf("could not read from import file at %s: %s", importFile, err)
 		}
+		content = string(b)
 	}
 
 	if err = v.Write(content); err != nil {
