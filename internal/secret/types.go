@@ -13,7 +13,7 @@ func (s secret) Key() string {
 }
 
 func (s secret) Less(o secret) bool {
-	return s.Key() < o.Key()
+	return strings.ToLower(s.Key()) < strings.ToLower(o.Key())
 }
 
 func (s secret) MatchKey(r regexp.Regexp) bool {
