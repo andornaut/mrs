@@ -19,20 +19,20 @@ Usage:
   mrs [command]
 
 Examples:
-        mrs create-vault --vault name
-        mrs edit
-        mrs search 'secret stuff'
+	mrs create-vault --vault name
+	mrs edit
+	mrs search 'secret stuff'
 
 Available Commands:
-  add             Add secrets
+  add             Add secrets to a vault
   change-password Change a vault password
   create-vault    Create a vault
   delete-vault    Delete a vault
   edit            Edit secrets
-  export-vault    Export secrets from a vault
+  export          Export secrets from a vault
   get-default     Print the default vault
   help            Help about any command
-  list-vaults     Print all vaults
+  list            List all vaults
   rename-vault    Rename a vault
   search          Search through your secrets
 
