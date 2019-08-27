@@ -49,7 +49,7 @@ You can use environment variables to customize some settings.
 Environment variable | Description
 ---|---
 EDITOR | The editor to use to add or edit secrets (default: nano)
-MRS_DEFAULT_VAULT_NAME | The vault to use when `--vault` is not specified (default: `$MRS_DEFAULT_VAULT_NAME` or the first vault)
+MRS_DEFAULT_VAULT_NAME | The vault to use when `--vault` is not specified (default: the first vault found)
 MRS_HIDE_EDITOR_INSTRUCTIONS | If set to any value, then instructions comments will not be included when adding or editing secrets
 MRS_HOME | The directory where `mrs` stores encrypted vault files (default: `${HOME}/.local/share/mrs`)
 MRS_TEMP | The directory where `mrs` stores temporary decrypted files (default `$XDG_RUNTIME_DIR`)
