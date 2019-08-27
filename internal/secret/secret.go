@@ -19,7 +19,7 @@ func Add(v vault.UnlockedVault) (int, error) {
 	}
 
 	b = b.Combined(nb)
-	if v.Write(b.String()); err != nil {
+	if err := v.Write(b.String()); err != nil {
 		return 0, err
 	}
 	return nb.Len(), nil
@@ -37,10 +37,7 @@ func Edit(v vault.UnlockedVault) error {
 		return err
 	}
 
-	if err := v.Write(b.String()); err != nil {
-		return err
-	}
-	return nil
+	return v.Write(b.String())
 }
 
 // Search returns secrets from a vault that match a regular expression

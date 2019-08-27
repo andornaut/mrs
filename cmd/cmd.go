@@ -65,16 +65,16 @@ func flagOrPromptConfirmedPassword() (string, error) {
 }
 
 func init() {
-	for _, c := range []*cobra.Command{add, changeVaultPassword, createVault, deleteVault, edit, exportVault, search} {
+	for _, c := range []*cobra.Command{add, changePassword, createVault, deleteVault, edit, export, search} {
 		c.Flags().StringVarP(&namePrefix, "vault", "v", "", "name of vault")
 	}
-	for _, c := range []*cobra.Command{add, changeVaultPassword, createVault, edit, exportVault, search} {
+	for _, c := range []*cobra.Command{add, changePassword, createVault, edit, export, search} {
 		c.Flags().StringVarP(&passwordFile, "password-file", "p", "", "path to a file that contains your password")
 	}
 
 	createVault.Flags().StringVarP(&importFile, "import-file", "i", "", "path to a file that contains unencrypted secrets")
-	getDefaultVault.Flags().BoolVarP(&isPath, "path", "p", false, "print the path instead of the name")
-	listVaults.Flags().BoolVarP(&isPath, "path", "p", false, "print paths instead of names")
+	getDefault.Flags().BoolVarP(&isPath, "path", "p", false, "print the path instead of the name")
+	list.Flags().BoolVarP(&isPath, "path", "p", false, "print paths instead of names")
 
-	Cmd.AddCommand(add, changeVaultPassword, createVault, deleteVault, edit, exportVault, getDefaultVault, listVaults, renameVault, search)
+	Cmd.AddCommand(add, changePassword, createVault, deleteVault, edit, export, getDefault, list, renameVault, search)
 }

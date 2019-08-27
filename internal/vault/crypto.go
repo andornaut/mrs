@@ -7,6 +7,8 @@ import (
 	"golang.org/x/crypto/pbkdf2"
 )
 
+// Generally, a salt should be generated randomly when the password hash is stored, but in our case
+// neither the password nor the hash is store, so this is mostly fine.
 const salt = "99daa49d-3a53-4bf8-a74a-93295de71d41-4bac-8cea"
 
 func key(password string) *[32]byte {

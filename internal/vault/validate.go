@@ -32,6 +32,9 @@ func validatePath(p string) error {
 	if err != nil {
 		return fmt.Errorf("invalid vault path \"%s\": %s", p, err)
 	}
+	if err := validateName(fi.Name()); err != nil {
+		return err
+	}
 	if fi.IsDir() {
 		return fmt.Errorf("vault path \"%s\" should be a file, but is a directory", p)
 	}

@@ -95,7 +95,7 @@ func getVault() (vault.Vault, error) {
 		}
 		namePrefix = promptName()
 	}
-	return vault.Find(namePrefix)
+	return vault.First(namePrefix)
 }
 
 // Get a Vault and then unlock it.

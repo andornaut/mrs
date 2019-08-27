@@ -11,8 +11,6 @@ import (
 // Vault is a secrets store
 type Vault string
 
-const preample = "# Secrets \"vault\" managed by Mr. Secretary: github.com/andornaut/mrs\n"
-
 var (
 	// BadVault is an invalid Vault
 	BadVault Vault
@@ -61,7 +59,7 @@ func (v *UnlockedVault) changePassword(p string) error {
 	return v.Write(string(b))
 }
 
-// NewReader returns a io.Reader reading from the vault
+// NewReader returns an reader that reads vault content
 func (v *UnlockedVault) NewReader() (io.Reader, error) {
 	b, err := ioutil.ReadFile(v.Path())
 	if err != nil {
@@ -74,9 +72,9 @@ func (v *UnlockedVault) NewReader() (io.Reader, error) {
 	return bytes.NewReader(b), nil
 }
 
-// Write writes the given string to the vault
+// Write writes s string to the vault
 func (v *UnlockedVault) Write(s string) error {
-	b := []byte(preample + s)
+	b := []byte(s)
 	b, err := encrypt(b, v.password)
 	if err != nil {
 		return fmt.Errorf("Failed to encrypt secrets. Vault %s is unchanged", v)

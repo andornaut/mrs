@@ -12,6 +12,11 @@ import (
 	"github.com/andornaut/mrs/internal/vault"
 )
 
+// The extra newline at the end is intended to create an inviting starting point for editing.
+const instructions = "# Secrets are separated by blank lines.\n" +
+	"# The first line of each secret is its unique key.\n" +
+	"# Lines that begin with a # character are ignored.\n\n"
+
 func retrieveBriefcase(v vault.UnlockedVault) (*briefcase, error) {
 	r, err := v.NewReader()
 	if err != nil {
@@ -19,11 +24,6 @@ func retrieveBriefcase(v vault.UnlockedVault) (*briefcase, error) {
 	}
 	return transcribe(r)
 }
-
-// The extra newline at the end is intended to create an inviting starting point for editing.
-const instructions = "# Secrets are separated by blank lines.\n" +
-	"# The first line of each secret is its unique key.\n" +
-	"# Lines that begin with a # character are ignored.\n\n"
 
 func takeDictation(content string) (*briefcase, error) {
 	if !config.HideEditorInstructions {

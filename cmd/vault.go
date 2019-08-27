@@ -28,7 +28,7 @@ var createVault = &cobra.Command{
 	},
 }
 
-var changeVaultPassword = &cobra.Command{
+var changePassword = &cobra.Command{
 	Use:   "change-password",
 	Short: "Change a vault password",
 	Args:  cobra.NoArgs,
@@ -69,13 +69,13 @@ var deleteVault = &cobra.Command{
 	},
 }
 
-var exportVault = &cobra.Command{
-	Use:   "export-vault",
+var export = &cobra.Command{
+	Use:   "export",
 	Short: "Export secrets from a vault",
 	Args:  cobra.NoArgs,
 	RunE: func(c *cobra.Command, args []string) error {
 		name := flagOrPromptName()
-		password, err := flagOrPromptConfirmedPassword()
+		password, err := flagOrPromptPassword()
 		if err != nil {
 			return err
 		}
@@ -88,7 +88,7 @@ var exportVault = &cobra.Command{
 	},
 }
 
-var getDefaultVault = &cobra.Command{
+var getDefault = &cobra.Command{
 	Use:   "get-default",
 	Short: "Print the default vault",
 	Long:  "Print either the first vault or the one defined by $MRS_DEFAULT_VAULT_NAME",
@@ -109,9 +109,9 @@ var getDefaultVault = &cobra.Command{
 	},
 }
 
-var listVaults = &cobra.Command{
-	Use:   "list-vaults",
-	Short: "Print all vaults",
+var list = &cobra.Command{
+	Use:   "list",
+	Short: "List all vaults",
 	Args:  cobra.NoArgs,
 	RunE: func(c *cobra.Command, args []string) error {
 		vaults, err := vault.All()
