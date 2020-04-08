@@ -38,8 +38,5 @@ func validatePath(p string) error {
 	if fi.IsDir() {
 		return fmt.Errorf("vault path \"%s\" should be a file, but is a directory", p)
 	}
-	if fi.Mode() != 0600 {
-		return fmt.Errorf("vault file \"%s\" should have file mode %s, but has file mode %s", p, os.FileMode(0600), fi.Mode())
-	}
 	return nil
 }
