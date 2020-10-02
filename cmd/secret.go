@@ -56,9 +56,10 @@ var search = &cobra.Command{
 	Short: "Search through your secrets",
 	Args:  cobra.MinimumNArgs(1),
 	RunE: func(c *cobra.Command, args []string) error {
-		// Internal whitespace is stripped by cobra, so search for any amount of internal whitespace.
+		// Internal whitespace is stripped by cobra, so we search for any amount of internal whitespace.
 		// Users can surround a single argument with quotation marks for more precise control of internal whitespace.
-		rs := strings.Join(args, "\\s+")
+        // Additionally, add a "case-insensitive" flag.
+		rs := "(?i)" + strings.Join(args, "\\s+")
 		r, err := regexp.Compile(rs)
 		if err != nil {
 			return fmt.Errorf("invalid regular expression \"%s\": %s", rs, err)
