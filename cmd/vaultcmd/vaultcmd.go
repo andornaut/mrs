@@ -1,4 +1,4 @@
-package cmd
+package vaultcmd
 
 import (
 	"errors"
@@ -9,13 +9,27 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var createVault = &cobra.Command{
-	Use:   "create-vault",
+var (
+	importFile   string
+	isPath       bool
+	namePrefix   string
+	passwordFile string
+)
+
+// Cmd implements ./mrs vault
+var Cmd = &cobra.Command{
+	Use:          "vault [command]",
+	Short:        "Manage vaults",
+	SilenceUsage: true,
+}
+
+var create = &cobra.Command{
+	Use:   "create",
 	Short: "Create a vault",
 	Args:  cobra.NoArgs,
 	RunE: func(c *cobra.Command, args []string) error {
-		name := flagOrPromptName()
-		password, err := flagOrPromptConfirmedPassword()
+		name := prompt.GivenOrPromptName(namePrefix)
+		password, err := prompt.GivenOrPromptConfirmedPassword(passwordFile)
 		if err != nil {
 			return err
 		}
@@ -30,18 +44,18 @@ var createVault = &cobra.Command{
 
 var changePassword = &cobra.Command{
 	Use:   "change-password",
-	Short: "Change a vault password",
+	Short: "Change a vault's password",
 	Args:  cobra.NoArgs,
 	RunE: func(c *cobra.Command, args []string) error {
-		name := flagOrPromptName()
-		oldPassword, err := flagOrPromptPassword()
+		name := prompt.GivenOrPromptName(namePrefix)
+		oldPassword, err := prompt.GivenOrPromptPassword(passwordFile)
 		if err != nil {
 			return err
 		}
 		newPassword := prompt.Password("New password")
 		confirmPassword := prompt.Password("Confirm password")
 		if newPassword != confirmPassword {
-			return errors.New("Password mismatch")
+			return errors.New("password mismatch")
 		}
 		v, err := vault.ChangePassword(name, oldPassword, newPassword)
 		if err != nil {
@@ -52,14 +66,14 @@ var changePassword = &cobra.Command{
 	},
 }
 
-var deleteVault = &cobra.Command{
-	Use:   "delete-vault",
+var delete = &cobra.Command{
+	Use:   "delete",
 	Short: "Delete a vault",
 	Args:  cobra.NoArgs,
 	RunE: func(c *cobra.Command, args []string) error {
-		name := flagOrPromptName()
+		name := prompt.GivenOrPromptName(namePrefix)
 		if !prompt.Bool(fmt.Sprintf("Delete vault %s?", name), false) {
-			return errors.New("Cancelled")
+			return errors.New("cancelled")
 		}
 		if err := vault.Delete(name); err != nil {
 			return err
@@ -74,8 +88,8 @@ var export = &cobra.Command{
 	Short: "Export secrets from a vault",
 	Args:  cobra.NoArgs,
 	RunE: func(c *cobra.Command, args []string) error {
-		name := flagOrPromptName()
-		password, err := flagOrPromptPassword()
+		name := prompt.GivenOrPromptName(namePrefix)
+		password, err := prompt.GivenOrPromptPassword(passwordFile)
 		if err != nil {
 			return err
 		}
@@ -129,8 +143,8 @@ var list = &cobra.Command{
 	},
 }
 
-var renameVault = &cobra.Command{
-	Use:                   "rename-vault [source-name] [target-name]",
+var rename = &cobra.Command{
+	Use:                   "rename [source-name] [target-name]",
 	Short:                 "Rename a vault",
 	Args:                  cobra.ExactArgs(2),
 	DisableFlagsInUseLine: true,
@@ -143,4 +157,19 @@ var renameVault = &cobra.Command{
 		fmt.Printf("Renamed vault %s to %s\n", sourceName, targetName)
 		return nil
 	},
+}
+
+func init() {
+	for _, c := range []*cobra.Command{changePassword, create, delete, export} {
+		c.Flags().StringVarP(&namePrefix, "vault", "v", "", "name of vault")
+	}
+	for _, c := range []*cobra.Command{changePassword, create, export} {
+		c.Flags().StringVarP(&passwordFile, "password-file", "p", "", "path to a file that contains your password")
+	}
+
+	create.Flags().StringVarP(&importFile, "import-file", "i", "", "path to a file that contains unencrypted secrets")
+	getDefault.Flags().BoolVarP(&isPath, "path", "p", false, "print the path instead of the name")
+	list.Flags().BoolVarP(&isPath, "path", "p", false, "print paths instead of names")
+
+	Cmd.AddCommand(changePassword, create, delete, export, getDefault, list, rename)
 }
