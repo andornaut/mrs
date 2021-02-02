@@ -87,12 +87,12 @@ func (s *briefcase) Len() int {
 	return len(s.secrets)
 }
 
-// Less is part of sort.Interface. It is implemented by calling the "by" closure in the sorter.
+// Less is part of sort.Interface. It is implemented by calling the "by" closure in the sorter
 func (s *briefcase) Less(i, j int) bool {
 	return s.secrets[i].Less(s.secrets[j])
 }
 
-// Swap is part of sort.Interface.
+// Swap is part of sort.Interface
 func (s *briefcase) Swap(i, j int) {
 	s.secrets[i], s.secrets[j] = s.secrets[j], s.secrets[i]
 }
