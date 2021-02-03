@@ -161,15 +161,15 @@ var rename = &cobra.Command{
 
 func init() {
 	for _, c := range []*cobra.Command{changePassword, create, delete, export} {
-		c.Flags().StringVarP(&namePrefix, "vault", "v", "", "name of vault")
+		c.Flags().StringVarP(&namePrefix, "vault", "v", "", "name of a vault")
 	}
 	for _, c := range []*cobra.Command{changePassword, create, export} {
 		c.Flags().StringVarP(&passwordFile, "password-file", "p", "", "path to a file that contains your password")
 	}
 
 	create.Flags().StringVarP(&importFile, "import-file", "i", "", "path to a file that contains unencrypted secrets")
-	getDefault.Flags().BoolVarP(&isPath, "path", "p", false, "print the path instead of the name")
-	list.Flags().BoolVarP(&isPath, "path", "p", false, "print paths instead of names")
+	getDefault.Flags().BoolVarP(&isPath, "path", "p", false, "print the vault path instead of the name")
+	list.Flags().BoolVarP(&isPath, "path", "p", false, "print vault paths instead of names")
 
 	Cmd.AddCommand(changePassword, create, delete, export, getDefault, list, rename)
 }

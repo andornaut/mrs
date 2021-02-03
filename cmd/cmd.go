@@ -16,7 +16,7 @@ import (
 // Cmd implements the root ./mrs command
 var Cmd = &cobra.Command{
 	Use:          "mrs",
-	Example:      "\tmrs create --vault name\n\tmrs edit\n\tmrs search 'secret stuff'",
+	Example:      "\tmrs vault create\n\tmrs edit\n\tmrs search 'secret stuff'",
 	Short:        "Mr. Secretary",
 	Long:         "Mr. Secretary - Organise and secure your secrets",
 	SilenceUsage: true,
@@ -70,7 +70,7 @@ var edit = &cobra.Command{
 
 var search = &cobra.Command{
 	Use:   "search [regular expression]",
-	Short: "Search through secrets in a vault",
+	Short: "Search for secrets in a vault",
 	Args:  cobra.MinimumNArgs(1),
 	RunE: func(c *cobra.Command, args []string) error {
 		// Internal whitespace is stripped by cobra, so we search for any amount of internal whitespace.
@@ -132,9 +132,9 @@ func getUnlockedVault() (vault.UnlockedVault, error) {
 func init() {
 	for _, c := range []*cobra.Command{add, edit, search} {
 		flags := c.Flags()
-		flags.StringVarP(&namePrefix, "vault", "v", "", "name of vault")
+		flags.StringVarP(&namePrefix, "vault", "v", "", "name of a vault")
 		flags.StringVarP(&passwordFile, "password-file", "p", "", "path to a file that contains your password")
 	}
-	search.Flags().BoolVarP(&includeValues, "all", "a", false, "search through names and values")
+	search.Flags().BoolVarP(&includeValues, "full", "f", false, "search the full contents, instead of the first line of each secret")
 	Cmd.AddCommand(add, edit, search, vaultcmd.Cmd)
 }

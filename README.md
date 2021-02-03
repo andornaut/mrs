@@ -20,7 +20,7 @@ Usage:
   mrs [command]
 
 Examples:
-	mrs create --vault name
+	mrs vault create
 	mrs edit
 	mrs search 'secret stuff'
 
@@ -28,7 +28,7 @@ Available Commands:
   add         Add secrets to a vault
   edit        Edit secrets in a vault
   help        Help about any command
-  search      Search through secrets in a vault
+  search      Search for secrets in a vault
   vault       Manage vaults
 
 Flags:
