@@ -32,7 +32,7 @@ bank account password: an insecure password
 
 $ mrs search bar
 Vault password: 
-1 secret(s) matched regular expression "(?i)bar" in vault biniam
+1 secret(s) matched regular expression "(?i)bar" in vault example
 
 another secret key bar
 bank account number: 1234
