@@ -10,6 +10,35 @@
 - Import and export your secrets
 - Encrypt your secrets with [256-bit AES-GCM](https://tools.ietf.org/html/rfc5288)
 
+## Vaults
+
+Each vault is an encrypted text file that contains 0 or more secrets.
+
+A secret is a newline delimited paragraph, where the first line is the search
+key and the subsequent lines are the secret value. When searching with
+`mrs search` only the key is searched, but you can include a `--full` flag to
+search through the full secret contents.
+
+```
+$ mrs vault export
+Vault password:
+a secret key foo
+username: user
+password: a password
+
+another secret key bar
+bank account number: 1234
+bank account password: an insecure password
+
+$ mrs search bar
+Vault password: 
+1 secret(s) matched regular expression "(?i)bar" in vault biniam
+
+another secret key bar
+bank account number: 1234
+bank account password: an insecure password
+```
+
 ## Usage
 
 ```
@@ -22,7 +51,7 @@ Usage:
 Examples:
 	mrs vault create
 	mrs edit
-	mrs search 'secret stuff'
+	mrs search secret stuff
 
 Available Commands:
   add         Add secrets to a vault
@@ -69,7 +98,7 @@ EDITOR | The editor to use to add or edit secrets (default: nano)
 MRS_DEFAULT_VAULT_NAME | The vault to use when `--vault` is not specified (default: the first vault found)
 MRS_HIDE_EDITOR_INSTRUCTIONS | If set to any value, then instructions comments will not be included when adding or editing secrets
 MRS_HOME | The directory where `mrs` stores encrypted vault files (default: `${HOME}/.local/share/mrs`)
-MRS_TEMP | The directory where `mrs` stores temporary decrypted files (default `$XDG_RUNTIME_DIR`)
+MRS_TEMP | The directory where `mrs` temporarily stores decrypted files (default `$XDG_RUNTIME_DIR`)
 
 ## Developing
 

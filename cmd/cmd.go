@@ -16,7 +16,7 @@ import (
 // Cmd implements the root ./mrs command
 var Cmd = &cobra.Command{
 	Use:          "mrs",
-	Example:      "\tmrs vault create\n\tmrs edit\n\tmrs search 'secret stuff'",
+	Example:      "\tmrs vault create\n\tmrs edit\n\tmrs search secret stuff",
 	Short:        "Mr. Secretary",
 	Long:         "Mr. Secretary - Organise and secure your secrets",
 	SilenceUsage: true,
