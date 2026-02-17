@@ -108,7 +108,8 @@ func Create(name, password, importFile string) (UnlockedVault, error) {
 	u := Vault(p).Unlocked(password)
 	content := ""
 	if importFile != "" {
-		b, err := os.ReadFile(importFile)
+		var b []byte
+		b, err = os.ReadFile(importFile)
 		if err != nil {
 			return BadUnlockedVault, fmt.Errorf("could not read from import file at %s: %s", importFile, err)
 		}

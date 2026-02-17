@@ -1,3 +1,5 @@
+version: 2
+
 run:
   timeout: 5m
   tests: true
@@ -18,6 +20,7 @@ linters:
     - goconst
     - bodyclose
     - gocritic
+    - unparam
 
 linters-settings:
   govet:
