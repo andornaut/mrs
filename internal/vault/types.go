@@ -105,7 +105,7 @@ func (v *UnlockedVault) Write(s string) error {
 		return fmt.Errorf("failed to encrypt secrets. Vault %s is unchanged", v)
 	}
 
-	if exists, _ := fs.IsExists(v.Path()); exists {
+	if exists, err := fs.IsExists(v.Path()); err == nil && exists {
 		if err := fs.CopyFile(v.Path(), v.Path()+".bak"); err != nil {
 			fmt.Printf("Warning: failed to create backup for vault %s: %s\n", v.Name(), err)
 		}
@@ -137,7 +137,10 @@ func (v *UnlockedVault) migrateLegacyIfApplicable() error {
 	if salt, err = crypto.Salt(); err != nil {
 		return err
 	}
-	newPath := toPathWithSalt(v.Name(), salt)
+	newPath, err := toPathWithSalt(v.Name(), salt)
+	if err != nil {
+		return err
+	}
 	newVault := Vault(newPath).Unlocked(v.password)
 	if err := os.Rename(v.Path(), newVault.Path()); err != nil {
 		return err

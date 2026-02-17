@@ -6,30 +6,36 @@ import (
 	"os"
 )
 
-func PromptName() string {
+func PromptName() (string, error) {
 	return TrimmedLine("Vault name")
 }
 
-func GivenOrPromptName(namePrefix string) string {
+func GivenOrPromptName(namePrefix string) (string, error) {
 	if namePrefix == "" {
 		return PromptName()
 	}
-	return namePrefix
+	return namePrefix, nil
 }
 
 func GivenOrPromptPassword(passwordFile string) (string, error) {
 	if passwordFile != "" {
 		return readPasswordFile(passwordFile)
 	}
-	return Password("Vault password"), nil
+	return Password("Vault password")
 }
 
 func GivenOrPromptConfirmedPassword(passwordFile string) (string, error) {
 	if passwordFile != "" {
 		return readPasswordFile(passwordFile)
 	}
-	p := Password("Vault password")
-	c := Password("Confirm password")
+	p, err := Password("Vault password")
+	if err != nil {
+		return "", err
+	}
+	c, err := Password("Confirm password")
+	if err != nil {
+		return "", err
+	}
 	if p != c {
 		return "", errors.New("password mismatch")
 	}

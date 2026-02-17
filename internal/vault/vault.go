@@ -81,7 +81,10 @@ func Create(name, password, importFile string) (UnlockedVault, error) {
 	}
 
 	// Ensure that a legacy vault - one that does not have a salt - does not exist.
-	legacyPath := toPath(name)
+	legacyPath, err := toPath(name)
+	if err != nil {
+		return BadUnlockedVault, err
+	}
 	if exists, err := fs.IsExists(legacyPath); err != nil {
 		return BadUnlockedVault, err
 	} else if exists {
@@ -92,7 +95,10 @@ func Create(name, password, importFile string) (UnlockedVault, error) {
 	if salt, err = crypto.Salt(); err != nil {
 		return BadUnlockedVault, err
 	}
-	p := toPathWithSalt(name, salt)
+	p, err := toPathWithSalt(name, salt)
+	if err != nil {
+		return BadUnlockedVault, err
+	}
 	if exists, err := fs.IsExists(p); err != nil {
 		return BadUnlockedVault, err
 	} else if exists {
@@ -158,9 +164,12 @@ func Rename(sourceName, targetName string) error {
 	salt := sourceVault.Salt()
 	if salt == "" {
 		// Legacy vaults do not have a per-vault salt.
-		targetPath = toPath(targetName)
+		targetPath, err = toPath(targetName)
 	} else {
-		targetPath = toPathWithSalt(targetName, salt)
+		targetPath, err = toPathWithSalt(targetName, salt)
+	}
+	if err != nil {
+		return err
 	}
 	exists, err := fs.IsExists(targetPath)
 	if err != nil {
@@ -195,7 +204,10 @@ func findVaults(prefix string) ([]Vault, error) {
 		}
 		prefix += "*"
 	}
-	pattern := toPath(prefix)
+	pattern, err := toPath(prefix)
+	if err != nil {
+		return nil, err
+	}
 	matchedPaths, err := filepath.Glob(pattern)
 	if err != nil {
 		return nil, err
@@ -211,10 +223,14 @@ func findVaults(prefix string) ([]Vault, error) {
 	return vs, nil
 }
 
-func toPath(n string) string {
-	return path.Join(config.VaultDir, n)
+func toPath(n string) (string, error) {
+	vaultDir, err := config.GetVaultDir()
+	if err != nil {
+		return "", err
+	}
+	return path.Join(vaultDir, n), nil
 }
 
-func toPathWithSalt(n string, h string) string {
+func toPathWithSalt(n string, h string) (string, error) {
 	return toPath(fmt.Sprintf("%s.%s", n, h))
 }

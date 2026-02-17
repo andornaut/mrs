@@ -26,14 +26,16 @@ func retrieveBriefcase(v vault.UnlockedVault) (*briefcase, error) {
 }
 
 func takeDictation(content string) (*briefcase, error) {
-	if !config.HideEditorInstructions {
+	if !config.HideEditorInstructions() {
 		content = instructions + content
 	}
 	p, err := fs.WriteTempFile(content)
 	if err != nil {
 		return nil, err
 	}
-	defer fs.RemoveFile(p)
+	defer func() {
+		_ = fs.RemoveFile(p)
+	}()
 
 	if err := prompt.Editor(p); err != nil {
 		return nil, err
