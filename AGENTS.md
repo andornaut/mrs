@@ -6,7 +6,7 @@ Welcome, fellow agent! This guide provides a quick overview of the `mrs` codebas
 
 `mrs` (Mr. Secretary) is a command-line secrets manager for Linux and macOS. It allows users to organize secrets into encrypted "vaults".
 
-- **Language:** Go (Targeting Go 1.23+)
+- **Language:** Go (Targeting Go 1.26+)
 - **CLI Framework:** [Cobra](https://github.com/spf13/cobra)
 - **Encryption:** 256-bit AES-GCM (implemented in `internal/crypto`)
 - **Key Derivation:** PBKDF2-SHA256 with 600,000 iterations (Current) or 4,096 (Legacy).
