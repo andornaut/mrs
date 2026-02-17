@@ -40,6 +40,7 @@ func init() {
 			if err != nil {
 				return err
 			}
+			defer v.Wipe()
 			n, err := secret.Add(v)
 			if err != nil {
 				return err
@@ -63,6 +64,7 @@ func init() {
 			if err != nil {
 				return err
 			}
+			defer v.Wipe()
 			if err := secret.Edit(v); err != nil {
 				return err
 			}
@@ -88,7 +90,8 @@ func init() {
 			if err != nil {
 				return err
 			}
-			if v == vault.BadUnlockedVault {
+			defer v.Wipe()
+			if v.IsBad() {
 				return errors.New("no vaults found")
 			}
 			secrets, err := secret.Search(v, *r, opts.includeValues)

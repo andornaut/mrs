@@ -34,8 +34,8 @@ func validateNameWithOptionalSalt(n string) error {
 	return validateName(arr[1])
 }
 
-func validatePassword(p string) error {
-	if !passwordRegex.MatchString(p) {
+func validatePassword(p []byte) error {
+	if !passwordRegex.Match(p) {
 		return errors.New("password must contain at least 8 characters")
 	}
 	return nil

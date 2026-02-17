@@ -8,7 +8,8 @@ import (
 )
 
 func TestEncryptDecrypt(t *testing.T) {
-	password := "super-secret-password"
+	password := []byte("super-secret-password")
+	defer Wipe(password)
 	salt, err := Salt()
 	if err != nil {
 		t.Fatalf("failed to generate salt: %v", err)
@@ -29,6 +30,7 @@ func TestEncryptDecrypt(t *testing.T) {
 	if err != nil {
 		t.Fatalf("decryption failed: %v", err)
 	}
+	defer Wipe(decrypted)
 
 	if !bytes.Equal(data, decrypted) {
 		t.Errorf("decrypted data does not match original; expected %q, got %q", string(data), string(decrypted))
@@ -36,12 +38,14 @@ func TestEncryptDecrypt(t *testing.T) {
 }
 
 func TestLegacyDecrypt(t *testing.T) {
-	password := "password"
+	password := []byte("password")
+	defer Wipe(password)
 	salt, _ := Salt()
 	data := []byte("legacy data")
 
 	// Manually encrypt with legacy iterations
 	k, _ := key(password, salt, LegacyIterations)
+	defer Wipe(k[:])
 	encrypted, _ := cryptopasta.Encrypt(data, k)
 
 	// Decrypt using the new Decrypt function which should fallback to legacy
@@ -49,6 +53,7 @@ func TestLegacyDecrypt(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Legacy decryption failed: %v", err)
 	}
+	defer Wipe(decrypted)
 
 	if !bytes.Equal(data, decrypted) {
 		t.Errorf("Legacy decrypted data does not match original; expected %q, got %q", string(data), string(decrypted))
@@ -56,8 +61,10 @@ func TestLegacyDecrypt(t *testing.T) {
 }
 
 func TestDecryptWithWrongPassword(t *testing.T) {
-	password := "correct-password"
-	wrongPassword := "wrong-password"
+	password := []byte("correct-password")
+	defer Wipe(password)
+	wrongPassword := []byte("wrong-password")
+	defer Wipe(wrongPassword)
 	salt, _ := Salt()
 	data := []byte("sensitive info")
 
@@ -70,7 +77,8 @@ func TestDecryptWithWrongPassword(t *testing.T) {
 }
 
 func TestDecryptWithWrongSalt(t *testing.T) {
-	password := "password"
+	password := []byte("password")
+	defer Wipe(password)
 	salt1, _ := Salt()
 	salt2, _ := Salt()
 	data := []byte("sensitive info")
@@ -95,5 +103,15 @@ func TestSalt(t *testing.T) {
 	s2, _ := Salt()
 	if s1 == s2 {
 		t.Error("Salt() should return unique salts")
+	}
+}
+
+func TestWipe(t *testing.T) {
+	buf := []byte{1, 2, 3, 4, 5}
+	Wipe(buf)
+	for i, b := range buf {
+		if b != 0 {
+			t.Errorf("byte at index %d was not wiped: %d", i, b)
+		}
 	}
 }

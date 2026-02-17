@@ -54,7 +54,7 @@ func First(prefix string) (Vault, error) {
 }
 
 // ChangePassword changes a vault's password
-func ChangePassword(prefix, oldPassword, newPassword string) (UnlockedVault, error) {
+func ChangePassword(prefix string, oldPassword, newPassword []byte) (UnlockedVault, error) {
 	v, err := First(prefix)
 	if err != nil {
 		return BadUnlockedVault, err
@@ -71,7 +71,7 @@ func ChangePassword(prefix, oldPassword, newPassword string) (UnlockedVault, err
 }
 
 // Create creates a vault
-func Create(name, password, importFile string) (UnlockedVault, error) {
+func Create(name string, password []byte, importFile string) (UnlockedVault, error) {
 	if err := validateName(name); err != nil {
 		return BadUnlockedVault, err
 	}
@@ -113,6 +113,7 @@ func Create(name, password, importFile string) (UnlockedVault, error) {
 		if err != nil {
 			return BadUnlockedVault, fmt.Errorf("could not read from import file at %s: %s", importFile, err)
 		}
+		defer crypto.Wipe(b)
 		content = string(b)
 	}
 
@@ -132,12 +133,13 @@ func Delete(name string) error {
 }
 
 // Export writes a vault's secrets to stdout
-func Export(name, password string) (string, error) {
+func Export(name string, password []byte) (string, error) {
 	v, err := exact(name)
 	if err != nil {
 		return "", err
 	}
 	u := v.Unlocked(password)
+	defer u.Wipe()
 	r, err := u.NewReader()
 	if err != nil {
 		return "", err
@@ -146,6 +148,7 @@ func Export(name, password string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	defer crypto.Wipe(b)
 	return string(b), nil
 }
 

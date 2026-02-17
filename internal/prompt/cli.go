@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"os"
+
+	"github.com/andornaut/mrs/internal/crypto"
 )
 
 func PromptName() (string, error) {
@@ -17,35 +19,39 @@ func GivenOrPromptName(namePrefix string) (string, error) {
 	return namePrefix, nil
 }
 
-func GivenOrPromptPassword(passwordFile string) (string, error) {
+func GivenOrPromptPassword(passwordFile string) ([]byte, error) {
 	if passwordFile != "" {
 		return readPasswordFile(passwordFile)
 	}
 	return Password("Vault password")
 }
 
-func GivenOrPromptConfirmedPassword(passwordFile string) (string, error) {
+func GivenOrPromptConfirmedPassword(passwordFile string) ([]byte, error) {
 	if passwordFile != "" {
 		return readPasswordFile(passwordFile)
 	}
 	p, err := Password("Vault password")
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	c, err := Password("Confirm password")
 	if err != nil {
-		return "", err
+		crypto.Wipe(p)
+		return nil, err
 	}
-	if p != c {
-		return "", errors.New("password mismatch")
+	defer crypto.Wipe(c)
+
+	if !crypto.SecureCompare(p, c) {
+		crypto.Wipe(p)
+		return nil, errors.New("password mismatch")
 	}
 	return p, nil
 }
 
-func readPasswordFile(passwordFile string) (string, error) {
+func readPasswordFile(passwordFile string) ([]byte, error) {
 	password, err := os.ReadFile(passwordFile)
 	if err != nil {
-		return "", fmt.Errorf("could not read from password file %s: %s", passwordFile, err)
+		return nil, fmt.Errorf("could not read from password file %s: %s", passwordFile, err)
 	}
-	return string(password), nil
+	return password, nil
 }
