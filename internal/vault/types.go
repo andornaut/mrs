@@ -10,6 +10,7 @@ import (
 
 	"github.com/andornaut/mrs/internal/crypto"
 	"github.com/andornaut/mrs/internal/fs"
+	"github.com/gofrs/flock"
 )
 
 // Legacy vaults use the following salt, whereas new vaults are created with a unique salt.
@@ -60,6 +61,42 @@ func (v Vault) String() string {
 // Unlocked returns a UnlockedVault
 func (v Vault) Unlocked(password []byte) UnlockedVault {
 	return UnlockedVault{v, password}
+}
+
+// ExclusiveLock acquires an exclusive lock on the vault.
+// It returns an unlock function and any error encountered.
+func (v Vault) ExclusiveLock() (func(), error) {
+	if v == BadVault {
+		return nil, fmt.Errorf("cannot lock bad vault")
+	}
+	lockPath := filepath.Join(filepath.Dir(v.Path()), v.Name()+".lock")
+	f := flock.New(lockPath)
+	locked, err := f.TryLock()
+	if err != nil {
+		return nil, fmt.Errorf("could not acquire lock on vault %s: %w", v.Name(), err)
+	}
+	if !locked {
+		return nil, fmt.Errorf("vault %s is currently locked by another process", v.Name())
+	}
+	return func() { _ = f.Unlock() }, nil
+}
+
+// SharedLock acquires a shared lock on the vault.
+// It returns an unlock function and any error encountered.
+func (v Vault) SharedLock() (func(), error) {
+	if v == BadVault {
+		return nil, fmt.Errorf("cannot lock bad vault")
+	}
+	lockPath := filepath.Join(filepath.Dir(v.Path()), v.Name()+".lock")
+	f := flock.New(lockPath)
+	locked, err := f.TryRLock()
+	if err != nil {
+		return nil, fmt.Errorf("could not acquire shared lock on vault %s: %w", v.Name(), err)
+	}
+	if !locked {
+		return nil, fmt.Errorf("vault %s is currently locked exclusively by another process", v.Name())
+	}
+	return func() { _ = f.Unlock() }, nil
 }
 
 func (v Vault) basename() string {
