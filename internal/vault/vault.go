@@ -82,8 +82,9 @@ func Create(name, password, importFile string) (UnlockedVault, error) {
 
 	// Ensure that a legacy vault - one that does not have a salt - does not exist.
 	legacyPath := toPath(name)
-	exists, err := fs.IsExists(legacyPath)
-	if exists {
+	if exists, err := fs.IsExists(legacyPath); err != nil {
+		return BadUnlockedVault, err
+	} else if exists {
 		return BadUnlockedVault, fmt.Errorf("a vault named \"%s\" already exists", name)
 	}
 
@@ -92,8 +93,9 @@ func Create(name, password, importFile string) (UnlockedVault, error) {
 		return BadUnlockedVault, err
 	}
 	p := toPathWithSalt(name, salt)
-	exists, err = fs.IsExists(p)
-	if err != nil {
+	if exists, err := fs.IsExists(p); err != nil {
+		return BadUnlockedVault, err
+	} else if exists {
 		return BadUnlockedVault, fmt.Errorf("a vault named \"%s\" already exists", name)
 	}
 	u := Vault(p).Unlocked(password)

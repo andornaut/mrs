@@ -66,10 +66,6 @@ func (v Vault) basename() string {
 	return filepath.Base(v.Path())
 }
 
-func (v Vault) dir() string {
-	return filepath.Dir(v.Path())
-}
-
 // UnlockedVault is a vault that can be read from and written to
 type UnlockedVault struct {
 	Vault
@@ -99,7 +95,9 @@ func (v *UnlockedVault) NewReader() (io.Reader, error) {
 
 // Write writes s string to the vault
 func (v *UnlockedVault) Write(s string) error {
-	v.migrateLegacyIfApplicable()
+	if err := v.migrateLegacyIfApplicable(); err != nil {
+		return err
+	}
 
 	b := []byte(s)
 	b, err := crypto.Encrypt(b, v.password, v.Salt())
@@ -141,7 +139,9 @@ func (v *UnlockedVault) migrateLegacyIfApplicable() error {
 	}
 	newPath := toPathWithSalt(v.Name(), salt)
 	newVault := Vault(newPath).Unlocked(v.password)
-	os.Rename(v.Path(), newVault.Path())
+	if err := os.Rename(v.Path(), newVault.Path()); err != nil {
+		return err
+	}
 	*v = newVault
 
 	fmt.Printf("Migrating legacy vault to include a unique salt: %s\n", v.Salt())
