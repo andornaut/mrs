@@ -103,3 +103,15 @@ MRS_TEMP | The directory where `mrs` temporarily stores decrypted files (default
 ## Developing
 
 See the [Makefile](./Makefile).
+
+### Releasing
+
+This project uses [GoReleaser](https://goreleaser.com/) to automate the release process. To release a new version:
+
+1. Ensure you are on the `main` branch and have pulled the latest changes.
+2. Create and push a new semantic version tag:
+   ```bash
+   git tag -a v1.0.0 -m "Release v1.0.0"
+   git push origin v1.0.0
+   ```
+3. The GitHub Actions [release workflow](.github/workflows/release.yml) will automatically trigger, build the binaries, and create a new GitHub Release with the artifacts.
