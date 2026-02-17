@@ -16,6 +16,7 @@ Welcome, fellow agent! This guide provides a quick overview of the `mrs` codebas
 
 ### Vaults
 A vault is a single encrypted file. Each vault has a name and a salt. The filename format is `<name>.<salt>`. 
+- **Concurrency:** `mrs` uses file-based locking (`<name>.lock`) to prevent multiple processes from corrupting a vault simultaneously. Exclusive locks are used for writes, and shared locks for reads.
 - **Backups:** Every `Write` operation automatically creates a `<name>.<salt>.bak` file of the previous version.
 - **Auto-migration:** Decryption supports legacy KDF iterations (4,096) and will automatically upgrade to 600,000 iterations on the next save.
 
@@ -34,11 +35,11 @@ A secret is a newline-delimited paragraph within a vault.
   - `vaultcmd/`: Subcommands for vault management (`create`, `delete`, `list`, etc.).
 - `internal/`: Private application code.
   - `config/`: Configuration handling (environment variables). Functions return errors instead of using global state or exiting.
-  - `crypto/`: Encryption and decryption logic.
+  - `crypto/`: Encryption, decryption, and secure memory handling (wiping).
   - `fs/`: Filesystem utilities (includes `CopyFile` for backups).
   - `prompt/`: Interactive CLI prompts (uses `golang.org/x/term` for passwords).
   - `secret/`: Logic for manipulating secrets within an unlocked vault.
-  - `vault/`: Vault management logic (finding, creating, unlocking, backup/migration).
+  - `vault/`: Vault management logic (finding, creating, unlocking, locking, backup/migration).
 
 ## Development Workflow
 
@@ -61,9 +62,10 @@ Unit tests are located in `*_test.go` files within their respective packages.
 
 ## Tips for Agents
 
+- **Memory Security:** Sensitive data (passwords, plaintext secrets, keys) should be handled as `[]byte` and explicitly zeroed out using `crypto.Wipe()` as soon as they are no longer needed.
+- **Vault State:** Use `UnlockedVault.Wipe()` to clear sensitive data from an unlocked vault instance. Use `UnlockedVault.IsBad()` to check for validity.
+- **Locking:** Always acquire the appropriate lock (`ExclusiveLock` or `SharedLock`) before performing operations on a vault file.
 - **Error Handling:** All `internal` packages should return errors to the caller. Avoid `log.Fatal` or `os.Exit` inside libraries.
-- **Encryption during Tests:** When writing tests that involve encryption, you'll need a password. Ensure salts are at least 32 characters long.
 - **Temporary Files:** `mrs` creates a temporary directory for decrypted files during editing. This is cleaned up by `main.go` using a signal-aware cleanup routine.
-- **Search Logic:** Search is performed on the first line of each secret by default. The `--full` flag enables searching the entire secret content.
 - **Modern Go:** Avoid `io/ioutil`. Use `os` or `io` instead.
 - **Term handling:** Use `golang.org/x/term` for terminal-related operations.
