@@ -21,6 +21,7 @@ $(TARGET):
 clean:
 	go clean
 	rm -f "$(DISTDIR)/$(TARGET)*"
+	rm -f coverage.txt
 
 install: $(TARGET)
 	sudo mkdir -p "$(DESTDIR)$(BINPREFIX)"

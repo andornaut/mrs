@@ -45,7 +45,7 @@ func Encrypt(data []byte, password string, salt string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return cryptopasta.Encrypt([]byte(data), k)
+	return cryptopasta.Encrypt(data, k)
 }
 
 // Salt returns a randomly generated salt.
