@@ -28,7 +28,10 @@ var create = &cobra.Command{
 	Short: "Create a vault",
 	Args:  cobra.NoArgs,
 	RunE: func(c *cobra.Command, args []string) error {
-		name := prompt.GivenOrPromptName(namePrefix)
+		name, err := prompt.GivenOrPromptName(namePrefix)
+		if err != nil {
+			return err
+		}
 		password, err := prompt.GivenOrPromptConfirmedPassword(passwordFile)
 		if err != nil {
 			return err
@@ -47,13 +50,22 @@ var changePassword = &cobra.Command{
 	Short: "Change a vault's password",
 	Args:  cobra.NoArgs,
 	RunE: func(c *cobra.Command, args []string) error {
-		name := prompt.GivenOrPromptName(namePrefix)
+		name, err := prompt.GivenOrPromptName(namePrefix)
+		if err != nil {
+			return err
+		}
 		oldPassword, err := prompt.GivenOrPromptPassword(passwordFile)
 		if err != nil {
 			return err
 		}
-		newPassword := prompt.Password("New password")
-		confirmPassword := prompt.Password("Confirm password")
+		newPassword, err := prompt.Password("New password")
+		if err != nil {
+			return err
+		}
+		confirmPassword, err := prompt.Password("Confirm password")
+		if err != nil {
+			return err
+		}
 		if newPassword != confirmPassword {
 			return errors.New("password mismatch")
 		}
@@ -71,7 +83,10 @@ var delete = &cobra.Command{
 	Short: "Delete a vault",
 	Args:  cobra.NoArgs,
 	RunE: func(c *cobra.Command, args []string) error {
-		name := prompt.GivenOrPromptName(namePrefix)
+		name, err := prompt.GivenOrPromptName(namePrefix)
+		if err != nil {
+			return err
+		}
 		if !prompt.Bool(fmt.Sprintf("Delete vault %s?", name), false) {
 			return errors.New("cancelled")
 		}
@@ -88,7 +103,10 @@ var export = &cobra.Command{
 	Short: "Export secrets from a vault",
 	Args:  cobra.NoArgs,
 	RunE: func(c *cobra.Command, args []string) error {
-		name := prompt.GivenOrPromptName(namePrefix)
+		name, err := prompt.GivenOrPromptName(namePrefix)
+		if err != nil {
+			return err
+		}
 		password, err := prompt.GivenOrPromptPassword(passwordFile)
 		if err != nil {
 			return err

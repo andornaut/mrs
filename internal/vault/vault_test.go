@@ -27,7 +27,7 @@ func TestWriteBackup(t *testing.T) {
 	}
 
 	bakPath := vaultPath + ".bak"
-	if exists, _ := fs.IsExists(bakPath); exists {
+	if exists, err := fs.IsExists(bakPath); err == nil && exists {
 		t.Error("backup file should not exist after first write")
 	}
 
@@ -37,7 +37,7 @@ func TestWriteBackup(t *testing.T) {
 		t.Fatalf("second write failed: %v", err)
 	}
 
-	if exists, _ := fs.IsExists(bakPath); !exists {
+	if exists, err := fs.IsExists(bakPath); err != nil || !exists {
 		t.Error("backup file should exist after second write")
 	}
 

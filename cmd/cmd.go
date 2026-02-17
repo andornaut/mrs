@@ -111,7 +111,11 @@ func getVault() (vault.Vault, error) {
 		if v != vault.BadVault {
 			return v, nil
 		}
-		namePrefix = prompt.PromptName()
+		name, err := prompt.PromptName()
+		if err != nil {
+			return vault.BadVault, err
+		}
+		namePrefix = name
 	}
 	return vault.First(namePrefix)
 }
