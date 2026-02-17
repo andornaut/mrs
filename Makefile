@@ -5,9 +5,12 @@ DISTDIR   := dist
 TARGET    := mrs
 PLATFORMS := darwin freebsd linux
 
-.PHONY: $(PLATFORMS) $(TARGET) all clean install release test uninstall
+.PHONY: $(PLATFORMS) $(TARGET) all clean install release test uninstall lint
 
 all: $(TARGET)
+
+lint:
+	golangci-lint run
 
 $(PLATFORMS):
 	GOARCH=amd64 GOOS=$@ go build -o "$(DISTDIR)/$(TARGET)-$@-amd64"
