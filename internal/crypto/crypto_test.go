@@ -3,6 +3,8 @@ package crypto
 import (
 	"bytes"
 	"testing"
+
+	"github.com/gtank/cryptopasta"
 )
 
 func TestEncryptDecrypt(t *testing.T) {
@@ -30,6 +32,26 @@ func TestEncryptDecrypt(t *testing.T) {
 
 	if !bytes.Equal(data, decrypted) {
 		t.Errorf("decrypted data does not match original; expected %q, got %q", string(data), string(decrypted))
+	}
+}
+
+func TestLegacyDecrypt(t *testing.T) {
+	password := "password"
+	salt, _ := Salt()
+	data := []byte("legacy data")
+
+	// Manually encrypt with legacy iterations
+	k, _ := key(password, salt, LegacyIterations)
+	encrypted, _ := cryptopasta.Encrypt(data, k)
+
+	// Decrypt using the new Decrypt function which should fallback to legacy
+	decrypted, err := Decrypt(encrypted, password, salt)
+	if err != nil {
+		t.Fatalf("Legacy decryption failed: %v", err)
+	}
+
+	if !bytes.Equal(data, decrypted) {
+		t.Errorf("Legacy decrypted data does not match original; expected %q, got %q", string(data), string(decrypted))
 	}
 }
 
