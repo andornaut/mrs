@@ -1,0 +1,40 @@
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  enable:
+    - errcheck
+    - gosimple
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - gosec
+    - revive
+    - misspell
+    - unconvert
+    - goconst
+    - bodyclose
+    - gocritic
+    - unparam
+
+linters-settings:
+  govet:
+    enable-all: true
+    disable:
+      - fieldalignment
+  revive:
+    rules:
+      - name: exported
+        disabled: true
+  gosec:
+    excludes:
+      - G115 # false positives with int64 and uint64
+      - G204 # subprocess launched with variable
+      - G304 # file inclusion via variable
+
+issues:
+  exclude-use-default: false
+  max-issues-per-linter: 0
+  max-same-issues: 0
