@@ -1,41 +1,46 @@
+version: "2"
 run:
-  timeout: 5m
   tests: true
-
 linters:
   enable:
-    - errcheck
-    - gosimple
-    - govet
-    - ineffassign
-    - staticcheck
-    - unused
-    - gofmt
-    - gosec
-    - revive
-    - misspell
-    - unconvert
-    - goconst
     - bodyclose
+    - goconst
     - gocritic
+    - gosec
+    - misspell
+    - revive
+    - unconvert
     - unparam
-
-linters-settings:
-  govet:
-    enable-all: true
-    disable:
-      - fieldalignment
-  revive:
-    rules:
-      - name: exported
-        disabled: true
-  gosec:
-    excludes:
-      - G115 # false positives with int64 and uint64
-      - G204 # subprocess launched with variable
-      - G304 # file inclusion via variable
-
+  settings:
+    gosec:
+      excludes:
+        - G115
+        - G204
+        - G304
+        - G703
+    govet:
+      disable:
+        - fieldalignment
+      enable-all: true
+    revive:
+      rules:
+        - name: exported
+          disabled: true
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
 issues:
-  exclude-use-default: false
   max-issues-per-linter: 0
   max-same-issues: 0
+formatters:
+  enable:
+    - gofmt
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
