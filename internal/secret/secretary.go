@@ -37,14 +37,14 @@ func takeDictation(content string) (*briefcase, error) {
 		_ = fs.RemoveFile(p)
 	}()
 
-	if err := prompt.Editor(p); err != nil {
+	if err = prompt.Editor(p); err != nil {
 		return nil, err
 	}
 	f, err := os.Open(p)
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	return transcribe(f)
 }
 

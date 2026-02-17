@@ -16,10 +16,8 @@ linters:
     - misspell
     - unconvert
     - goconst
-    - exportloopref
     - bodyclose
     - gocritic
-    - shadow
 
 linters-settings:
   govet:
@@ -33,6 +31,8 @@ linters-settings:
   gosec:
     excludes:
       - G115 # false positives with int64 and uint64
+      - G204 # subprocess launched with variable
+      - G304 # file inclusion via variable
 
 issues:
   exclude-use-default: false

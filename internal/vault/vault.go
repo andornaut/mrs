@@ -32,7 +32,7 @@ func Default() (Vault, error) {
 			return BadVault, fmt.Errorf("default vault \"%s\" not found", config.DefaultVaultName)
 		}
 		// If a default vault name is not configured, then we should not return an error, because
-		// the default vault's existance is optional.
+		// the default vault's existence is optional.
 		return BadVault, nil
 	}
 	return vs[0], nil
@@ -59,7 +59,7 @@ func ChangePassword(prefix, oldPassword, newPassword string) (UnlockedVault, err
 	if err != nil {
 		return BadUnlockedVault, err
 	}
-	if err := validatePassword(newPassword); err != nil {
+	if err = validatePassword(newPassword); err != nil {
 		return BadUnlockedVault, fmt.Errorf("invalid new password: %s", err)
 	}
 	u := v.Unlocked(oldPassword)
@@ -72,11 +72,10 @@ func ChangePassword(prefix, oldPassword, newPassword string) (UnlockedVault, err
 
 // Create creates a vault
 func Create(name, password, importFile string) (UnlockedVault, error) {
-	var err error
-	if err = validateName(name); err != nil {
+	if err := validateName(name); err != nil {
 		return BadUnlockedVault, err
 	}
-	if err = validatePassword(password); err != nil {
+	if err := validatePassword(password); err != nil {
 		return BadUnlockedVault, err
 	}
 
@@ -85,21 +84,23 @@ func Create(name, password, importFile string) (UnlockedVault, error) {
 	if err != nil {
 		return BadUnlockedVault, err
 	}
-	if exists, err := fs.IsExists(legacyPath); err != nil {
+	var exists bool
+	if exists, err = fs.IsExists(legacyPath); err != nil {
 		return BadUnlockedVault, err
 	} else if exists {
 		return BadUnlockedVault, fmt.Errorf("a vault named \"%s\" already exists", name)
 	}
 
-	var salt string
-	if salt, err = crypto.Salt(); err != nil {
+	salt, err := crypto.Salt()
+	if err != nil {
 		return BadUnlockedVault, err
 	}
 	p, err := toPathWithSalt(name, salt)
 	if err != nil {
 		return BadUnlockedVault, err
 	}
-	if exists, err := fs.IsExists(p); err != nil {
+	exists, err = fs.IsExists(p)
+	if err != nil {
 		return BadUnlockedVault, err
 	} else if exists {
 		return BadUnlockedVault, fmt.Errorf("a vault named \"%s\" already exists", name)
@@ -171,7 +172,8 @@ func Rename(sourceName, targetName string) error {
 	if err != nil {
 		return err
 	}
-	exists, err := fs.IsExists(targetPath)
+	var exists bool
+	exists, err = fs.IsExists(targetPath)
 	if err != nil {
 		return err
 	}

@@ -45,7 +45,7 @@ func TestWriteTempFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("WriteTempFile() error = %v", err)
 	}
-	defer RemoveFile(path)
+	defer func() { _ = RemoveFile(path) }()
 
 	// Verify content
 	got, err := os.ReadFile(path)

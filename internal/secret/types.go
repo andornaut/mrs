@@ -41,7 +41,9 @@ func newBriefcase(secrets []secret) *briefcase {
 
 // Combined returns a new Secrets object with the given secrets appended
 func (s *briefcase) Combined(o *briefcase) *briefcase {
-	merged := append(s.secrets, o.secrets...)
+	merged := make([]secret, len(s.secrets)+len(o.secrets))
+	copy(merged, s.secrets)
+	copy(merged[len(s.secrets):], o.secrets)
 	return newBriefcase(merged)
 }
 

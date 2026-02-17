@@ -14,7 +14,7 @@ func TestWriteBackup(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	vaultPath := filepath.Join(tmpDir, "test.12345678901234567890123456789012")
 	password := "password"
@@ -27,7 +27,8 @@ func TestWriteBackup(t *testing.T) {
 	}
 
 	bakPath := vaultPath + ".bak"
-	if exists, err := fs.IsExists(bakPath); err == nil && exists {
+	exists, err := fs.IsExists(bakPath)
+	if err == nil && exists {
 		t.Error("backup file should not exist after first write")
 	}
 
@@ -37,7 +38,8 @@ func TestWriteBackup(t *testing.T) {
 		t.Fatalf("second write failed: %v", err)
 	}
 
-	if exists, err := fs.IsExists(bakPath); err != nil || !exists {
+	exists, err = fs.IsExists(bakPath)
+	if err != nil || !exists {
 		t.Error("backup file should exist after second write")
 	}
 
