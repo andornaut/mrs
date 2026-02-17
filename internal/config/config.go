@@ -105,3 +105,18 @@ func GetTempDir() (string, error) {
 	})
 	return tempDir, tempDirErr
 }
+
+// reset resets the sync.Once states and variables. This is only used for testing.
+func reset() {
+	baseDir = ""
+	baseDirErr = nil
+	baseDirOnce = sync.Once{}
+
+	tempDir = ""
+	tempDirErr = nil
+	tempDirOnce = sync.Once{}
+
+	vaultDir = ""
+	vaultDirErr = nil
+	vaultDirOnce = sync.Once{}
+}
