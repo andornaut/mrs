@@ -54,3 +54,13 @@ func WriteTempFile(content string) (string, error) {
 	}
 	return f.Name(), nil
 }
+
+// CopyFile copies a file from source to destination
+func CopyFile(src, dst string) error {
+	input, err := ioutil.ReadFile(src)
+	if err != nil {
+		return err
+	}
+
+	return ioutil.WriteFile(dst, input, 0600)
+}

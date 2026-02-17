@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/andornaut/mrs/internal/crypto"
+	"github.com/andornaut/mrs/internal/fs"
 )
 
 // Legacy vaults use the following salt, whereas new vaults are created with a unique salt.
@@ -45,7 +46,7 @@ func (v Vault) Salt() string {
 	if len(arr) == 1 {
 		return ""
 	}
-	return arr[1]
+	return strings.TrimSuffix(arr[1], ".bak")
 }
 
 // Path returns the absolute file path to the vault
@@ -105,6 +106,12 @@ func (v *UnlockedVault) Write(s string) error {
 	b, err := crypto.Encrypt(b, v.password, v.Salt())
 	if err != nil {
 		return fmt.Errorf("failed to encrypt secrets. Vault %s is unchanged", v)
+	}
+
+	if exists, _ := fs.IsExists(v.Path()); exists {
+		if err := fs.CopyFile(v.Path(), v.Path()+".bak"); err != nil {
+			fmt.Printf("Warning: failed to create backup for vault %s: %s\n", v.Name(), err)
+		}
 	}
 
 	return ioutil.WriteFile(v.Path(), b, 0600)
