@@ -27,12 +27,13 @@ A secret is a newline-delimited paragraph within a vault.
 
 ## Repository Structure
 
-- `main.go`: Application entry point.
-- `cmd/`: CLI command definitions (using Cobra).
+- `main.go`: Application entry point. Handles signal-safe cleanup of temporary files.
+- `cmd/`: CLI command definitions (using Cobra). 
+  - Uses option structs for flag management to isolate state.
   - `cmd.go`: Root command and core subcommands (`add`, `edit`, `search`).
   - `vaultcmd/`: Subcommands for vault management (`create`, `delete`, `list`, etc.).
 - `internal/`: Private application code.
-  - `config/`: Configuration handling (environment variables).
+  - `config/`: Configuration handling (environment variables). Functions return errors instead of using global state or exiting.
   - `crypto/`: Encryption and decryption logic.
   - `fs/`: Filesystem utilities (includes `CopyFile` for backups).
   - `prompt/`: Interactive CLI prompts (uses `golang.org/x/term` for passwords).
@@ -55,13 +56,14 @@ go test ./...
 Unit tests are located in `*_test.go` files within their respective packages.
 
 ### CI/CD
-- **GitHub Actions (`test.yml`)**: Automatically runs tests and `golangci-lint` on every push and PR to the `main` branch across Linux and macOS.
+- **GitHub Actions (`test.yml`)**: Automatically runs tests and `golangci-lint` (v2) on every push and PR to the `main` branch across Linux and macOS. Uses `golangci-lint-action`.
 - **Release Automation (`release.yml`)**: Uses **GoReleaser** to build and publish binaries when a `v*` tag is pushed.
 
 ## Tips for Agents
 
+- **Error Handling:** All `internal` packages should return errors to the caller. Avoid `log.Fatal` or `os.Exit` inside libraries.
 - **Encryption during Tests:** When writing tests that involve encryption, you'll need a password. Ensure salts are at least 32 characters long.
-- **Temporary Files:** `mrs` creates a temporary directory for decrypted files during editing. This is cleaned up by `main.go` using a `defer` call to `fs.RemoveTempDir()`.
+- **Temporary Files:** `mrs` creates a temporary directory for decrypted files during editing. This is cleaned up by `main.go` using a signal-aware cleanup routine.
 - **Search Logic:** Search is performed on the first line of each secret by default. The `--full` flag enables searching the entire secret content.
 - **Modern Go:** Avoid `io/ioutil`. Use `os` or `io` instead.
 - **Term handling:** Use `golang.org/x/term` for terminal-related operations.
