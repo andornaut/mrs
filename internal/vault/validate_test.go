@@ -42,7 +42,7 @@ func TestValidatePassword(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		err := validatePassword(tt.password)
+		err := validatePassword([]byte(tt.password))
 		if (err == nil) != tt.isValid {
 			t.Errorf("validatePassword(%q) expected valid=%v, got err=%v", tt.password, tt.isValid, err)
 		}

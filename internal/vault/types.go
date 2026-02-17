@@ -58,7 +58,7 @@ func (v Vault) String() string {
 }
 
 // Unlocked returns a UnlockedVault
-func (v Vault) Unlocked(password string) UnlockedVault {
+func (v Vault) Unlocked(password []byte) UnlockedVault {
 	return UnlockedVault{v, password}
 }
 
@@ -69,10 +69,16 @@ func (v Vault) basename() string {
 // UnlockedVault is a vault that can be read from and written to
 type UnlockedVault struct {
 	Vault
-	password string
+	password []byte
 }
 
-// NewReader returns an reader that reads vault content
+// IsBad returns true if the vault is invalid.
+func (v UnlockedVault) IsBad() bool {
+	return v.Vault == BadVault
+}
+
+// NewReader returns an reader that reads vault content.
+// The caller is responsible for wiping the returned content if they convert it to a mutable buffer.
 func (v *UnlockedVault) NewReader() (io.Reader, error) {
 	b, err := os.ReadFile(v.Path())
 	if err != nil {
@@ -86,11 +92,11 @@ func (v *UnlockedVault) NewReader() (io.Reader, error) {
 				"It will be automatically upgraded to using a unique salt the next time you edit it.\n",
 			v.Name())
 	}
-	b, err = crypto.Decrypt(b, v.password, salt)
+	decrypted, err := crypto.Decrypt(b, v.password, salt)
 	if err != nil {
 		return nil, fmt.Errorf("failed to decrypt vault %s", v)
 	}
-	return bytes.NewReader(b), nil
+	return bytes.NewReader(decrypted), nil
 }
 
 // Write writes s string to the vault
@@ -99,8 +105,10 @@ func (v *UnlockedVault) Write(s string) error {
 		return err
 	}
 
-	b := []byte(s)
-	b, err := crypto.Encrypt(b, v.password, v.Salt())
+	plaintext := []byte(s)
+	defer crypto.Wipe(plaintext)
+
+	ciphertext, err := crypto.Encrypt(plaintext, v.password, v.Salt())
 	if err != nil {
 		return fmt.Errorf("failed to encrypt secrets. Vault %s is unchanged", v)
 	}
@@ -111,10 +119,15 @@ func (v *UnlockedVault) Write(s string) error {
 		}
 	}
 
-	return os.WriteFile(v.Path(), b, 0600)
+	return os.WriteFile(v.Path(), ciphertext, 0600)
 }
 
-func (v *UnlockedVault) changePassword(p string) error {
+// Wipe wipes the vault's password from memory.
+func (v *UnlockedVault) Wipe() {
+	crypto.Wipe(v.password)
+}
+
+func (v *UnlockedVault) changePassword(p []byte) error {
 	r, err := v.NewReader()
 	if err != nil {
 		return err
@@ -123,6 +136,8 @@ func (v *UnlockedVault) changePassword(p string) error {
 	if err != nil {
 		return err
 	}
+	defer crypto.Wipe(b)
+
 	v.password = p
 	return v.Write(string(b))
 }

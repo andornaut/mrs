@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/andornaut/mrs/internal/crypto"
 	"github.com/andornaut/mrs/internal/prompt"
 	"github.com/andornaut/mrs/internal/vault"
 	"github.com/spf13/cobra"
@@ -43,6 +44,7 @@ func init() {
 			if err != nil {
 				return err
 			}
+			defer v.Wipe()
 			fmt.Printf("Created vault %s\n", v)
 			return nil
 		},
@@ -61,21 +63,30 @@ func init() {
 			if err != nil {
 				return err
 			}
+			defer crypto.Wipe(oldPassword)
+
 			newPassword, err := prompt.Password("New password")
 			if err != nil {
 				return err
 			}
 			confirmPassword, err := prompt.Password("Confirm password")
 			if err != nil {
+				crypto.Wipe(newPassword)
 				return err
 			}
-			if newPassword != confirmPassword {
+			defer crypto.Wipe(confirmPassword)
+
+			if !crypto.SecureCompare(newPassword, confirmPassword) {
+				crypto.Wipe(newPassword)
 				return errors.New("password mismatch")
 			}
+			defer crypto.Wipe(newPassword)
+
 			v, err := vault.ChangePassword(name, oldPassword, newPassword)
 			if err != nil {
 				return err
 			}
+			defer v.Wipe()
 			fmt.Printf("Changed password of vault %s\n", v)
 			return nil
 		},
@@ -114,6 +125,8 @@ func init() {
 			if err != nil {
 				return err
 			}
+			defer crypto.Wipe(password)
+
 			s, err := vault.Export(name, password)
 			if err != nil {
 				return err

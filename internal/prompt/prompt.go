@@ -39,16 +39,17 @@ func Editor(p string) error {
 	return cmd.Run()
 }
 
-// Password prompts the user to enter a password without echoing their input
-func Password(msg string) (string, error) {
+// Password prompts the user to enter a password without echoing their input.
+// The caller is responsible for wiping the returned slice.
+func Password(msg string) ([]byte, error) {
 	fmt.Print(msg + ": ")
 	b, err := term.ReadPassword(int(os.Stdin.Fd()))
 	// Since user input is not echoed, we must add a newline manually
 	fmt.Print("\n")
 	if err != nil {
-		return "", fmt.Errorf("input error: %w", err)
+		return nil, fmt.Errorf("input error: %w", err)
 	}
-	return string(b), nil
+	return b, nil
 }
 
 // TrimmedLine prompts for input and returns the first line of input as a trimmed string
