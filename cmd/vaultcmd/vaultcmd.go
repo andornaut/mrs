@@ -59,6 +59,16 @@ func init() {
 			if err != nil {
 				return err
 			}
+			v, err := vault.First(name)
+			if err != nil {
+				return err
+			}
+			unlock, err := v.ExclusiveLock()
+			if err != nil {
+				return err
+			}
+			defer unlock()
+
 			oldPassword, err := prompt.GivenOrPromptPassword(opts.passwordFile)
 			if err != nil {
 				return err
@@ -82,12 +92,12 @@ func init() {
 			}
 			defer crypto.Wipe(newPassword)
 
-			v, err := vault.ChangePassword(name, oldPassword, newPassword)
+			uv, err := vault.ChangePassword(name, oldPassword, newPassword)
 			if err != nil {
 				return err
 			}
-			defer v.Wipe()
-			fmt.Printf("Changed password of vault %s\n", v)
+			defer uv.Wipe()
+			fmt.Printf("Changed password of vault %s\n", uv)
 			return nil
 		},
 	}
@@ -101,6 +111,16 @@ func init() {
 			if err != nil {
 				return err
 			}
+			v, err := vault.First(name)
+			if err != nil {
+				return err
+			}
+			unlock, err := v.ExclusiveLock()
+			if err != nil {
+				return err
+			}
+			defer unlock()
+
 			if !prompt.Bool(fmt.Sprintf("Delete vault %s?", name), false) {
 				return errors.New("cancelled")
 			}
@@ -121,6 +141,16 @@ func init() {
 			if err != nil {
 				return err
 			}
+			v, err := vault.First(name)
+			if err != nil {
+				return err
+			}
+			unlock, err := v.SharedLock()
+			if err != nil {
+				return err
+			}
+			defer unlock()
+
 			password, err := prompt.GivenOrPromptPassword(opts.passwordFile)
 			if err != nil {
 				return err
@@ -185,6 +215,17 @@ func init() {
 		RunE: func(c *cobra.Command, args []string) error {
 			sourceName := args[0]
 			targetName := args[1]
+
+			v, err := vault.First(sourceName)
+			if err != nil {
+				return err
+			}
+			unlock, err := v.ExclusiveLock()
+			if err != nil {
+				return err
+			}
+			defer unlock()
+
 			if err := vault.Rename(sourceName, targetName); err != nil {
 				return err
 			}

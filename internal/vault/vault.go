@@ -79,6 +79,18 @@ func Create(name string, password []byte, importFile string) (UnlockedVault, err
 		return BadUnlockedVault, err
 	}
 
+	// Lock the vault name before creating files.
+	// We use toPath(name) to get a base path for the lock file.
+	p, err := toPath(name)
+	if err != nil {
+		return BadUnlockedVault, err
+	}
+	unlock, err := Vault(p).ExclusiveLock()
+	if err != nil {
+		return BadUnlockedVault, err
+	}
+	defer unlock()
+
 	// Ensure that a legacy vault - one that does not have a salt - does not exist.
 	legacyPath, err := toPath(name)
 	if err != nil {
@@ -95,7 +107,7 @@ func Create(name string, password []byte, importFile string) (UnlockedVault, err
 	if err != nil {
 		return BadUnlockedVault, err
 	}
-	p, err := toPathWithSalt(name, salt)
+	p, err = toPathWithSalt(name, salt)
 	if err != nil {
 		return BadUnlockedVault, err
 	}

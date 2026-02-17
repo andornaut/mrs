@@ -36,19 +36,31 @@ func init() {
 		Short: "Add secrets to a vault",
 		Args:  cobra.NoArgs,
 		RunE: func(c *cobra.Command, args []string) error {
-			v, err := opts.getUnlockedVault()
+			v, err := opts.getVault()
 			if err != nil {
 				return err
 			}
-			defer v.Wipe()
-			n, err := secret.Add(v)
+			unlock, err := v.ExclusiveLock()
+			if err != nil {
+				return err
+			}
+			defer unlock()
+
+			password, err := prompt.GivenOrPromptPassword(opts.passwordFile)
+			if err != nil {
+				return err
+			}
+			uv := v.Unlocked(password)
+			defer uv.Wipe()
+
+			n, err := secret.Add(uv)
 			if err != nil {
 				return err
 			}
 			if n == 0 {
-				fmt.Printf("No secrets added to vault %s\n", v.Name())
+				fmt.Printf("No secrets added to vault %s\n", uv.Name())
 			} else {
-				fmt.Printf("%d secret(s) added to vault %s\n", n, v)
+				fmt.Printf("%d secret(s) added to vault %s\n", n, uv)
 			}
 			return nil
 		},
@@ -60,15 +72,27 @@ func init() {
 		Long:  "Use an editor ($EDITOR) to edit your secrets",
 		Args:  cobra.NoArgs,
 		RunE: func(c *cobra.Command, args []string) error {
-			v, err := opts.getUnlockedVault()
+			v, err := opts.getVault()
 			if err != nil {
 				return err
 			}
-			defer v.Wipe()
-			if err := secret.Edit(v); err != nil {
+			unlock, err := v.ExclusiveLock()
+			if err != nil {
 				return err
 			}
-			fmt.Printf("Saved changes to vault %s\n", v)
+			defer unlock()
+
+			password, err := prompt.GivenOrPromptPassword(opts.passwordFile)
+			if err != nil {
+				return err
+			}
+			uv := v.Unlocked(password)
+			defer uv.Wipe()
+
+			if err := secret.Edit(uv); err != nil {
+				return err
+			}
+			fmt.Printf("Saved changes to vault %s\n", uv)
 			return nil
 		},
 	}
@@ -86,23 +110,35 @@ func init() {
 			if err != nil {
 				return fmt.Errorf("invalid regular expression \"%s\": %s", rs, err)
 			}
-			v, err := opts.getUnlockedVault()
+			v, err := opts.getVault()
 			if err != nil {
 				return err
 			}
-			defer v.Wipe()
-			if v.IsBad() {
+			unlock, err := v.SharedLock()
+			if err != nil {
+				return err
+			}
+			defer unlock()
+
+			password, err := prompt.GivenOrPromptPassword(opts.passwordFile)
+			if err != nil {
+				return err
+			}
+			uv := v.Unlocked(password)
+			defer uv.Wipe()
+
+			if uv.IsBad() {
 				return errors.New("no vaults found")
 			}
-			secrets, err := secret.Search(v, *r, opts.includeValues)
+			secrets, err := secret.Search(uv, *r, opts.includeValues)
 			if err != nil {
 				return err
 			}
 			n := len(secrets)
 			if n == 0 {
-				fmt.Printf("No secrets matched regular expression \"%s\" in vault %s\n", r, v)
+				fmt.Printf("No secrets matched regular expression \"%s\" in vault %s\n", r, uv)
 			} else {
-				fmt.Printf("%d secret(s) matched regular expression \"%s\" in vault %s\n\n%s", n, r, v, strings.Join(secrets, "\n"))
+				fmt.Printf("%d secret(s) matched regular expression \"%s\" in vault %s\n\n%s", n, r, uv, strings.Join(secrets, "\n"))
 			}
 			return nil
 		},
@@ -133,17 +169,4 @@ func (o *rootOptions) getVault() (vault.Vault, error) {
 		o.namePrefix = name
 	}
 	return vault.First(o.namePrefix)
-}
-
-// Get a Vault and then unlock it.
-func (o *rootOptions) getUnlockedVault() (vault.UnlockedVault, error) {
-	v, err := o.getVault()
-	if err != nil {
-		return vault.BadUnlockedVault, err
-	}
-	p, err := prompt.GivenOrPromptPassword(o.passwordFile)
-	if err != nil {
-		return vault.BadUnlockedVault, err
-	}
-	return v.Unlocked(p), nil
 }
