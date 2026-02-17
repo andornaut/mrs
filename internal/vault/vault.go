@@ -2,7 +2,7 @@ package vault
 
 import (
 	"fmt"
-	"io/ioutil"
+	"io"
 	"os"
 	"path"
 	"path/filepath"
@@ -99,7 +99,7 @@ func Create(name, password, importFile string) (UnlockedVault, error) {
 	u := Vault(p).Unlocked(password)
 	content := ""
 	if importFile != "" {
-		b, err := ioutil.ReadFile(importFile)
+		b, err := os.ReadFile(importFile)
 		if err != nil {
 			return BadUnlockedVault, fmt.Errorf("could not read from import file at %s: %s", importFile, err)
 		}
@@ -132,7 +132,7 @@ func Export(name, password string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	b, err := ioutil.ReadAll(r)
+	b, err := io.ReadAll(r)
 	if err != nil {
 		return "", err
 	}

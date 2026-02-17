@@ -1,7 +1,7 @@
 package vault
 
 import (
-	"io/ioutil"
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -10,7 +10,7 @@ import (
 )
 
 func TestWriteBackup(t *testing.T) {
-	tmpDir, err := ioutil.TempDir("", "mrs-test-vault")
+	tmpDir, err := os.MkdirTemp("", "mrs-test-vault")
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
@@ -47,7 +47,7 @@ func TestWriteBackup(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to read backup: %v", err)
 	}
-	b, _ := ioutil.ReadAll(r)
+	b, _ := io.ReadAll(r)
 	if string(b) != "first content" {
 		t.Errorf("backup content mismatch; expected %q, got %q", "first content", string(b))
 	}

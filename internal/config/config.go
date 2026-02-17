@@ -1,7 +1,6 @@
 package config
 
 import (
-	"io/ioutil"
 	"log"
 	"os"
 	"path"
@@ -57,7 +56,7 @@ func createVaultDir() string {
 
 // createTempDir creates a temp dir and returns its path.
 // TempDir is removed on program exit, but we cannot remove the entire ".../mrs" directory without
-// interfering with other instances of mrs, so we create an instance-specific temp dir using ioutil.TempDir,
+// interfering with other instances of mrs, so we create an instance-specific temp dir using os.MkdirTemp,
 // which means that we have to create the directory as a side-effect of determining its path.
 func createTempDir() string {
 	p := os.Getenv("MRS_TEMP")
@@ -71,7 +70,7 @@ func createTempDir() string {
 	if err := os.MkdirAll(p, 0700); err != nil {
 		log.Fatalf("Could not create temporary directory %s: %s", p, err)
 	}
-	p, err := ioutil.TempDir(p, "")
+	p, err := os.MkdirTemp(p, "")
 	if err != nil {
 		log.Fatalf("Could not create temporary directory %s: %s", p, err)
 	}

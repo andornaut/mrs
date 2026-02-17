@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	"github.com/andornaut/mrs/internal/config"
-	"golang.org/x/crypto/ssh/terminal"
+	"golang.org/x/term"
 )
 
 // Bool prompts for input and returns true if the trimmed input was "y"
@@ -40,7 +40,7 @@ func Editor(p string) error {
 // Password prompts the user to enter a password without echoing their input
 func Password(msg string) string {
 	fmt.Print(msg + ": ")
-	b, err := terminal.ReadPassword(int(os.Stdin.Fd()))
+	b, err := term.ReadPassword(int(os.Stdin.Fd()))
 	// Since user input is not echoed, we must add a newline manually
 	fmt.Print("\n")
 	if err != nil {

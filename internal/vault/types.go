@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -79,7 +78,7 @@ type UnlockedVault struct {
 
 // NewReader returns an reader that reads vault content
 func (v *UnlockedVault) NewReader() (io.Reader, error) {
-	b, err := ioutil.ReadFile(v.Path())
+	b, err := os.ReadFile(v.Path())
 	if err != nil {
 		return nil, err
 	}
@@ -114,7 +113,7 @@ func (v *UnlockedVault) Write(s string) error {
 		}
 	}
 
-	return ioutil.WriteFile(v.Path(), b, 0600)
+	return os.WriteFile(v.Path(), b, 0600)
 }
 
 func (v *UnlockedVault) changePassword(p string) error {
@@ -122,7 +121,7 @@ func (v *UnlockedVault) changePassword(p string) error {
 	if err != nil {
 		return err
 	}
-	b, err := ioutil.ReadAll(r)
+	b, err := io.ReadAll(r)
 	if err != nil {
 		return err
 	}

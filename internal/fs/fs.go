@@ -2,7 +2,6 @@ package fs
 
 import (
 	"fmt"
-	"io/ioutil"
 	"log"
 	"os"
 
@@ -44,7 +43,7 @@ func RemoveTempDir() {
 // WriteTempFile writes the given content to a newly created temp file.
 // The caller is responsible for removing the create file and/or directory.
 func WriteTempFile(content string) (string, error) {
-	f, err := ioutil.TempFile(config.TempDir, "")
+	f, err := os.CreateTemp(config.TempDir, "")
 	if err != nil {
 		return "", err
 	}
@@ -57,10 +56,10 @@ func WriteTempFile(content string) (string, error) {
 
 // CopyFile copies a file from source to destination
 func CopyFile(src, dst string) error {
-	input, err := ioutil.ReadFile(src)
+	input, err := os.ReadFile(src)
 	if err != nil {
 		return err
 	}
 
-	return ioutil.WriteFile(dst, input, 0600)
+	return os.WriteFile(dst, input, 0600)
 }

@@ -3,7 +3,7 @@ package prompt
 import (
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"os"
 )
 
 func PromptName() string {
@@ -37,7 +37,7 @@ func GivenOrPromptConfirmedPassword(passwordFile string) (string, error) {
 }
 
 func readPasswordFile(passwordFile string) (string, error) {
-	password, err := ioutil.ReadFile(passwordFile)
+	password, err := os.ReadFile(passwordFile)
 	if err != nil {
 		return "", fmt.Errorf("could not read from password file %s: %s", passwordFile, err)
 	}
