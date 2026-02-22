@@ -5,9 +5,11 @@ DISTDIR   := dist
 TARGET    := mrs
 PLATFORMS := darwin freebsd linux
 
-.PHONY: $(PLATFORMS) $(TARGET) all clean install release test uninstall lint
+.PHONY: $(PLATFORMS) $(TARGET) all build clean install release test uninstall lint
 
 all: $(TARGET)
+
+build: $(TARGET)
 
 lint:
 	golangci-lint run

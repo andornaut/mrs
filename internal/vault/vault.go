@@ -233,6 +233,11 @@ func findVaults(prefix string) ([]Vault, error) {
 
 	var vs []Vault
 	for _, p := range matchedPaths {
+		// Skip lock and backup files
+		base := filepath.Base(p)
+		if filepath.Ext(base) == ".lock" || filepath.Ext(base) == ".bak" {
+			continue
+		}
 		if err := validatePath(p); err != nil {
 			return nil, err
 		}
