@@ -27,17 +27,20 @@ func TestFindVaultsExcludesLockAndBackupFiles(t *testing.T) {
 	password := []byte("password")
 	u := Vault(validVault).Unlocked(password)
 	defer u.Wipe()
-	if err := u.Write("test content"); err != nil {
+	err = u.Write("test content")
+	if err != nil {
 		t.Fatalf("failed to create test vault: %v", err)
 	}
 
 	// Create lock and backup files that should be excluded
 	lockFile := filepath.Join(vaultDir, "test.lock")
 	backupFile := filepath.Join(vaultDir, "test.12345678901234567890123456789012.bak")
-	if err := os.WriteFile(lockFile, []byte{}, 0600); err != nil {
+	err = os.WriteFile(lockFile, []byte{}, 0600)
+	if err != nil {
 		t.Fatalf("failed to create lock file: %v", err)
 	}
-	if err := os.WriteFile(backupFile, []byte{}, 0600); err != nil {
+	err = os.WriteFile(backupFile, []byte{}, 0600)
+	if err != nil {
 		t.Fatalf("failed to create backup file: %v", err)
 	}
 
