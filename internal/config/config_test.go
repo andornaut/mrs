@@ -32,7 +32,7 @@ func TestGetBaseDir(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			reset()
+			Reset()
 			for k, v := range tt.env {
 				t.Setenv(k, v)
 			}
@@ -48,7 +48,7 @@ func TestGetBaseDir(t *testing.T) {
 }
 
 func TestGetVaultDir(t *testing.T) {
-	reset()
+	Reset()
 	tmpHome := t.TempDir()
 	t.Setenv("MRS_HOME", tmpHome)
 
@@ -76,7 +76,7 @@ func TestGetVaultDir(t *testing.T) {
 }
 
 func TestGetTempDir(t *testing.T) {
-	reset()
+	Reset()
 	tmpRoot := t.TempDir()
 	t.Setenv("MRS_TEMP", tmpRoot)
 
