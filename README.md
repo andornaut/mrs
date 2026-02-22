@@ -19,7 +19,7 @@ key and the subsequent lines are the secret value. When searching with
 `mrs search` only the key is searched, but you can include a `--full` flag to
 search through the full secret contents.
 
-```
+```text
 $ mrs vault export
 Vault password:
 a secret key foo
@@ -31,7 +31,7 @@ bank account number: 1234
 bank account password: an insecure password
 
 $ mrs search bar
-Vault password: 
+Vault password:
 1 secret(s) matched regular expression "(?i)bar" in vault example
 
 another secret key bar
@@ -41,7 +41,7 @@ bank account password: an insecure password
 
 ## Usage
 
-```
+```text
 $ mrs help
 Mr. Secretary - Organise and secure your secrets
 
@@ -49,9 +49,9 @@ Usage:
   mrs [command]
 
 Examples:
-	mrs vault create
-	mrs edit
-	mrs search secret stuff
+ mrs vault create
+ mrs edit
+ mrs search secret stuff
 
 Available Commands:
   add         Add secrets to a vault
@@ -66,7 +66,7 @@ Flags:
 Use "mrs [command] --help" for more information about a command.
 ```
 
-```
+```test
 $ mrs help vault
 Manage vaults
 
@@ -93,7 +93,7 @@ Use "mrs vault [command] --help" for more information about a command.
 You can use environment variables to customize some settings.
 
 Environment variable | Description
----|---
+--- | ---
 EDITOR | The editor to use to add or edit secrets (default: nano)
 MRS_DEFAULT_VAULT_NAME | The vault to use when `--vault` is not specified (default: the first vault found)
 MRS_HIDE_EDITOR_INSTRUCTIONS | If set to any value, then instructions comments will not be included when adding or editing secrets
@@ -110,8 +110,10 @@ This project uses [GoReleaser](https://goreleaser.com/) to automate the release 
 
 1. Ensure you are on the `main` branch and have pulled the latest changes.
 2. Create and push a new semantic version tag:
+
    ```bash
    git tag -a v1.0.0 -m "Release v1.0.0"
    git push origin v1.0.0
    ```
+
 3. The GitHub Actions [release workflow](.github/workflows/release.yml) will automatically trigger, build the binaries, and create a new GitHub Release with the artifacts.
