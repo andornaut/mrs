@@ -18,6 +18,7 @@ var Cmd = &cobra.Command{
 }
 
 type vaultOptions struct {
+	force        bool
 	importFile   string
 	isPath       bool
 	namePrefix   string
@@ -63,7 +64,7 @@ func init() {
 			if err != nil {
 				return err
 			}
-			unlock, err := v.ExclusiveLock()
+			unlock, err := v.ExclusiveLockForce(opts.force)
 			if err != nil {
 				return err
 			}
@@ -115,7 +116,7 @@ func init() {
 			if err != nil {
 				return err
 			}
-			unlock, err := v.ExclusiveLock()
+			unlock, err := v.ExclusiveLockForce(opts.force)
 			if err != nil {
 				return err
 			}
@@ -141,15 +142,6 @@ func init() {
 			if err != nil {
 				return err
 			}
-			v, err := vault.First(name)
-			if err != nil {
-				return err
-			}
-			unlock, err := v.SharedLock()
-			if err != nil {
-				return err
-			}
-			defer unlock()
 
 			password, err := prompt.GivenOrPromptPassword(opts.passwordFile)
 			if err != nil {
@@ -220,7 +212,7 @@ func init() {
 			if err != nil {
 				return err
 			}
-			unlock, err := v.ExclusiveLock()
+			unlock, err := v.ExclusiveLockForce(opts.force)
 			if err != nil {
 				return err
 			}
@@ -239,6 +231,9 @@ func init() {
 	}
 	for _, c := range []*cobra.Command{changePassword, create, export} {
 		c.Flags().StringVarP(&opts.passwordFile, "password-file", "p", "", "path to a file that contains your password")
+	}
+	for _, c := range []*cobra.Command{changePassword, delete, rename} {
+		c.Flags().BoolVarP(&opts.force, "force", "f", false, "delete the vault's lock file first")
 	}
 
 	create.Flags().StringVarP(&opts.importFile, "import-file", "i", "", "path to a file that contains unencrypted secrets")
