@@ -69,8 +69,7 @@ func (v Vault) ExclusiveLock() (func(), error) {
 	if v == BadVault {
 		return nil, fmt.Errorf("cannot lock bad vault")
 	}
-	lockPath := filepath.Join(filepath.Dir(v.Path()), v.Name()+".lock")
-	f := flock.New(lockPath)
+	f := flock.New(v.lockPath())
 	locked, err := f.TryLock()
 	if err != nil {
 		return nil, fmt.Errorf("could not acquire lock on vault %s: %w", v.Name(), err)
@@ -81,22 +80,30 @@ func (v Vault) ExclusiveLock() (func(), error) {
 	return func() { _ = f.Unlock() }, nil
 }
 
-// SharedLock acquires a shared lock on the vault.
-// It returns an unlock function and any error encountered.
-func (v Vault) SharedLock() (func(), error) {
+// ExclusiveLockForce is like ExclusiveLock, but when force is true it first
+// deletes the vault's lock file, breaking any lock held by another process.
+func (v Vault) ExclusiveLockForce(force bool) (func(), error) {
+	if force {
+		if err := v.RemoveLock(); err != nil {
+			return nil, err
+		}
+	}
+	return v.ExclusiveLock()
+}
+
+// RemoveLock deletes the vault's lock file, breaking any lock held by another process.
+func (v Vault) RemoveLock() error {
 	if v == BadVault {
-		return nil, fmt.Errorf("cannot lock bad vault")
+		return fmt.Errorf("cannot remove lock on bad vault")
 	}
-	lockPath := filepath.Join(filepath.Dir(v.Path()), v.Name()+".lock")
-	f := flock.New(lockPath)
-	locked, err := f.TryRLock()
-	if err != nil {
-		return nil, fmt.Errorf("could not acquire shared lock on vault %s: %w", v.Name(), err)
+	if err := os.Remove(v.lockPath()); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("could not remove lock on vault %s: %w", v.Name(), err)
 	}
-	if !locked {
-		return nil, fmt.Errorf("vault %s is currently locked exclusively by another process", v.Name())
-	}
-	return func() { _ = f.Unlock() }, nil
+	return nil
+}
+
+func (v Vault) lockPath() string {
+	return filepath.Join(filepath.Dir(v.Path()), v.Name()+".lock")
 }
 
 func (v Vault) basename() string {

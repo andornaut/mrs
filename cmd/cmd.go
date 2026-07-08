@@ -23,6 +23,7 @@ var Cmd = &cobra.Command{
 }
 
 type rootOptions struct {
+	force         bool
 	includeValues bool
 	namePrefix    string
 	passwordFile  string
@@ -40,7 +41,7 @@ func init() {
 			if err != nil {
 				return err
 			}
-			unlock, err := v.ExclusiveLock()
+			unlock, err := v.ExclusiveLockForce(opts.force)
 			if err != nil {
 				return err
 			}
@@ -76,7 +77,7 @@ func init() {
 			if err != nil {
 				return err
 			}
-			unlock, err := v.ExclusiveLock()
+			unlock, err := v.ExclusiveLockForce(opts.force)
 			if err != nil {
 				return err
 			}
@@ -114,11 +115,6 @@ func init() {
 			if err != nil {
 				return err
 			}
-			unlock, err := v.SharedLock()
-			if err != nil {
-				return err
-			}
-			defer unlock()
 
 			password, err := prompt.GivenOrPromptPassword(opts.passwordFile)
 			if err != nil {
@@ -149,6 +145,8 @@ func init() {
 		flags.StringVarP(&opts.namePrefix, "vault", "v", "", "name of a vault")
 		flags.StringVarP(&opts.passwordFile, "password-file", "p", "", "path to a file that contains your password")
 	}
+	add.Flags().BoolVarP(&opts.force, "force", "f", false, "delete the vault's lock file before adding")
+	edit.Flags().BoolVarP(&opts.force, "force", "f", false, "delete the vault's lock file before editing")
 	search.Flags().BoolVarP(&opts.includeValues, "full", "f", false, "search the full contents, instead of the first line of each secret")
 	Cmd.AddCommand(add, edit, search, vaultcmd.Cmd)
 }
