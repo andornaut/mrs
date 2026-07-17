@@ -131,12 +131,29 @@ func (v *UnlockedVault) NewReader() (io.Reader, error) {
 	salt := v.Salt()
 	if salt == "" {
 		salt = legacySalt
-		fmt.Printf(
+		fmt.Fprintf(os.Stderr,
 			"Vault \"%s\" uses a static salt. "+
 				"It will be automatically upgraded to using a unique salt the next time you edit it.\n",
 			v.Name())
 	}
 	decrypted, err := crypto.Decrypt(b, v.password, salt)
+	if err != nil {
+		// Vaults created with --password-file before trailing newlines were
+		// trimmed may include the newline in their password. Retry with it
+		// re-appended. Saving re-encrypts with the trimmed password.
+		for _, suffix := range []string{"\n", "\r\n"} {
+			legacyPassword := append(append([]byte{}, v.password...), suffix...)
+			decrypted, err = crypto.Decrypt(b, legacyPassword, salt)
+			crypto.Wipe(legacyPassword)
+			if err == nil {
+				fmt.Fprintf(os.Stderr,
+					"Vault \"%s\" was encrypted with a password that ends in a newline. "+
+						"It will be re-encrypted with the trimmed password the next time you save it.\n",
+					v.Name())
+				break
+			}
+		}
+	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to decrypt vault %s", v)
 	}
@@ -157,13 +174,17 @@ func (v *UnlockedVault) Write(s string) error {
 		return fmt.Errorf("failed to encrypt secrets. Vault %s is unchanged", v)
 	}
 
-	if exists, err := fs.IsExists(v.Path()); err == nil && exists {
-		if err := fs.CopyFile(v.Path(), v.Path()+".bak"); err != nil {
-			fmt.Printf("Warning: failed to create backup for vault %s: %s\n", v.Name(), err)
+	if exists, existsErr := fs.IsExists(v.Path()); existsErr == nil && exists {
+		if copyErr := fs.CopyFile(v.Path(), v.Path()+".bak"); copyErr != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to create backup for vault %s: %s\n", v.Name(), copyErr)
 		}
 	}
 
-	return os.WriteFile(v.Path(), ciphertext, 0600)
+	// Remove leftover temporary files from previously interrupted writes.
+	// Callers hold the vault's exclusive lock, so any matching file is stale.
+	_ = removeTempFiles(v.Path())
+
+	return fs.WriteFileAtomic(v.Path(), ciphertext, 0600)
 }
 
 // Wipe wipes the vault's password from memory.
@@ -206,6 +227,6 @@ func (v *UnlockedVault) migrateLegacyIfApplicable() error {
 	}
 	*v = newVault
 
-	fmt.Printf("Migrating legacy vault to include a unique salt: %s\n", v.Salt())
+	fmt.Fprintf(os.Stderr, "Migrating legacy vault to include a unique salt: %s\n", v.Salt())
 	return nil
 }

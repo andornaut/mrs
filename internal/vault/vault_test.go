@@ -59,6 +59,113 @@ func TestFindVaultsExcludesLockAndBackupFiles(t *testing.T) {
 	}
 }
 
+func TestFindVaultsSkipsStrayFiles(t *testing.T) {
+	config.Reset()
+	tmpDir := t.TempDir()
+	t.Setenv("MRS_HOME", tmpDir)
+
+	vaultDir, err := config.GetVaultDir()
+	if err != nil {
+		t.Fatalf("failed to get vault dir: %v", err)
+	}
+
+	validVault := filepath.Join(vaultDir, "test.12345678901234567890123456789012")
+	password := []byte("password")
+	u := Vault(validVault).Unlocked(password)
+	defer u.Wipe()
+	if err = u.Write("test content"); err != nil {
+		t.Fatalf("failed to create test vault: %v", err)
+	}
+
+	// Stray files that do not match the vault filename shape should be
+	// skipped, not fail the whole listing
+	for _, name := range []string{".DS_Store", ".test.swp", "notes.txt.orig"} {
+		if err = os.WriteFile(filepath.Join(vaultDir, name), []byte{}, 0600); err != nil {
+			t.Fatalf("failed to create stray file %s: %v", name, err)
+		}
+	}
+
+	vaults, err := All()
+	if err != nil {
+		t.Fatalf("All() failed: %v", err)
+	}
+	if len(vaults) != 1 {
+		t.Errorf("expected 1 vault, got %d", len(vaults))
+	}
+}
+
+func TestNewReaderTrailingNewlinePasswordFallback(t *testing.T) {
+	tmpDir := t.TempDir()
+	vaultPath := filepath.Join(tmpDir, "test.12345678901234567890123456789012")
+
+	// Simulate a vault created before trailing newlines were trimmed from
+	// password files: the newline is part of the encryption password.
+	legacyPassword := []byte("password1\n")
+	uLegacy := Vault(vaultPath).Unlocked(legacyPassword)
+	if err := uLegacy.Write("secret content"); err != nil {
+		t.Fatalf("failed to create vault: %v", err)
+	}
+
+	// Unlocking with the trimmed password should succeed via the fallback
+	u := Vault(vaultPath).Unlocked([]byte("password1"))
+	defer u.Wipe()
+	r, err := u.NewReader()
+	if err != nil {
+		t.Fatalf("NewReader() with trimmed password failed: %v", err)
+	}
+	b, err := io.ReadAll(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer crypto.Wipe(b)
+	if string(b) != "secret content" {
+		t.Errorf("content = %q, expected %q", string(b), "secret content")
+	}
+}
+
+func TestDeleteRemovesCompanionFiles(t *testing.T) {
+	config.Reset()
+	tmpDir := t.TempDir()
+	t.Setenv("MRS_HOME", tmpDir)
+
+	vaultDir, err := config.GetVaultDir()
+	if err != nil {
+		t.Fatalf("failed to get vault dir: %v", err)
+	}
+
+	vaultPath := filepath.Join(vaultDir, "test.12345678901234567890123456789012")
+	password := []byte("password")
+	u := Vault(vaultPath).Unlocked(password)
+	defer u.Wipe()
+	if err = u.Write("first"); err != nil {
+		t.Fatalf("failed to create vault: %v", err)
+	}
+	if err = u.Write("second"); err != nil {
+		t.Fatalf("failed to update vault: %v", err)
+	}
+	for _, name := range []string{"test.lock", "test.12345678901234567890123456789012.123.tmp"} {
+		if err = os.WriteFile(filepath.Join(vaultDir, name), []byte{}, 0600); err != nil {
+			t.Fatalf("failed to create companion file %s: %v", name, err)
+		}
+	}
+
+	if err = Delete("test"); err != nil {
+		t.Fatalf("Delete() failed: %v", err)
+	}
+
+	entries, err := os.ReadDir(vaultDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		var names []string
+		for _, e := range entries {
+			names = append(names, e.Name())
+		}
+		t.Errorf("expected empty vault dir after delete, got %v", names)
+	}
+}
+
 func TestWriteBackup(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "mrs-test-vault")
 	if err != nil {
