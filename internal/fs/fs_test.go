@@ -66,6 +66,87 @@ func TestWriteTempFile(t *testing.T) {
 	}
 }
 
+func TestWriteFileAtomic(t *testing.T) {
+	tmpDir := t.TempDir()
+	p := filepath.Join(tmpDir, "target")
+
+	if err := WriteFileAtomic(p, []byte("first"), 0600); err != nil {
+		t.Fatalf("WriteFileAtomic() error = %v", err)
+	}
+	got, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "first" {
+		t.Errorf("content = %q, expected %q", string(got), "first")
+	}
+	info, err := os.Stat(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0600 {
+		t.Errorf("permissions = %v, expected 0600", info.Mode().Perm())
+	}
+
+	// No temporary files should be left behind
+	matches, err := filepath.Glob(filepath.Join(tmpDir, "*.tmp"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(matches) != 0 {
+		t.Errorf("leftover temp files: %v", matches)
+	}
+}
+
+func TestWriteFileAtomicPreservesMode(t *testing.T) {
+	tmpDir := t.TempDir()
+	p := filepath.Join(tmpDir, "target")
+	if err := os.WriteFile(p, []byte("old"), 0400); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := WriteFileAtomic(p, []byte("new"), 0600); err != nil {
+		t.Fatalf("WriteFileAtomic() error = %v", err)
+	}
+	info, err := os.Stat(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0400 {
+		t.Errorf("permissions = %v, expected 0400 to be preserved", info.Mode().Perm())
+	}
+}
+
+func TestWriteFileAtomicWritesThroughSymlink(t *testing.T) {
+	tmpDir := t.TempDir()
+	target := filepath.Join(tmpDir, "target")
+	link := filepath.Join(tmpDir, "link")
+	if err := os.WriteFile(target, []byte("old"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := WriteFileAtomic(link, []byte("new"), 0600); err != nil {
+		t.Fatalf("WriteFileAtomic() error = %v", err)
+	}
+	info, err := os.Lstat(link)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode()&os.ModeSymlink == 0 {
+		t.Error("symlink was replaced by a regular file")
+	}
+	got, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "new" {
+		t.Errorf("target content = %q, expected %q", string(got), "new")
+	}
+}
+
 func TestCopyFile(t *testing.T) {
 	tmpDir := t.TempDir()
 	src := filepath.Join(tmpDir, "src")

@@ -23,8 +23,6 @@ func Wipe(buf []byte) {
 	if buf == nil {
 		return
 	}
-	// Use subtle.ConstantTimeByteEq to prevent compiler from optimizing away the loop
-	// Actually, filling with 0 is standard.
 	for i := range buf {
 		buf[i] = 0
 	}

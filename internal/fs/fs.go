@@ -3,6 +3,7 @@ package fs
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/andornaut/mrs/internal/config"
 )
@@ -64,5 +65,60 @@ func CopyFile(src, dst string) error {
 		return err
 	}
 
-	return os.WriteFile(dst, input, 0600)
+	return WriteFileAtomic(dst, input, 0600)
+}
+
+// WriteFileAtomic writes data to the file at path p by writing to a temporary
+// file in the same directory and renaming it into place, so that a crash or
+// full disk cannot leave a truncated file. If p is a symlink, the write goes
+// through to its target. An existing file's permissions are preserved;
+// otherwise defaultPerm is used. The parent directory is synced afterwards so
+// that the rename survives power loss.
+func WriteFileAtomic(p string, data []byte, defaultPerm os.FileMode) (err error) {
+	// Resolve symlinks so that the rename replaces the target, not the link.
+	if target, evalErr := filepath.EvalSymlinks(p); evalErr == nil {
+		p = target
+	}
+	perm := defaultPerm
+	if fi, statErr := os.Stat(p); statErr == nil {
+		perm = fi.Mode().Perm()
+	}
+
+	f, err := os.CreateTemp(filepath.Dir(p), filepath.Base(p)+".*.tmp")
+	if err != nil {
+		return err
+	}
+	tempPath := f.Name()
+	defer func() {
+		if err != nil {
+			_ = f.Close()
+			_ = os.Remove(tempPath)
+		}
+	}()
+
+	if err = f.Chmod(perm); err != nil {
+		return err
+	}
+	if _, err = f.Write(data); err != nil {
+		return err
+	}
+	if err = f.Sync(); err != nil {
+		return err
+	}
+	if err = f.Close(); err != nil {
+		return err
+	}
+	if err = os.Rename(tempPath, p); err != nil {
+		return err
+	}
+	return syncDir(filepath.Dir(p))
+}
+
+func syncDir(dir string) error {
+	d, err := os.Open(dir)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = d.Close() }()
+	return d.Sync()
 }

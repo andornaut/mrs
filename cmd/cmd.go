@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -123,9 +122,6 @@ func init() {
 			uv := v.Unlocked(password)
 			defer uv.Wipe()
 
-			if uv.IsBad() {
-				return errors.New("no vaults found")
-			}
 			secrets, err := secret.Search(uv, *r, opts.includeValues)
 			if err != nil {
 				return err

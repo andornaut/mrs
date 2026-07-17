@@ -1,6 +1,7 @@
 package prompt
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"os"
@@ -53,5 +54,7 @@ func readPasswordFile(passwordFile string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("could not read from password file %s: %s", passwordFile, err)
 	}
-	return password, nil
+	// Trim trailing newlines, which editors and `echo` append, to match what
+	// the interactive password prompt returns.
+	return bytes.TrimRight(password, "\r\n"), nil
 }

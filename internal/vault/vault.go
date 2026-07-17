@@ -1,6 +1,7 @@
 package vault
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -135,13 +136,28 @@ func Create(name string, password []byte, importFile string) (UnlockedVault, err
 	return u, nil
 }
 
-// Delete deletes a vault
+// Delete deletes a vault, along with its backup, temporary, and lock files
 func Delete(name string) error {
 	v, err := exact(name)
 	if err != nil {
 		return err
 	}
-	return os.Remove(v.Path())
+	if err := os.Remove(v.Path()); err != nil {
+		return err
+	}
+	// The vault itself is gone, so clean up the companion files best-effort
+	// and report any failures together instead of stopping at the first one.
+	var errs []error
+	if err := os.Remove(v.Path() + ".bak"); err != nil && !os.IsNotExist(err) {
+		errs = append(errs, err)
+	}
+	if err := removeTempFiles(v.Path()); err != nil {
+		errs = append(errs, err)
+	}
+	if err := v.RemoveLock(); err != nil {
+		errs = append(errs, err)
+	}
+	return errors.Join(errs...)
 }
 
 // Export writes a vault's secrets to stdout
@@ -196,7 +212,40 @@ func Rename(sourceName, targetName string) error {
 	if exists {
 		return fmt.Errorf("the target path \"%s\" already exists", targetPath)
 	}
-	return os.Rename(sourceVault.Path(), targetPath)
+	if err := os.Rename(sourceVault.Path(), targetPath); err != nil {
+		return err
+	}
+	// The vault itself is renamed, so move or remove the companion files
+	// best-effort and report any failures together instead of stopping at the
+	// first one. The backup moves along with the vault so that no copy of the
+	// secrets remains under the old name.
+	var errs []error
+	if err := os.Rename(sourceVault.Path()+".bak", targetPath+".bak"); err != nil && !os.IsNotExist(err) {
+		errs = append(errs, err)
+	}
+	if err := removeTempFiles(sourceVault.Path()); err != nil {
+		errs = append(errs, err)
+	}
+	if err := sourceVault.RemoveLock(); err != nil {
+		errs = append(errs, err)
+	}
+	return errors.Join(errs...)
+}
+
+// removeTempFiles removes leftover temporary files from interrupted or failed
+// atomic writes of the vault at vaultPath.
+func removeTempFiles(vaultPath string) error {
+	matches, err := filepath.Glob(vaultPath + ".*.tmp")
+	if err != nil {
+		return err
+	}
+	var errs []error
+	for _, m := range matches {
+		if err := os.Remove(m); err != nil && !os.IsNotExist(err) {
+			errs = append(errs, err)
+		}
+	}
+	return errors.Join(errs...)
 }
 
 func exact(name string) (Vault, error) {
@@ -233,13 +282,16 @@ func findVaults(prefix string) ([]Vault, error) {
 
 	var vs []Vault
 	for _, p := range matchedPaths {
-		// Skip lock and backup files
+		// Skip lock, backup, and leftover temporary files
 		base := filepath.Base(p)
-		if filepath.Ext(base) == ".lock" || filepath.Ext(base) == ".bak" {
+		ext := filepath.Ext(base)
+		if ext == ".lock" || ext == ".bak" || ext == ".tmp" {
 			continue
 		}
+		// Skip stray files that do not match the vault filename shape
+		// (e.g. .DS_Store, editor swap files) instead of failing the listing.
 		if err := validatePath(p); err != nil {
-			return nil, err
+			continue
 		}
 		vs = append(vs, Vault(p))
 	}
