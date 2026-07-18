@@ -44,7 +44,7 @@ func validatePassword(p []byte) error {
 func validatePath(p string) error {
 	fi, err := os.Stat(p)
 	if err != nil {
-		return fmt.Errorf("invalid vault path \"%s\": %s", p, err)
+		return fmt.Errorf("invalid vault path \"%s\": %w", p, err)
 	}
 	if err := validateNameWithOptionalSalt(fi.Name()); err != nil {
 		return err

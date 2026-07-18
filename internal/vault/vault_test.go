@@ -153,16 +153,94 @@ func TestDeleteRemovesCompanionFiles(t *testing.T) {
 		t.Fatalf("Delete() failed: %v", err)
 	}
 
+	// Delete removes the vault, its backup, and stale temporary files. The
+	// lock file is intentionally left in place, like other commands.
 	entries, err := os.ReadDir(vaultDir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(entries) != 0 {
-		var names []string
-		for _, e := range entries {
-			names = append(names, e.Name())
-		}
-		t.Errorf("expected empty vault dir after delete, got %v", names)
+	var names []string
+	for _, e := range entries {
+		names = append(names, e.Name())
+	}
+	if len(names) != 1 || names[0] != "test.lock" {
+		t.Errorf("expected only the lock file to remain after delete, got %v", names)
+	}
+}
+
+func TestDeleteReportsBackupRemovalFailure(t *testing.T) {
+	config.Reset()
+	tmpDir := t.TempDir()
+	t.Setenv("MRS_HOME", tmpDir)
+
+	vaultDir, err := config.GetVaultDir()
+	if err != nil {
+		t.Fatalf("failed to get vault dir: %v", err)
+	}
+
+	vaultPath := filepath.Join(vaultDir, "test.12345678901234567890123456789012")
+	password := []byte("password")
+	u := Vault(vaultPath).Unlocked(password)
+	defer u.Wipe()
+	if err = u.Write("secret"); err != nil {
+		t.Fatalf("failed to create vault: %v", err)
+	}
+
+	// Make the backup path unremovable by making it a non-empty directory, so
+	// os.Remove fails with a non-NotExist error.
+	bakDir := vaultPath + ".bak"
+	if err = os.Mkdir(bakDir, 0700); err != nil {
+		t.Fatalf("failed to create backup dir: %v", err)
+	}
+	if err = os.WriteFile(filepath.Join(bakDir, "child"), []byte{}, 0600); err != nil {
+		t.Fatalf("failed to populate backup dir: %v", err)
+	}
+
+	if err = Delete("test"); err == nil {
+		t.Fatal("expected Delete() to return an error when the backup cannot be removed")
+	}
+	// The vault itself must still have been deleted.
+	if _, statErr := os.Stat(vaultPath); !os.IsNotExist(statErr) {
+		t.Errorf("expected vault file to be deleted, stat err = %v", statErr)
+	}
+}
+
+func TestRenameReportsBackupMoveFailure(t *testing.T) {
+	config.Reset()
+	tmpDir := t.TempDir()
+	t.Setenv("MRS_HOME", tmpDir)
+
+	vaultDir, err := config.GetVaultDir()
+	if err != nil {
+		t.Fatalf("failed to get vault dir: %v", err)
+	}
+
+	salt := "12345678901234567890123456789012"
+	sourcePath := filepath.Join(vaultDir, "src."+salt)
+	password := []byte("password")
+	u := Vault(sourcePath).Unlocked(password)
+	defer u.Wipe()
+	// Two writes so that a real backup exists at the source path.
+	if err = u.Write("first"); err != nil {
+		t.Fatalf("failed to create vault: %v", err)
+	}
+	if err = u.Write("second"); err != nil {
+		t.Fatalf("failed to update vault: %v", err)
+	}
+
+	// Renaming a file onto an existing directory fails with EISDIR, so a
+	// directory at the target backup path makes the backup move fail.
+	targetVaultPath := filepath.Join(vaultDir, "dst."+salt)
+	if err = os.Mkdir(targetVaultPath+".bak", 0700); err != nil {
+		t.Fatalf("failed to create target backup dir: %v", err)
+	}
+
+	if err = Rename("src", "dst"); err == nil {
+		t.Fatal("expected Rename() to return an error when the backup cannot be moved")
+	}
+	// The vault itself must still have been renamed.
+	if _, statErr := os.Stat(targetVaultPath); statErr != nil {
+		t.Errorf("expected renamed vault at %q, stat err = %v", targetVaultPath, statErr)
 	}
 }
 

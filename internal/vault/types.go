@@ -2,6 +2,7 @@ package vault
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -176,7 +177,7 @@ func (v *UnlockedVault) Write(s string) error {
 
 	if exists, existsErr := fs.IsExists(v.Path()); existsErr == nil && exists {
 		if copyErr := fs.CopyFile(v.Path(), v.Path()+".bak"); copyErr != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to create backup for vault %s: %s\n", v.Name(), copyErr)
+			warnf("failed to create backup for vault %s: %s", v.Name(), copyErr)
 		}
 	}
 
@@ -184,7 +185,16 @@ func (v *UnlockedVault) Write(s string) error {
 	// Callers hold the vault's exclusive lock, so any matching file is stale.
 	_ = removeTempFiles(v.Path())
 
-	return fs.WriteFileAtomic(v.Path(), ciphertext, 0600)
+	if err := fs.WriteFileAtomic(v.Path(), ciphertext, 0600); err != nil {
+		if errors.Is(err, fs.ErrDirSync) {
+			// The vault was written and renamed; only the durability-hardening
+			// directory sync failed, so warn instead of failing the save.
+			warnf("vault %s was saved but %s", v.Name(), err)
+			return nil
+		}
+		return err
+	}
+	return nil
 }
 
 // Wipe wipes the vault's password from memory.
