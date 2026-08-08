@@ -4,10 +4,11 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/spf13/cobra"
+
 	"github.com/andornaut/mrs/internal/crypto"
 	"github.com/andornaut/mrs/internal/prompt"
 	"github.com/andornaut/mrs/internal/vault"
-	"github.com/spf13/cobra"
 )
 
 // Cmd implements ./mrs vault

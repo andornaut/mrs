@@ -5,11 +5,12 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/spf13/cobra"
+
 	"github.com/andornaut/mrs/cmd/vaultcmd"
 	"github.com/andornaut/mrs/internal/prompt"
 	"github.com/andornaut/mrs/internal/secret"
 	"github.com/andornaut/mrs/internal/vault"
-	"github.com/spf13/cobra"
 )
 
 // Cmd implements the root ./mrs command

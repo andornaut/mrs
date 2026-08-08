@@ -4,6 +4,7 @@ run:
 linters:
   enable:
     - bodyclose
+    - copyloopvar
     - goconst
     - gocritic
     - gosec
@@ -28,11 +29,28 @@ linters:
           disabled: true
   exclusions:
     generated: lax
+    rules:
+      # Tests get a shorter leash: cleanup errors and repeated fixture literals
+      # are both normal.
+      - linters:
+          - errcheck
+          - goconst
+          - gosec
+          - unparam
+        path: _test\.go
 issues:
   max-issues-per-linter: 0
   max-same-issues: 0
 formatters:
   enable:
+    - gci
     - gofmt
+    - goimports
+  settings:
+    gci:
+      sections:
+        - standard
+        - default
+        - prefix(github.com/andornaut/mrs)
   exclusions:
     generated: lax

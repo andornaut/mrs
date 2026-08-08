@@ -9,9 +9,10 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/gofrs/flock"
+
 	"github.com/andornaut/mrs/internal/crypto"
 	"github.com/andornaut/mrs/internal/fs"
-	"github.com/gofrs/flock"
 )
 
 // Legacy vaults use the following salt, whereas new vaults are created with a unique salt.

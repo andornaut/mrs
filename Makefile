@@ -5,14 +5,14 @@ DISTDIR   := dist
 TARGET    := mrs
 PLATFORMS := darwin freebsd linux
 
-.PHONY: $(PLATFORMS) $(TARGET) all build clean fmt install release test uninstall lint
+.PHONY: $(PLATFORMS) $(TARGET) all build clean coverage coverage-html fmt install lint release test uninstall
 
 all: $(TARGET)
 
 build: $(TARGET)
 
 fmt:
-	go fmt ./...
+	golangci-lint fmt
 
 lint:
 	golangci-lint run
@@ -26,7 +26,7 @@ $(TARGET):
 clean:
 	go clean
 	rm -f "$(DISTDIR)/$(TARGET)"*
-	rm -f coverage.txt
+	rm -f coverage.txt coverage.html
 
 install: $(TARGET)
 	sudo mkdir -p "$(DESTDIR)$(BINPREFIX)"
@@ -35,7 +35,14 @@ install: $(TARGET)
 release: clean $(PLATFORMS)
 
 test:
-	go test -v ./...
+	go test -v -race -coverprofile=coverage.txt -covermode=atomic ./...
+
+coverage: test
+	go tool cover -func=coverage.txt
+
+coverage-html: test
+	go tool cover -html=coverage.txt -o coverage.html
+	@echo "Coverage report generated: coverage.html"
 
 uninstall:
 	rm -f "$(DESTDIR)$(BINPREFIX)/$(TARGET)"

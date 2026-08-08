@@ -8,8 +8,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/andornaut/mrs/internal/config"
 	"golang.org/x/term"
+
+	"github.com/andornaut/mrs/internal/config"
 )
 
 // Bool prompts for input and returns true if the trimmed input was "y"
