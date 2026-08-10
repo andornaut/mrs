@@ -107,17 +107,14 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v7.0.1
 
-      - name: Delete previous dev release
-        run: |
-          gh release delete dev --yes || true
-          git push --delete origin refs/tags/dev || true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
+      # Matched by name, not merged blindly: `files: artifacts/*` publishes
+      # whatever lands here, so an unrelated artifact uploaded by some later
+      # step would otherwise become a dev-release asset no checksum covers.
       - name: Download build artifacts
         uses: actions/download-artifact@v8
         with:
           path: artifacts
+          pattern: mrs_*
           merge-multiple: true
 
       # As goreleaser does for a tag. The consumer can then verify what it
@@ -125,6 +122,16 @@ jobs:
       # download that straddles a re-cut would otherwise go unnoticed.
       - name: Write checksums
         run: cd artifacts && sha256sum *.tar.gz > checksums.txt
+
+      # Last, so the assets that replace the deleted ones are already in hand.
+      # Deleting earlier leaves `dev` a 404 until the next green push to main if
+      # anything above fails.
+      - name: Delete previous dev release
+        run: |
+          gh release delete dev --yes || true
+          git push --delete origin refs/tags/dev || true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Create dev release
         uses: softprops/action-gh-release@v3.0.2
