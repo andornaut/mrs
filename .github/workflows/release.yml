@@ -123,17 +123,22 @@ jobs:
       - name: Write checksums
         run: cd artifacts && sha256sum *.tar.gz > checksums.txt
 
-      # Last, so the assets that replace the deleted ones are already in hand.
-      # Deleting earlier leaves `dev` a 404 until the next green push to main if
-      # anything above fails.
-      - name: Delete previous dev release
+      # A release follows its tag, and updating one below does not move the tag
+      # GitHub already has, so `dev` has to be repointed here or the release's
+      # commit link and source archives would describe an older build than the
+      # assets beside them. Unmasked on purpose: a rejected tag push — tag
+      # protection, credentials the checkout did not persist — has to fail the
+      # job rather than quietly publish binaries stamped with the wrong commit.
+      - name: Move the dev tag to this commit
         run: |
-          gh release delete dev --yes || true
-          git push --delete origin refs/tags/dev || true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          git tag --force dev
+          git push --force origin refs/tags/dev
 
-      - name: Create dev release
+      # Updated in place rather than deleted and recreated. Deleting first left
+      # `dev` a 404 for the length of the upload, and permanently if the run
+      # died in between; every asset name here is deterministic, so each upload
+      # replaces its predecessor and nothing from the previous cut survives.
+      - name: Publish dev release
         uses: softprops/action-gh-release@v3.0.2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
