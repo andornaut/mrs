@@ -273,6 +273,28 @@ func TestTheDefaultVaultNameSelectsAmongSeveral(t *testing.T) {
 	}
 }
 
+func TestTheVaultSubcommandsRequireANamedVault(t *testing.T) {
+	l := newLab(t)
+	pwFile := l.seedVault("work", "a password", "work key\nwork-value\n")
+	l.Setenv("MRS_DEFAULT_VAULT_NAME", "work")
+
+	// Naming a vault is required for everything under `mrs vault`, whether by
+	// --vault or by answering the prompt. The configured default applies to
+	// the everyday add, edit and search, which resolve a vault rather than
+	// asking for one.
+	for _, args := range [][]string{
+		{"vault", "export", "-p", pwFile},
+		{"vault", "change-password", "-p", pwFile},
+		{"vault", "delete"},
+	} {
+		l.Run(args...).AssertFailed().AssertOutput("--vault")
+	}
+
+	// Answering the prompt works, as does naming it on the command line.
+	l.RunStdin("work\n", "vault", "export", "-p", pwFile).AssertOK().AssertStdout("work-value")
+	l.Run("vault", "export", "-v", "work", "-p", pwFile).AssertOK().AssertStdout("work-value")
+}
+
 func TestTheOnlyVaultIsUsedWhenNoneIsNamed(t *testing.T) {
 	l := newLab(t)
 	pwFile := l.seedVault("solo", "a password", "a key\nsolo-value\n")

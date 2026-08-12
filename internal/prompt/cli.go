@@ -10,7 +10,17 @@ import (
 )
 
 func PromptName() (string, error) {
-	return TrimmedLine("Vault name")
+	name, err := TrimmedLine("Vault name")
+	if err != nil {
+		return "", err
+	}
+	if name == "" {
+		// Reached by a user who answered the prompt with a bare newline, and
+		// by any caller with nothing on stdin to answer it. Neither learns
+		// anything from being told a name cannot be empty.
+		return "", errors.New("no vault name given. use --vault to name one")
+	}
+	return name, nil
 }
 
 func GivenOrPromptName(namePrefix string) (string, error) {
