@@ -122,6 +122,13 @@ func newLab(t *testing.T) *lab {
 			t.Fatalf("failed to create %s: %s", d, err)
 		}
 	}
+	// Every variable mrs reads lives in Env, including the ones that point it
+	// at the lab's directories, so that a test can unset one and exercise what
+	// mrs falls back to.
+	l.Env["MRS_HOME"] = l.Home
+	l.Env["MRS_TEMP"] = l.Temp
+	l.Env["HOME"] = l.UserHome
+	l.Env["PATH"] = os.Getenv("PATH")
 	// Keep editor sessions non-interactive by default: a test that wants to
 	// drive the editor sets the fake editor's mode explicitly.
 	l.Env["EDITOR"] = editorBin
@@ -134,6 +141,10 @@ func (l *lab) VaultDir() string { return filepath.Join(l.Home, "vaults") }
 
 // Setenv sets an environment variable for every subsequent mrs invocation.
 func (l *lab) Setenv(k, v string) { l.Env[k] = v }
+
+// Unsetenv removes an environment variable from every subsequent mrs
+// invocation, so that a test can exercise what mrs does without it.
+func (l *lab) Unsetenv(k string) { delete(l.Env, k) }
 
 // WriteFile writes a file inside the lab's root and returns its path.
 func (l *lab) WriteFile(name, content string) string {
@@ -154,12 +165,7 @@ func (l *lab) PasswordFile(name, password string) string {
 }
 
 func (l *lab) environ() []string {
-	env := []string{
-		"MRS_HOME=" + l.Home,
-		"MRS_TEMP=" + l.Temp,
-		"HOME=" + l.UserHome,
-		"PATH=" + os.Getenv("PATH"),
-	}
+	env := make([]string, 0, len(l.Env))
 	for k, v := range l.Env {
 		env = append(env, k+"="+v)
 	}
