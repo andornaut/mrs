@@ -2,6 +2,7 @@ package prompt
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -19,7 +20,7 @@ func Bool(msg string, defaultTrue bool) bool {
 	if defaultTrue {
 		d = "y"
 	}
-	fmt.Printf("%s (y/n) [%s]: ", msg, d)
+	fmt.Fprintf(os.Stderr, "%s (y/n) [%s]: ", msg, d)
 	answer, err := scanTrimmedLine()
 	if err != nil {
 		return defaultTrue
@@ -47,13 +48,25 @@ func Editor(p string) error {
 	return nil
 }
 
+// ErrNoTerminal reports that a prompt had nowhere to read from. Callers that
+// own a flag which supplies the value non-interactively test for it, so that
+// they can name that flag in the error.
+var ErrNoTerminal = errors.New("stdin is not a terminal")
+
 // Password prompts the user to enter a password without echoing their input.
 // The caller is responsible for wiping the returned slice.
 func Password(msg string) ([]byte, error) {
-	fmt.Print(msg + ": ")
-	b, err := term.ReadPassword(int(os.Stdin.Fd()))
+	fd := int(os.Stdin.Fd())
+	// Switching off echo needs a terminal. Asking for one that is not there
+	// makes the terminal driver report EINVAL, which reaches the user as
+	// "inappropriate ioctl for device" and names neither the cause nor a remedy.
+	if !term.IsTerminal(fd) {
+		return nil, fmt.Errorf("cannot prompt for \"%s\": %w", msg, ErrNoTerminal)
+	}
+	fmt.Fprint(os.Stderr, msg+": ")
+	b, err := term.ReadPassword(fd)
 	// Since user input is not echoed, we must add a newline manually
-	fmt.Print("\n")
+	fmt.Fprint(os.Stderr, "\n")
 	if err != nil {
 		return nil, fmt.Errorf("input error: %w", err)
 	}
@@ -62,7 +75,11 @@ func Password(msg string) ([]byte, error) {
 
 // TrimmedLine prompts for input and returns the first line of input as a trimmed string
 func TrimmedLine(msg string) (string, error) {
-	fmt.Print(msg + ": ")
+	// Prompts go to stderr so that they cannot be mistaken for output: `mrs
+	// vault export > secrets` and `mrs search key | less` both redirect stdout,
+	// and a prompt written there would land in the file or the pipe instead of
+	// in front of the user.
+	fmt.Fprint(os.Stderr, msg+": ")
 	return scanTrimmedLine()
 }
 

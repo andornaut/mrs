@@ -24,7 +24,11 @@ func GivenOrPromptPassword(passwordFile string) ([]byte, error) {
 	if passwordFile != "" {
 		return readPasswordFile(passwordFile)
 	}
-	return Password("Vault password")
+	p, err := Password("Vault password")
+	if err != nil {
+		return nil, withPasswordFileHint(err)
+	}
+	return p, nil
 }
 
 func GivenOrPromptConfirmedPassword(passwordFile string) ([]byte, error) {
@@ -33,12 +37,12 @@ func GivenOrPromptConfirmedPassword(passwordFile string) ([]byte, error) {
 	}
 	p, err := Password("Vault password")
 	if err != nil {
-		return nil, err
+		return nil, withPasswordFileHint(err)
 	}
 	c, err := Password("Confirm password")
 	if err != nil {
 		crypto.Wipe(p)
-		return nil, err
+		return nil, withPasswordFileHint(err)
 	}
 	defer crypto.Wipe(c)
 
@@ -47,6 +51,17 @@ func GivenOrPromptConfirmedPassword(passwordFile string) ([]byte, error) {
 		return nil, errors.New("password mismatch")
 	}
 	return p, nil
+}
+
+// withPasswordFileHint names the flag that supplies a password without a
+// terminal, for the prompts that flag can stand in for. The prompt itself
+// cannot say this: --password-file supplies only the vault's current password,
+// so it is no help to `vault change-password` asking for the new one.
+func withPasswordFileHint(err error) error {
+	if errors.Is(err, ErrNoTerminal) {
+		return fmt.Errorf("%w. use --password-file to supply the password", err)
+	}
+	return err
 }
 
 func readPasswordFile(passwordFile string) ([]byte, error) {

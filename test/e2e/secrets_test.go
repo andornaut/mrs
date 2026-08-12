@@ -101,7 +101,7 @@ func TestEditToEmptyIsConfirmedFirst(t *testing.T) {
 
 	l.RunStdin("y\n", "edit", "-v", "personal", "-p", pwFile).
 		AssertOK().
-		AssertStdout("remove all 2 secret(s) from vault personal")
+		AssertStderr("remove all 2 secret(s) from vault personal")
 
 	l.Run("vault", "export", "-v", "personal", "-p", pwFile).AssertOK().AssertStdoutEquals("")
 	// The backup written before the save is the user's way back.
