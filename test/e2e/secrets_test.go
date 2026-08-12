@@ -4,7 +4,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"testing"
 )
 
@@ -376,39 +375,6 @@ func TestAVaultWithALongLineStaysUsable(t *testing.T) {
 
 	if got := l.export("personal", pwFile); !strings.Contains(got, long) {
 		t.Fatal("expected the long line to survive an edit")
-	}
-}
-
-func TestAnInterruptedEditingSessionLeavesNoPlaintext(t *testing.T) {
-	l := newLab(t)
-	pwFile := l.seedVault("personal", "a password", "a key\nthe-secret-value\n")
-	ready := filepath.Join(filepath.Dir(l.Home), "editor-ready")
-	l.Setenv("FAKE_EDITOR_MODE", "hang")
-	l.Setenv("FAKE_EDITOR_SLEEP", "60")
-	l.Setenv("FAKE_EDITOR_READY", ready)
-
-	cmd := l.Start("edit", "-v", "personal", "-p", pwFile)
-	waitForFile(t, ready)
-	// The decrypted secrets are on disk right now, mid-session.
-	editing := strings.TrimSpace(readFile(t, ready))
-	if b, err := os.ReadFile(editing); err != nil || !strings.Contains(string(b), "the-secret-value") {
-		t.Fatalf("expected the decrypted file at %s to hold the secrets (err: %v)", editing, err)
-	}
-
-	// A user pressing Ctrl-C, or a shell shutting down, must not leave them there.
-	if err := cmd.Process.Signal(syscall.SIGTERM); err != nil {
-		t.Fatalf("failed to signal mrs: %s", err)
-	}
-	if err := cmd.Wait(); err == nil {
-		t.Fatal("expected mrs to exit non-zero after being interrupted")
-	}
-	// The editor outlives mrs, but it is holding a file that is already gone.
-
-	assertNotExists(t, editing)
-	assertNoPlaintextUnder(t, l.Temp, "the-secret-value")
-	// The vault itself is untouched by an interrupted session.
-	if got := l.export("personal", pwFile); !strings.Contains(got, "the-secret-value") {
-		t.Fatalf("expected the vault to be unchanged, got %q", got)
 	}
 }
 

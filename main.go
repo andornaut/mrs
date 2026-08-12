@@ -23,9 +23,15 @@ func run() int {
 	}
 	defer cleanup()
 
-	// Handle signals to ensure cleanup on interrupt
+	// Handle signals to ensure cleanup on interrupt. SIGHUP matters as much as
+	// SIGINT here: it arrives when the terminal running mrs goes away, which a
+	// dropped ssh session does while an editor is open holding the decrypted
+	// secrets. SIGQUIT is caught for the same reason, and because the core
+	// dump it otherwise triggers would itself contain them. SIGKILL cannot be
+	// caught, so secrets being edited when one arrives are left in the
+	// temporary directory.
 	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+	signal.Notify(c, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP, syscall.SIGQUIT)
 	go func() {
 		<-c
 		cleanup()
