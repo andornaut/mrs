@@ -25,6 +25,24 @@ you typed it, including indentation, trailing spaces, and lines that begin with
 a `#`. Secrets are sorted by key when they are saved. Two secrets may share a
 key, and `mrs` prints a warning when they do.
 
+## Passwords
+
+`mrs` prompts for a password on the terminal, with echo turned off. When stdin
+is not a terminal, as in a script or a cron job, there is nothing to prompt
+from, so supply the password in a file instead:
+
+Flag | Command | Supplies
+--- | --- | ---
+`-p`, `--password-file` | `add`, `edit`, `search`, `vault create`, `vault export`, `vault change-password` | the vault's current password
+`-n`, `--new-password-file` | `vault change-password` | the password to change it to
+`-i`, `--import-file` | `vault create` | unencrypted secrets to seed the vault with
+
+A trailing newline is trimmed, so `echo 'a password' > pw` works. Any other
+whitespace is part of the password.
+
+Prompts are written to stderr, so that `mrs vault export > secrets` and
+`mrs search key | less` redirect only the secrets.
+
 ```text
 $ mrs vault export
 Vault password:

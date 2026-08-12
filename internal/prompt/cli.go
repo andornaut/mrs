@@ -26,23 +26,35 @@ func GivenOrPromptPassword(passwordFile string) ([]byte, error) {
 	}
 	p, err := Password("Vault password")
 	if err != nil {
-		return nil, withPasswordFileHint(err)
+		return nil, withFlagHint(err, "--password-file")
 	}
 	return p, nil
 }
 
+// GivenOrPromptConfirmedPassword returns the password for a vault being
+// created, from a file or from two prompts that must agree.
 func GivenOrPromptConfirmedPassword(passwordFile string) ([]byte, error) {
+	return givenOrPromptConfirmed(passwordFile, "Vault password", "--password-file")
+}
+
+// GivenOrPromptNewPassword returns the password a vault is being changed to,
+// from a file or from two prompts that must agree.
+func GivenOrPromptNewPassword(newPasswordFile string) ([]byte, error) {
+	return givenOrPromptConfirmed(newPasswordFile, "New password", "--new-password-file")
+}
+
+func givenOrPromptConfirmed(passwordFile, msg, flag string) ([]byte, error) {
 	if passwordFile != "" {
 		return readPasswordFile(passwordFile)
 	}
-	p, err := Password("Vault password")
+	p, err := Password(msg)
 	if err != nil {
-		return nil, withPasswordFileHint(err)
+		return nil, withFlagHint(err, flag)
 	}
 	c, err := Password("Confirm password")
 	if err != nil {
 		crypto.Wipe(p)
-		return nil, withPasswordFileHint(err)
+		return nil, withFlagHint(err, flag)
 	}
 	defer crypto.Wipe(c)
 
@@ -53,13 +65,13 @@ func GivenOrPromptConfirmedPassword(passwordFile string) ([]byte, error) {
 	return p, nil
 }
 
-// withPasswordFileHint names the flag that supplies a password without a
-// terminal, for the prompts that flag can stand in for. The prompt itself
-// cannot say this: --password-file supplies only the vault's current password,
-// so it is no help to `vault change-password` asking for the new one.
-func withPasswordFileHint(err error) error {
+// withFlagHint names the flag that supplies a password without a terminal. The
+// prompt itself cannot name it, because which flag applies depends on which
+// password is being asked for: --password-file supplies a vault's current
+// password and cannot supply the one it is being changed to.
+func withFlagHint(err error, flag string) error {
 	if errors.Is(err, ErrNoTerminal) {
-		return fmt.Errorf("%w. use --password-file to supply the password", err)
+		return fmt.Errorf("%w. use %s to supply the password", err, flag)
 	}
 	return err
 }

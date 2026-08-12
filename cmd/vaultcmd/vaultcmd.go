@@ -1,13 +1,14 @@
 package vaultcmd
 
 import (
-	"errors"
 	"fmt"
+	"os"
 
 	"github.com/spf13/cobra"
 
 	"github.com/andornaut/mrs/internal/crypto"
 	"github.com/andornaut/mrs/internal/prompt"
+	"github.com/andornaut/mrs/internal/secret"
 	"github.com/andornaut/mrs/internal/vault"
 )
 
@@ -27,11 +28,12 @@ var Cmd = &cobra.Command{
 }
 
 type vaultOptions struct {
-	force        bool
-	importFile   string
-	isPath       bool
-	namePrefix   string
-	passwordFile string
+	force           bool
+	importFile      string
+	isPath          bool
+	namePrefix      string
+	newPasswordFile string
+	passwordFile    string
 }
 
 func init() {
@@ -50,7 +52,13 @@ func init() {
 			if err != nil {
 				return err
 			}
-			v, err := vault.Create(name, password, opts.importFile)
+			contents, err := readImportFile(opts.importFile)
+			if err != nil {
+				return err
+			}
+			defer crypto.Wipe(contents)
+
+			v, err := vault.Create(name, password, contents)
 			if err != nil {
 				return err
 			}
@@ -85,20 +93,9 @@ func init() {
 			}
 			defer crypto.Wipe(oldPassword)
 
-			newPassword, err := prompt.Password("New password")
+			newPassword, err := prompt.GivenOrPromptNewPassword(opts.newPasswordFile)
 			if err != nil {
 				return err
-			}
-			confirmPassword, err := prompt.Password("Confirm password")
-			if err != nil {
-				crypto.Wipe(newPassword)
-				return err
-			}
-			defer crypto.Wipe(confirmPassword)
-
-			if !crypto.SecureCompare(newPassword, confirmPassword) {
-				crypto.Wipe(newPassword)
-				return errors.New("password mismatch")
 			}
 			defer crypto.Wipe(newPassword)
 
@@ -247,9 +244,30 @@ func init() {
 		c.Flags().BoolVarP(&opts.force, "force", "f", false, "delete the vault's lock file first")
 	}
 
+	changePassword.Flags().StringVarP(&opts.newPasswordFile, "new-password-file", "n", "", "path to a file that contains your new password")
 	create.Flags().StringVarP(&opts.importFile, "import-file", "i", "", "path to a file that contains unencrypted secrets")
 	getDefault.Flags().BoolVarP(&opts.isPath, "path", "p", false, "print the vault path instead of the name")
 	list.Flags().BoolVarP(&opts.isPath, "path", "p", false, "print vault paths instead of names")
 
 	Cmd.AddCommand(changePassword, create, delete, export, getDefault, list, rename)
+}
+
+// readImportFile returns the secrets to seed a new vault with, and refuses a
+// file that mrs could not read back. Contents are stored as they are written,
+// but a vault whose contents cannot be parsed is one that only export can
+// read: add, edit and search each parse the secrets first and would fail on it
+// for good. The caller is responsible for wiping the returned slice.
+func readImportFile(importFile string) ([]byte, error) {
+	if importFile == "" {
+		return nil, nil
+	}
+	b, err := os.ReadFile(importFile)
+	if err != nil {
+		return nil, fmt.Errorf("could not read from import file at %s: %s", importFile, err)
+	}
+	if err := secret.Validate(b); err != nil {
+		crypto.Wipe(b)
+		return nil, fmt.Errorf("could not import %s: %s", importFile, err)
+	}
+	return b, nil
 }

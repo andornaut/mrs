@@ -71,8 +71,10 @@ func ChangePassword(prefix string, oldPassword, newPassword []byte) (UnlockedVau
 	return u, nil
 }
 
-// Create creates a vault
-func Create(name string, password []byte, importFile string) (UnlockedVault, error) {
+// Create creates a vault holding the given secrets, which may be empty. The
+// caller reads and validates any import file, so that a vault is never created
+// from contents that mrs cannot read back.
+func Create(name string, password, contents []byte) (UnlockedVault, error) {
 	if err := validateName(name); err != nil {
 		return BadUnlockedVault, err
 	}
@@ -113,18 +115,7 @@ func Create(name string, password []byte, importFile string) (UnlockedVault, err
 		return BadUnlockedVault, err
 	}
 	u := Vault(p).Unlocked(password)
-	content := ""
-	if importFile != "" {
-		var b []byte
-		b, err = os.ReadFile(importFile)
-		if err != nil {
-			return BadUnlockedVault, fmt.Errorf("could not read from import file at %s: %s", importFile, err)
-		}
-		defer crypto.Wipe(b)
-		content = string(b)
-	}
-
-	if err = u.Write(content); err != nil {
+	if err = u.Write(string(contents)); err != nil {
 		return BadUnlockedVault, err
 	}
 	return u, nil

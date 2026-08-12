@@ -1,6 +1,7 @@
 package secret
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"regexp"
@@ -76,6 +77,14 @@ func warnDuplicateKeys(b *briefcase) {
 	for _, k := range duplicated {
 		fmt.Fprintf(os.Stderr, "Warning: %d secrets share the key \"%s\"\n", counts[k], k)
 	}
+}
+
+// Validate reports whether mrs can read the given secrets back. Every command
+// that reads a vault parses its contents first, so contents that fail here
+// would leave a vault that only export can read.
+func Validate(b []byte) error {
+	_, err := transcribe(bytes.NewReader(b))
+	return err
 }
 
 // Search returns secrets from a vault that match a regular expression
