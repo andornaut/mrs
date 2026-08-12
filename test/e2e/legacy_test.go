@@ -18,14 +18,8 @@ import (
 //
 // These tests build vault files the way the version that wrote them would
 // have, rather than driving mrs to produce them, because current mrs cannot
-// write a legacy vault at all. Only the fixtures are constructed; every
+// write an out-of-date vault at all. Only the fixtures are constructed; every
 // assertion is made against the real binary reading and writing them.
-
-// legacySalt is the one static salt that earlier versions of mrs derived every
-// vault's key from. A vault file whose name carries no salt is still encrypted
-// against it, so it is pinned here: changing it would strand every vault
-// written before mrs gave each one its own salt.
-const legacySalt = "99daa49d-3a53-4bf8-a74a-93295de71d41-4bac-8cea"
 
 // encrypt returns ciphertext as a version of mrs deriving its key from the
 // given salt and iteration count would have written it.
@@ -56,7 +50,7 @@ func decrypts(t *testing.T, path, password, salt string, iterations int) bool {
 }
 
 // writeVaultFile writes a vault file directly, as an older mrs would have left
-// it, and returns its path. A name without a salt is a legacy vault.
+// it, and returns its path.
 func (l *lab) writeVaultFile(filename, password, contents, salt string, iterations int) string {
 	l.t.Helper()
 	if err := os.MkdirAll(l.VaultDir(), 0700); err != nil {
@@ -69,86 +63,43 @@ func (l *lab) writeVaultFile(filename, password, contents, salt string, iteratio
 	return p
 }
 
-// writeLegacyVault writes a vault of the oldest shape: no salt in its name,
-// the static salt, and the original iteration count.
-func (l *lab) writeLegacyVault(name, password, contents string) string {
-	l.t.Helper()
-	return l.writeVaultFile(name, password, contents, legacySalt, crypto.LegacyIterations)
-}
-
-func TestALegacyVaultIsRead(t *testing.T) {
+func TestAVaultFileWithNoSaltIsReportedAndIgnored(t *testing.T) {
 	l := newLab(t)
-	l.writeLegacyVault("personal", "a password", "legacy key\nlegacy-value\n")
+	// Versions before v0.0.3 derived every key from one static salt and left
+	// the salt out of the filename. mrs derives a key from the salt its
+	// filename carries, so such a file names no vault it can open.
+	p := l.writeVaultFile("personal", "a password", "a key\na-value\n",
+		"99daa49d-3a53-4bf8-a74a-93295de71d41-4bac-8cea", crypto.LegacyIterations)
 	pwFile := l.PasswordFile("pw", "a password")
+
+	// It is named on stderr rather than passed over in silence, so that it
+	// cannot look as though the vault simply vanished.
+	l.Run("vault", "list").
+		AssertOK().
+		AssertStdoutEquals("").
+		AssertStderr("ignoring").
+		AssertStderr("personal")
 
 	l.Run("vault", "export", "-v", "personal", "-p", pwFile).
-		AssertOK().
-		AssertStdoutExactly("legacy key\nlegacy-value\n").
-		// Reading is not enough to upgrade it, so say what will.
-		AssertStderr("static salt")
+		AssertFailed().
+		AssertOutput("not found")
 
-	l.Run("search", "-v", "personal", "-p", pwFile, "legacy").
-		AssertOK().
-		AssertStdout("legacy-value")
-}
-
-func TestALegacyVaultIsListedLikeAnyOther(t *testing.T) {
-	l := newLab(t)
-	l.writeLegacyVault("personal", "a password", "legacy key\nlegacy-value\n")
-
-	// A legacy filename carries no salt, so the check that keeps stray files
-	// out of the listing must not mistake a legacy vault for one.
-	l.Run("vault", "list").AssertOK().AssertStdoutEquals("personal").AssertNoOutput("ignoring")
-	l.Run("vault", "get-default").AssertOK().AssertStdoutEquals("personal")
-}
-
-func TestALegacyVaultIsUpgradedWhenItIsSaved(t *testing.T) {
-	l := newLab(t)
-	legacyPath := l.writeLegacyVault("personal", "a password", "legacy key\nlegacy-value\n")
-	pwFile := l.PasswordFile("pw", "a password")
-	l.editorAppends("new key\nnew-value\n")
-
-	l.Run("edit", "-v", "personal", "-p", pwFile).
-		AssertOK().
-		AssertStderr("Migrating legacy vault")
-
-	// The file is renamed to carry its own salt, and the old one is gone.
-	assertNotExists(t, legacyPath)
-	upgraded := l.VaultPath("personal")
-	salt := strings.TrimPrefix(filepath.Base(upgraded), "personal.")
-	if len(salt) != 32 {
-		t.Fatalf("expected a 32 character salt in %q, got %q", upgraded, salt)
+	// The file itself is left alone, so it can still be recovered with an
+	// older release.
+	if _, err := os.Stat(p); err != nil {
+		t.Fatalf("expected the file to be left untouched: %s", err)
 	}
-
-	got := l.export("personal", pwFile)
-	for _, want := range []string{"legacy-value", "new-value"} {
-		if !strings.Contains(got, want) {
-			t.Fatalf("expected the upgraded vault to contain %q, got %q", want, got)
-		}
-	}
-	// Reading it no longer warns, because there is nothing left to upgrade.
-	l.Run("vault", "export", "-v", "personal", "-p", pwFile).
-		AssertOK().
-		AssertNoOutput("static salt")
 }
 
-func TestAnUpgradedVaultUsesItsOwnSaltAndTheCurrentKeyDerivation(t *testing.T) {
+func TestAVaultFileWithNoSaltDoesNotBlockANewVault(t *testing.T) {
 	l := newLab(t)
-	l.writeLegacyVault("personal", "a password", "legacy key\nlegacy-value\n")
+	l.writeVaultFile("personal", "a password", "a key\na-value\n",
+		"99daa49d-3a53-4bf8-a74a-93295de71d41-4bac-8cea", crypto.LegacyIterations)
 	pwFile := l.PasswordFile("pw", "a password")
 
-	l.Run("edit", "-v", "personal", "-p", pwFile).AssertOK()
-
-	upgraded := l.VaultPath("personal")
-	salt := strings.TrimPrefix(filepath.Base(upgraded), "personal.")
-	if !decrypts(t, upgraded, "a password", salt, crypto.CurrentIterations) {
-		t.Fatal("expected the upgraded vault to be encrypted with its own salt at the current iteration count")
-	}
-	// mrs falls back to the old iteration count when it reads, so a vault that
-	// was merely renamed would still open. Check the ciphertext itself.
-	if decrypts(t, upgraded, "a password", legacySalt, crypto.LegacyIterations) {
-		t.Fatal("expected the upgraded vault to no longer be encrypted against the static salt")
-	}
+	// The old file is not a vault, so it does not occupy the name.
+	l.Run("vault", "create", "-v", "personal", "-p", pwFile).AssertOK()
+	l.Run("vault", "list").AssertOK().AssertStdoutEquals("personal")
 }
 
 func TestAVaultAtTheOldIterationCountIsUpgradedWhenItIsSaved(t *testing.T) {
@@ -180,24 +131,27 @@ func TestAVaultAtTheOldIterationCountIsUpgradedWhenItIsSaved(t *testing.T) {
 	}
 }
 
-func TestALegacyVaultCanBeRenamedAndDeleted(t *testing.T) {
+func TestAnOldVaultKeepsItsSaltWhenRenamed(t *testing.T) {
 	l := newLab(t)
-	l.writeLegacyVault("personal", "a password", "legacy key\nlegacy-value\n")
+	salt := strings.Repeat("c", 32)
+	l.writeVaultFile("personal."+salt, "a password", "a key\nold-value\n", salt, crypto.LegacyIterations)
 	pwFile := l.PasswordFile("pw", "a password")
 
-	// Renaming does not decrypt, so a legacy vault stays legacy and keeps
-	// working under its new name.
+	// Renaming does not decrypt, so the salt has to travel with the file.
 	l.Run("vault", "rename", "personal", "archive").AssertOK()
 	l.Run("vault", "list").AssertOK().AssertStdoutEquals("archive")
+	if got := filepath.Base(l.VaultPath("archive")); got != "archive."+salt {
+		t.Fatalf("expected the salt to travel with the vault, got %q", got)
+	}
 	l.Run("vault", "export", "-v", "archive", "-p", pwFile).
 		AssertOK().
-		AssertStdout("legacy-value")
+		AssertStdout("old-value")
 
 	l.RunStdin("y\n", "vault", "delete", "-v", "archive").AssertOK()
 	l.Run("vault", "list").AssertOK().AssertStdoutEquals("")
 	// Nothing that still holds the secrets may be left behind. Lock files are
 	// left in place by every command and hold nothing, so they do not count.
-	assertNoPlaintextUnder(t, l.VaultDir(), "legacy-value")
+	assertNoPlaintextUnder(t, l.VaultDir(), "old-value")
 	for _, name := range l.Vaults() {
 		if !strings.HasSuffix(name, ".lock") {
 			t.Errorf("expected the deleted vault to leave only lock files, found %q", name)

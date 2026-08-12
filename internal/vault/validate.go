@@ -44,14 +44,16 @@ func validateSalt(s string) error {
 	return nil
 }
 
-func validateNameWithOptionalSalt(n string) error {
+// validateFilename checks the shape of a vault's filename, <name>.<salt>. A
+// vault's key is derived from the salt its filename carries, so a file without
+// one is not a vault this version of mrs can open.
+func validateFilename(n string) error {
 	name, salt, hasSalt := strings.Cut(n, ".")
 	if err := validateName(name); err != nil {
 		return err
 	}
 	if !hasSalt {
-		// Legacy vaults do not have a per-vault salt.
-		return nil
+		return fmt.Errorf("vault filename \"%s\" has no salt", n)
 	}
 	return validateSalt(salt)
 }
@@ -68,7 +70,7 @@ func validatePath(p string) error {
 	if err != nil {
 		return fmt.Errorf("invalid vault path \"%s\": %w", p, err)
 	}
-	if err := validateNameWithOptionalSalt(fi.Name()); err != nil {
+	if err := validateFilename(fi.Name()); err != nil {
 		return err
 	}
 	if fi.IsDir() {

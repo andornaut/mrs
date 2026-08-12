@@ -94,10 +94,9 @@ func Create(name string, password, contents []byte) (UnlockedVault, error) {
 	}
 	defer unlock()
 
-	// Ensure that no vault of this name exists, whether it is a legacy vault -
-	// one that does not have a salt - or a salted one. Comparing paths is not
-	// enough, because a new vault is given a fresh random salt and so never
-	// collides with the path of an existing vault of the same name.
+	// Ensure that no vault of this name exists. Comparing paths is not enough,
+	// because a new vault is given a fresh random salt and so never collides
+	// with the path of an existing vault of the same name.
 	exists, err := existsByName(name)
 	if err != nil {
 		return BadUnlockedVault, err
@@ -186,14 +185,8 @@ func Rename(sourceName, targetName string) error {
 	if exists {
 		return fmt.Errorf("a vault named \"%s\" already exists", targetName)
 	}
-	var targetPath string
-	salt := sourceVault.Salt()
-	if salt == "" {
-		// Legacy vaults do not have a per-vault salt.
-		targetPath, err = toPath(targetName)
-	} else {
-		targetPath, err = toPathWithSalt(targetName, salt)
-	}
+	// The target keeps the source's salt, because renaming does not decrypt.
+	targetPath, err := toPathWithSalt(targetName, sourceVault.Salt())
 	if err != nil {
 		return err
 	}
@@ -297,9 +290,9 @@ func findVaults(prefix string) ([]Vault, error) {
 		// renamed by hand does not disappear without explanation. Hidden files
 		// (.DS_Store, editor swap files) are never vaults, so they are skipped
 		// quietly.
-		if err := validateNameWithOptionalSalt(base); err != nil {
+		if err := validateFilename(base); err != nil {
 			if !strings.HasPrefix(base, ".") {
-				warnf("ignoring \"%s\", because a vault file is named <name> or <name>.<salt>", p)
+				warnf("ignoring \"%s\", because a vault file is named <name>.<salt>", p)
 			}
 			continue
 		}

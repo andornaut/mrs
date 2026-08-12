@@ -49,13 +49,15 @@ func TestValidatePassword(t *testing.T) {
 	}
 }
 
-func TestValidateNameWithOptionalSalt(t *testing.T) {
+func TestValidateFilename(t *testing.T) {
 	const salt = "12345678901234567890123456789012" // 32 characters, as crypto.Salt() returns
 	tests := []struct {
 		name    string
 		isValid bool
 	}{
-		{"vault", true}, // a legacy vault, which has no salt
+		// A key is derived from the salt in the filename, so a name without
+		// one names no vault this version of mrs can open.
+		{"vault", false},
 		{"vault." + salt, true},
 		{"vault-1." + salt, true},
 		{"vault." + salt + ".extra", false},
@@ -72,9 +74,9 @@ func TestValidateNameWithOptionalSalt(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		err := validateNameWithOptionalSalt(tt.name)
+		err := validateFilename(tt.name)
 		if (err == nil) != tt.isValid {
-			t.Errorf("validateNameWithOptionalSalt(%q) expected valid=%v, got err=%v", tt.name, tt.isValid, err)
+			t.Errorf("validateFilename(%q) expected valid=%v, got err=%v", tt.name, tt.isValid, err)
 		}
 	}
 }

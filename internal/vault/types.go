@@ -15,10 +15,6 @@ import (
 	"github.com/andornaut/mrs/internal/fs"
 )
 
-// Legacy vaults use the following salt, whereas new vaults are created with a unique salt.
-// Legacy vaults are migrated when UnlockedVault.Write() is called.
-const legacySalt = "99daa49d-3a53-4bf8-a74a-93295de71d41-4bac-8cea"
-
 // Vault is a secrets store
 type Vault string
 
@@ -132,11 +128,10 @@ func (v *UnlockedVault) NewReader() (io.Reader, error) {
 	}
 	salt := v.Salt()
 	if salt == "" {
-		salt = legacySalt
-		fmt.Fprintf(os.Stderr,
-			"Vault \"%s\" uses a static salt. "+
-				"It will be automatically upgraded to using a unique salt the next time you edit it.\n",
-			v.Name())
+		// A vault's key is derived from the salt in its filename, so there is
+		// nothing to decrypt with. findVaults rejects such a file, so reaching
+		// here means a Vault was built from a path directly.
+		return nil, fmt.Errorf("vault %s has no salt in its filename", v.Name())
 	}
 	decrypted, err := crypto.Decrypt(b, v.password, salt)
 	if err != nil {
@@ -164,10 +159,6 @@ func (v *UnlockedVault) NewReader() (io.Reader, error) {
 
 // Write writes s string to the vault
 func (v *UnlockedVault) Write(s string) error {
-	if err := v.migrateLegacyIfApplicable(); err != nil {
-		return err
-	}
-
 	plaintext := []byte(s)
 	defer crypto.Wipe(plaintext)
 
@@ -216,28 +207,4 @@ func (v *UnlockedVault) changePassword(p []byte) error {
 
 	v.password = p
 	return v.Write(string(b))
-}
-
-func (v *UnlockedVault) migrateLegacyIfApplicable() error {
-	salt := v.Salt()
-	if salt != "" {
-		return nil
-	}
-
-	var err error
-	if salt, err = crypto.Salt(); err != nil {
-		return err
-	}
-	newPath, err := toPathWithSalt(v.Name(), salt)
-	if err != nil {
-		return err
-	}
-	newVault := Vault(newPath).Unlocked(v.password)
-	if err := os.Rename(v.Path(), newVault.Path()); err != nil {
-		return err
-	}
-	*v = newVault
-
-	fmt.Fprintf(os.Stderr, "Migrating legacy vault to include a unique salt: %s\n", v.Salt())
-	return nil
 }
