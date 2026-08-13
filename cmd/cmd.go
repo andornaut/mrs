@@ -19,17 +19,25 @@ import (
 
 // Cmd implements the root ./mrs command
 var Cmd = &cobra.Command{
-	Use:          "mrs",
-	Example:      "\tmrs vault create\n\tmrs edit\n\tmrs search secret stuff",
-	Short:        "Mr. Secretary",
-	Long:         "Mr. Secretary - Organise and secure your secrets",
-	SilenceUsage: true,
+	Use:     "mrs",
+	Example: "\tmrs vault create\n\tmrs edit\n\tmrs search secret stuff",
+	Short:   "Mr. Secretary",
+	Long:    "Mr. Secretary - Organise and secure your secrets",
 	// Cobra reports an unknown command from its own argument validator, which
 	// this replaces so that the failure is marked as a wrong invocation and
 	// exits 2. Without a RunE the root would never validate its arguments at
 	// all: it would print help and report success for a mistyped command.
-	Args: unknownCommand,
-	RunE: func(c *cobra.Command, args []string) error { return c.Help() },
+	Args: cli.NeedsCommand,
+	// Never reached, since the arguments never validate, but a command cobra
+	// does not consider runnable has its arguments ignored altogether.
+	RunE: func(c *cobra.Command, args []string) error { return nil },
+	// Runs once the arguments have been accepted and before any command does
+	// its work, which is where a failure stops being a wrong invocation worth
+	// printing usage for.
+	PersistentPreRunE: func(c *cobra.Command, args []string) error {
+		c.SilenceUsage = true
+		return nil
+	},
 }
 
 // noMatch records that a search ran and matched nothing. Finding nothing is
@@ -62,14 +70,6 @@ func Execute() int {
 		return exitNoMatch
 	}
 	return exitOK
-}
-
-// unknownCommand reports an argument that names no command.
-func unknownCommand(c *cobra.Command, args []string) error {
-	if len(args) > 0 {
-		return cli.Usagef("unknown command %q for %q. Run \"%s --help\" for usage", args[0], c.CommandPath(), c.CommandPath())
-	}
-	return nil
 }
 
 // noArgs refuses positional arguments for add and edit. cobra.NoArgs reports

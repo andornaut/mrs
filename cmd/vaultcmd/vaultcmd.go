@@ -20,16 +20,11 @@ var Cmd = &cobra.Command{
 	Short: "Manage vaults",
 	// Without Args and RunE, an unrecognised subcommand prints help and exits 0,
 	// which hides a typo such as `mrs vault lst` from a script.
-	RunE: func(c *cobra.Command, args []string) error {
-		if len(args) > 0 {
-			return cli.Usagef("unknown command %q for %q. Run \"%s --help\" for usage", args[0], c.CommandPath(), c.CommandPath())
-		}
-		return c.Help()
-	},
+	Args: cli.NeedsCommand,
+	RunE: func(c *cobra.Command, args []string) error { return nil },
 	// `mrs vault` takes no flags of its own beyond --help, so the usage line
 	// reads as the two things it can be: the group, or a command within it.
 	DisableFlagsInUseLine: true,
-	SilenceUsage:          true,
 }
 
 // noArgs refuses positional arguments. cobra.NoArgs reports them as an unknown

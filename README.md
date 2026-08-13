@@ -145,8 +145,11 @@ Code | Meaning
 --- | ---
 0 | it worked
 1 | it failed
-2 | it was typed wrong: an unknown command or flag, or a missing or extra argument
+2 | it was typed wrong: no command, an unknown command or flag, or a missing or extra argument
 3 | `mrs search` ran and matched nothing
+
+A wrong invocation prints the usage that would have been right; a command that
+ran and failed does not. `mrs --help` writes help to stdout and reports success.
 
 ## Files
 

@@ -454,6 +454,8 @@ func TestExitCodesDistinguishUsageFromFailureFromNoMatch(t *testing.T) {
 		{"a confirmation nobody can answer", []string{"vault", "delete", "-v", "work"}, 1},
 		{"a flag that is not there", []string{"vault", "list", "--bogus"}, 2},
 		{"a command that is not there", []string{"bogus"}, 2},
+		{"no command at all", []string{}, 2},
+		{"a command group with no command", []string{"vault"}, 2},
 		{"a subcommand that is not there", []string{"vault", "bogus"}, 2},
 		{"an argument a command does not take", []string{"vault", "list", "extra"}, 2},
 		{"a search with nothing to search for", []string{"search", "-v", "work", "-p", pwFile}, 2},
@@ -526,4 +528,40 @@ func TestSeveralVaultsWithNoDefaultAreNotGuessedBetween(t *testing.T) {
 	l.Run("vault", "export", "-v", "work", "-p", pwFile).AssertOK().AssertStdout("a value")
 	l.Setenv("MRS_DEFAULT_VAULT_NAME", "work")
 	l.Run("vault", "export", "-p", pwFile).AssertOK().AssertStdout("a value")
+}
+
+// A wrong invocation is answered with the usage that would have been right, and
+// a command that ran and failed is not: by then the reader knows how to type it
+// and needs to know what went wrong. Help asked for by name is not a failure.
+func TestUsageIsPrintedForAWrongInvocationOnly(t *testing.T) {
+	l := newLab(t)
+	pwFile := l.seedVault("work", "a password", "a key\na value\n")
+
+	for _, args := range [][]string{
+		{},
+		{"vault"},
+		{"bogus"},
+		{"vault", "bogus"},
+		{"vault", "list", "--bogus"},
+		{"vault", "rename", "one"},
+	} {
+		r := l.Run(args...).AssertFailed().AssertStderr("Usage:")
+		if r.Stdout != "" {
+			t.Errorf("mrs %v wrote %q to stdout, want the usage on stderr", args, r.Stdout)
+		}
+	}
+
+	// A failure that reached the vault has nothing to do with how it was typed.
+	l.Run("vault", "export", "-v", "nope", "-p", pwFile).
+		AssertFailed().
+		AssertNoOutput("Usage:")
+
+	// Help asked for by name goes to stdout and reports success, so that
+	// `mrs --help | less` works.
+	for _, args := range [][]string{{"--help"}, {"vault", "--help"}, {"help"}} {
+		r := l.Run(args...).AssertOK().AssertStdout("Available Commands:")
+		if r.Stderr != "" {
+			t.Errorf("mrs %v wrote %q to stderr, want the help on stdout", args, r.Stderr)
+		}
+	}
 }
