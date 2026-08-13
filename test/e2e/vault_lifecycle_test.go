@@ -348,10 +348,36 @@ func TestDeleteRequiresAnExactName(t *testing.T) {
 	l := newLab(t)
 	l.createVault("personal", "a password")
 
+	// The name is checked before anything is asked, so the user is never made
+	// to confirm deleting something that is not a vault.
 	l.RunStdin("y\n", "vault", "delete", "-v", "pers").
 		AssertFailed().
-		AssertOutput(`Did you mean "personal"`)
+		AssertOutput(`Did you mean "personal"`).
+		AssertNoOutput("(y/n)")
 	l.Run("vault", "list").AssertOK().AssertStdoutEquals("personal")
+}
+
+func TestDeleteConfirmsWithTheVaultsOwnName(t *testing.T) {
+	l := newLab(t)
+	l.createVault("personal", "a password")
+
+	// A destructive confirmation has to name what will actually be destroyed.
+	l.RunStdin("n\n", "vault", "delete", "-v", "personal").
+		AssertOK().
+		AssertStderr("Delete vault personal?")
+	l.Run("vault", "list").AssertOK().AssertStdoutEquals("personal")
+}
+
+func TestRenameChecksTheSourceNameBeforeLocking(t *testing.T) {
+	l := newLab(t)
+	pwFile := l.createVault("personal", "a password")
+
+	// A rename that cannot happen must not lock the vault on its way to
+	// failing, or the next command would need --force.
+	l.Run("vault", "rename", "pers", "renamed").AssertFailed()
+
+	l.editorAppends("a key\na value\n")
+	l.Run("edit", "-v", "personal", "-p", pwFile).AssertOK()
 }
 
 func TestDeleteReportsAMissingVault(t *testing.T) {

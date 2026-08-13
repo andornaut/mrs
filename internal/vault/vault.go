@@ -143,7 +143,7 @@ func Create(name string, password, contents []byte) (UnlockedVault, error) {
 
 // Delete deletes a vault, along with its backup and temporary files
 func Delete(name string) error {
-	v, err := exact(name)
+	v, err := Exact(name)
 	if err != nil {
 		return err
 	}
@@ -166,7 +166,7 @@ func Delete(name string) error {
 
 // Export writes a vault's secrets to stdout
 func Export(name string, password []byte) (string, error) {
-	v, err := exact(name)
+	v, err := Exact(name)
 	if err != nil {
 		return "", err
 	}
@@ -193,7 +193,7 @@ func Rename(sourceName, targetName string) error {
 		return err
 	}
 
-	sourceVault, err := exact(sourceName)
+	sourceVault, err := Exact(sourceName)
 	if err != nil {
 		return err
 	}
@@ -266,7 +266,10 @@ func existsByName(name string) (bool, error) {
 	return false, nil
 }
 
-func exact(name string) (Vault, error) {
+// Exact returns the vault named exactly name, or an error naming the closest
+// match. Commands that destroy or move a vault resolve with this rather than
+// First, so that a prefix cannot reach a neighbouring vault.
+func Exact(name string) (Vault, error) {
 	v, err := First(name)
 	if err != nil {
 		return "", err

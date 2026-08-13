@@ -118,7 +118,11 @@ func init() {
 			if err != nil {
 				return err
 			}
-			v, err := vault.First(name)
+			// Resolved before the lock is taken and before anything is asked,
+			// so that a name that is not a vault is refused outright rather
+			// than after the user has confirmed deleting it. Deleting requires
+			// the whole name: a prefix must not reach a neighbouring vault.
+			v, err := vault.Exact(name)
 			if err != nil {
 				return err
 			}
@@ -128,7 +132,7 @@ func init() {
 			}
 			defer unlock()
 
-			if !prompt.Bool(fmt.Sprintf("Delete vault %s?", name), false) {
+			if !prompt.Bool(fmt.Sprintf("Delete vault %s?", v.Name()), false) {
 				// Declining the confirmation is a normal outcome, not a failure.
 				fmt.Println("Cancelled")
 				return nil
@@ -216,7 +220,10 @@ func init() {
 			sourceName := args[0]
 			targetName := args[1]
 
-			v, err := vault.First(sourceName)
+			// Resolved exactly, and before the lock, for the same reason as
+			// delete: a rename moves a vault, so a prefix must not reach one
+			// the user did not name.
+			v, err := vault.Exact(sourceName)
 			if err != nil {
 				return err
 			}
