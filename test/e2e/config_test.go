@@ -101,7 +101,7 @@ func TestMrsHomeIsCreatedOnDemand(t *testing.T) {
 	home := filepath.Join(l.UserHome, "a", "b", "c", "mrs")
 	l.Setenv("MRS_HOME", home)
 
-	l.Run("vault", "create", "-v", "personal", "-p", l.PasswordFile("pw", "a password")).AssertOK()
+	l.Run("vault", "create", "personal", "-p", l.PasswordFile("pw", "a password")).AssertOK()
 
 	assertDirMode(t, filepath.Join(home, "vaults"), 0700)
 }
@@ -112,7 +112,7 @@ func TestXdgDataHomeIsUsedWhenMrsHomeIsUnset(t *testing.T) {
 	l.Unsetenv("MRS_HOME")
 	l.Setenv("XDG_DATA_HOME", xdg)
 
-	l.Run("vault", "create", "-v", "personal", "-p", l.PasswordFile("pw", "a password")).AssertOK()
+	l.Run("vault", "create", "personal", "-p", l.PasswordFile("pw", "a password")).AssertOK()
 
 	vaults := filepath.Join(xdg, "mrs", "vaults")
 	assertDirMode(t, vaults, 0700)
@@ -138,7 +138,7 @@ func TestTheHomeDirectoryIsUsedWhenNothingElseIsSet(t *testing.T) {
 	l.Unsetenv("MRS_HOME")
 	l.Unsetenv("XDG_DATA_HOME")
 
-	l.Run("vault", "create", "-v", "personal", "-p", l.PasswordFile("pw", "a password")).AssertOK()
+	l.Run("vault", "create", "personal", "-p", l.PasswordFile("pw", "a password")).AssertOK()
 
 	// The documented default, below $HOME rather than anywhere absolute.
 	assertDirMode(t, filepath.Join(l.UserHome, ".local", "share", "mrs", "vaults"), 0700)
@@ -155,8 +155,8 @@ func TestAnUnusableHomeIsReportedByEveryCommand(t *testing.T) {
 	for _, args := range [][]string{
 		{"vault", "list"},
 		{"vault", "default"},
-		{"vault", "create", "-v", "personal", "-p", pwFile},
-		{"vault", "export", "-v", "personal", "-p", pwFile},
+		{"vault", "create", "personal", "-p", pwFile},
+		{"export", "-v", "personal", "-p", pwFile},
 		{"search", "-v", "personal", "-p", pwFile, "anything"},
 	} {
 		l.Run(args...).AssertFailed().AssertStderr("not a directory")
@@ -250,7 +250,7 @@ func TestAnUnusableTempIsReported(t *testing.T) {
 		AssertNoOutput("the-secret-value")
 
 	// A command that never needs a temporary file is unaffected.
-	l.Run("vault", "export", "-v", "personal", "-p", pwFile).
+	l.Run("export", "-v", "personal", "-p", pwFile).
 		AssertOK().
 		AssertStdout("the-secret-value")
 }
@@ -278,24 +278,24 @@ func TestTheVaultSubcommandsRequireANamedVault(t *testing.T) {
 	pwFile := l.seedVault("work", "a password", "work key\nwork-value\n")
 	l.Setenv("MRS_DEFAULT_VAULT_NAME", "work")
 
-	// A vault that is about to be changed is named, whether by --vault or by
-	// answering the prompt: the configured default is a convenience for the
-	// commands that read, and is not enough to re-key or delete by.
+	// A vault that is about to be changed is named by an operand: the
+	// configured default is a convenience for the commands that read, and is
+	// not enough to re-key or delete by.
 	for _, args := range [][]string{
 		{"vault", "change-password", "-p", pwFile},
 		{"vault", "delete"},
 	} {
-		l.Run(args...).AssertFailed().AssertStderr("--vault")
+		l.Run(args...).AssertUsageError().AssertStderr("requires the name of a vault")
 	}
 
-	// Answering the prompt works, as does naming it on the command line.
-	l.RunStdin("work\n", "vault", "change-password", "-p", pwFile, "-n", pwFile).
+	// Naming it on the command line works.
+	l.Run("vault", "change-password", "work", "-p", pwFile, "-n", pwFile).
 		AssertOK().
 		AssertStderr("Changed password of vault work")
 
 	// export only reads, so it resolves the default the way search does.
-	l.Run("vault", "export", "-p", pwFile).AssertOK().AssertStdout("work-value")
-	l.Run("vault", "export", "-v", "work", "-p", pwFile).AssertOK().AssertStdout("work-value")
+	l.Run("export", "-p", pwFile).AssertOK().AssertStdout("work-value")
+	l.Run("export", "-v", "work", "-p", pwFile).AssertOK().AssertStdout("work-value")
 }
 
 func TestTheOnlyVaultIsUsedWhenNoneIsNamed(t *testing.T) {
@@ -314,7 +314,7 @@ func TestAnExplicitVaultOverridesTheDefaultVaultName(t *testing.T) {
 	homePw := l.seedVault("home", "a password", "home key\nhome-value\n")
 	l.Setenv("MRS_DEFAULT_VAULT_NAME", "work")
 
-	l.Run("vault", "export", "-v", "home", "-p", homePw).
+	l.Run("export", "-v", "home", "-p", homePw).
 		AssertOK().
 		AssertStdoutExactly("home key\nhome-value\n")
 }
@@ -360,29 +360,20 @@ func TestAPromptNeverReachesStdout(t *testing.T) {
 	l := newLab(t)
 	pwFile := l.seedVault("work", "a password", "a key\nthe-secret-value\n")
 
-	// `mrs vault create > log` asks which vault to create. The question has to
-	// reach the user's terminal, not the file they are capturing.
-	r := l.RunStdin("second\n", "vault", "create", "-p", pwFile).AssertOK()
-	r.AssertStderr("Vault name: ")
+	// `mrs vault create second > log` reports what it did on stderr, so the
+	// file the user is capturing holds nothing but what they asked for.
+	r := l.Run("vault", "create", "second", "-p", pwFile).AssertOK()
+	r.AssertStderr("Created vault second")
 	r.AssertStdoutExactly("")
 
 	// And a vault's secrets reach stdout with nothing else mixed in.
-	l.Run("vault", "export", "-v", "work", "-p", pwFile).
+	l.Run("export", "-v", "work", "-p", pwFile).
 		AssertOK().
 		AssertStdoutExactly("a key\nthe-secret-value\n")
 
-	// A prompt answered from a pipe is not echoed, so mrs supplies the newline
-	// that pressing Enter would have written. Without it, whatever it prints
-	// next continues the prompt's line, as in "Vault name: Error: ...".
-	r = l.Run("vault", "create", "-p", pwFile).AssertFailed()
-	if strings.Contains(r.Stderr, "Vault name: Error") {
-		t.Errorf("expected the error on its own line, got %q", r.Stderr)
-	}
-	r.AssertStderr("Use --vault to name one")
-
 	// And the question before a destructive change, which without a terminal
 	// is reported rather than asked.
-	r = l.Run("vault", "delete", "-v", "work").AssertFailed()
+	r = l.Run("vault", "delete", "work").AssertFailed()
 	r.AssertStderr("Delete vault work?")
 	if strings.Contains(r.Stdout, "Delete vault") {
 		t.Fatalf("expected the confirmation off stdout, got %q", r.Stdout)
@@ -402,22 +393,22 @@ func TestNothingButDataIsEverWrittenToStdout(t *testing.T) {
 		"unknown command":       {"bogus"},
 		"unknown subcommand":    {"vault", "bogus"},
 		"unknown flag":          {"vault", "list", "--bogus"},
-		"missing vault":         {"vault", "export", "-v", "nope", "-p", pwFile},
-		"wrong password":        {"vault", "export", "-v", "work", "-p", wrong},
-		"missing password file": {"vault", "export", "-v", "work", "-p", absent},
-		"no answer to confirm":  {"vault", "delete", "-v", "work"},
-		"no password to read":   {"vault", "export", "-v", "work"},
+		"missing vault":         {"export", "-v", "nope", "-p", pwFile},
+		"wrong password":        {"export", "-v", "work", "-p", wrong},
+		"missing password file": {"export", "-v", "work", "-p", absent},
+		"no answer to confirm":  {"vault", "delete", "work"},
+		"no password to read":   {"export", "-v", "work"},
 		"search without a term": {"search", "-v", "work", "-p", pwFile},
 		"invalid pattern":       {"search", "-v", "work", "-p", pwFile, "["},
 		"search found nothing":  {"search", "-v", "work", "-p", pwFile, "zzz"},
-		"duplicate vault":       {"vault", "create", "-v", "work", "-p", pwFile},
-		"invalid vault name":    {"vault", "create", "-v", "bad name", "-p", pwFile},
-		"weak password":         {"vault", "create", "-v", "new", "-p", l.PasswordFile("short.pw", "short")},
+		"duplicate vault":       {"vault", "create", "work", "-p", pwFile},
+		"invalid vault name":    {"vault", "create", "bad name", "-p", pwFile},
+		"weak password":         {"vault", "create", "new", "-p", l.PasswordFile("short.pw", "short")},
 		"rename missing source": {"vault", "rename", "nope", "other"},
 		"rename too few args":   {"vault", "rename", "onlyone"},
-		"delete missing vault":  {"vault", "delete", "-v", "nope"},
-		"prefix cannot delete":  {"vault", "delete", "-v", "wor"},
-		"prefix cannot re-key":  {"vault", "change-password", "-v", "wor", "-p", pwFile},
+		"delete missing vault":  {"vault", "delete", "nope"},
+		"prefix cannot delete":  {"vault", "delete", "wor"},
+		"prefix cannot re-key":  {"vault", "change-password", "wor", "-p", pwFile},
 	}
 	for desc, args := range failures {
 		t.Run(desc, func(t *testing.T) {
@@ -450,8 +441,8 @@ func TestExitCodesDistinguishUsageFromFailureFromNoMatch(t *testing.T) {
 		{"a search that matched", []string{"search", "-v", "work", "-p", pwFile, "a key"}, 0},
 		{"a command that worked", []string{"vault", "list"}, 0},
 		{"a vault that is not there", []string{"search", "-v", "nope", "-p", pwFile, "a key"}, 1},
-		{"a password that is wrong", []string{"vault", "export", "-v", "work", "-p", l.PasswordFile("wrong.pw", "not the password")}, 1},
-		{"a confirmation nobody can answer", []string{"vault", "delete", "-v", "work"}, 1},
+		{"a password that is wrong", []string{"export", "-v", "work", "-p", l.PasswordFile("wrong.pw", "not the password")}, 1},
+		{"a confirmation nobody can answer", []string{"vault", "delete", "work"}, 1},
 		{"a flag that is not there", []string{"vault", "list", "--bogus"}, 2},
 		{"a command that is not there", []string{"bogus"}, 2},
 		{"no command at all", []string{}, 2},
@@ -482,15 +473,15 @@ func TestOnlyDataIsWrittenToStdoutWhenACommandSucceeds(t *testing.T) {
 		args []string
 		want string
 	}{
-		{"create", []string{"vault", "create", "-v", "second", "-p", pwFile}, ""},
+		{"create", []string{"vault", "create", "second", "-p", pwFile}, ""},
 		{"add", []string{"add", "-v", "second", "-p", pwFile}, ""},
 		{"edit", []string{"edit", "-v", "second", "-p", pwFile}, ""},
 		{"rename", []string{"vault", "rename", "second", "third"}, ""},
-		{"change-password", []string{"vault", "change-password", "-v", "third", "-p", pwFile, "-n", pwFile}, ""},
-		{"delete", []string{"vault", "delete", "-v", "third", "--yes"}, ""},
+		{"change-password", []string{"vault", "change-password", "third", "-p", pwFile, "-n", pwFile}, ""},
+		{"delete", []string{"vault", "delete", "third", "--yes"}, ""},
 		{"list", []string{"vault", "list"}, "work\n"},
 		{"get-default", []string{"vault", "default"}, "work\n"},
-		{"export", []string{"vault", "export", "-v", "work", "-p", pwFile}, "a key\na value\n"},
+		{"export", []string{"export", "-v", "work", "-p", pwFile}, "a key\na value\n"},
 	} {
 		t.Run(c.desc, func(t *testing.T) {
 			r := l.Run(c.args...).AssertOK()
@@ -515,7 +506,7 @@ func TestSeveralVaultsWithNoDefaultAreNotGuessedBetween(t *testing.T) {
 		{"add", "-p", pwFile},
 		{"edit", "-p", pwFile},
 		{"search", "-p", pwFile, "a key"},
-		{"vault", "export", "-p", pwFile},
+		{"export", "-p", pwFile},
 		{"vault", "default"},
 	} {
 		l.Run(args...).
@@ -525,9 +516,9 @@ func TestSeveralVaultsWithNoDefaultAreNotGuessedBetween(t *testing.T) {
 	}
 
 	// Naming one, or configuring one, answers it.
-	l.Run("vault", "export", "-v", "work", "-p", pwFile).AssertOK().AssertStdout("a value")
+	l.Run("export", "-v", "work", "-p", pwFile).AssertOK().AssertStdout("a value")
 	l.Setenv("MRS_DEFAULT_VAULT_NAME", "work")
-	l.Run("vault", "export", "-p", pwFile).AssertOK().AssertStdout("a value")
+	l.Run("export", "-p", pwFile).AssertOK().AssertStdout("a value")
 }
 
 // A wrong invocation is answered with the usage that would have been right, and
@@ -552,7 +543,7 @@ func TestUsageIsPrintedForAWrongInvocationOnly(t *testing.T) {
 	}
 
 	// A failure that reached the vault has nothing to do with how it was typed.
-	l.Run("vault", "export", "-v", "nope", "-p", pwFile).
+	l.Run("export", "-v", "nope", "-p", pwFile).
 		AssertFailed().
 		AssertNoOutput("Usage:")
 

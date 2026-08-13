@@ -52,63 +52,63 @@ func (s secret) MatchKeyAndValue(r regexp.Regexp) bool {
 	return r.Match(s)
 }
 
-// briefcase holds secrets
-type briefcase struct {
+// secretList is the secrets of one vault, sorted by key.
+type secretList struct {
 	secrets []secret
 }
 
-func newBriefcase(secrets []secret) *briefcase {
-	s := &briefcase{secrets}
+func newSecretList(secrets []secret) *secretList {
+	s := &secretList{secrets}
 	sort.Sort(s)
 	return s
 }
 
-// Wipe zeroes every secret in the briefcase. A briefcase built by a search
+// Wipe zeroes every secret in the secretList. A secretList built by a search
 // holds the same secrets as the one it was searched from, so wiping either
 // wipes both.
-func (s *briefcase) Wipe() {
+func (s *secretList) Wipe() {
 	for _, secret := range s.secrets {
 		crypto.Wipe(secret)
 	}
 }
 
-// Combined returns a new Secrets object with the given secrets appended
-func (s *briefcase) Combined(o *briefcase) *briefcase {
+// Combined returns a new secretList with the given secrets appended
+func (s *secretList) Combined(o *secretList) *secretList {
 	merged := make([]secret, len(s.secrets)+len(o.secrets))
 	copy(merged, s.secrets)
 	copy(merged[len(s.secrets):], o.secrets)
-	return newBriefcase(merged)
+	return newSecretList(merged)
 }
 
 // SearchKeys returns secrets whose keys match the given regular expression
-func (s *briefcase) SearchKeys(r regexp.Regexp) *briefcase {
+func (s *secretList) SearchKeys(r regexp.Regexp) *secretList {
 	return s.search(r, func(s secret, r regexp.Regexp) bool {
 		return s.MatchKey(r)
 	})
 }
 
 // SearchKeysAndValues returns secrets whose keys or value match the given regular expression
-func (s *briefcase) SearchKeysAndValues(r regexp.Regexp) *briefcase {
+func (s *secretList) SearchKeysAndValues(r regexp.Regexp) *secretList {
 	return s.search(r, func(s secret, r regexp.Regexp) bool {
 		return s.MatchKeyAndValue(r)
 	})
 }
 
-func (s *briefcase) search(r regexp.Regexp, match func(secret, regexp.Regexp) bool) *briefcase {
+func (s *secretList) search(r regexp.Regexp, match func(secret, regexp.Regexp) bool) *secretList {
 	var secrets []secret
 	for _, secret := range s.secrets {
 		if match(secret, r) {
 			secrets = append(secrets, secret)
 		}
 	}
-	return newBriefcase(secrets)
+	return newSecretList(secrets)
 }
 
 // Bytes returns the secrets as a vault is written: each ends in a newline, and
 // a blank line separates one from the next. It is a copy, sized once so that
 // growing it cannot leave a half-filled buffer behind, and the caller is
 // responsible for wiping it.
-func (s *briefcase) Bytes() []byte {
+func (s *secretList) Bytes() []byte {
 	if len(s.secrets) == 0 {
 		return nil
 	}
@@ -127,16 +127,16 @@ func (s *briefcase) Bytes() []byte {
 }
 
 // Len is part of sort.Interface.
-func (s *briefcase) Len() int {
+func (s *secretList) Len() int {
 	return len(s.secrets)
 }
 
 // Less is part of sort.Interface. It is implemented by calling the "by" closure in the sorter
-func (s *briefcase) Less(i, j int) bool {
+func (s *secretList) Less(i, j int) bool {
 	return s.secrets[i].Less(s.secrets[j])
 }
 
 // Swap is part of sort.Interface
-func (s *briefcase) Swap(i, j int) {
+func (s *secretList) Swap(i, j int) {
 	s.secrets[i], s.secrets[j] = s.secrets[j], s.secrets[i]
 }

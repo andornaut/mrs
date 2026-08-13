@@ -14,6 +14,10 @@ import (
 // link time; a build made any other way reports "dev".
 var version = "dev"
 
+// exitInterrupted is the status for a signal that carries no number to add to
+// 128, which os.Interrupt does not on every platform.
+const exitInterrupted = 128
+
 func main() {
 	os.Exit(run())
 }
@@ -37,13 +41,19 @@ func run() int {
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP, syscall.SIGQUIT)
 	go func() {
-		<-c
+		s := <-c
 		cleanup()
-		// 2, not 1: 1 means a search that matched nothing, and a run that was
-		// interrupted did not finish looking.
-		os.Exit(2)
+		// 128+signum, as a shell reports a command its signal killed. mrs
+		// gives 1, 2 and 3 meanings of its own, so a run cut short must not
+		// exit with any of them: an interrupted search did not finish looking,
+		// and is neither a failure nor a search that matched nothing.
+		code := exitInterrupted
+		if sig, ok := s.(syscall.Signal); ok {
+			code = 128 + int(sig)
+		}
+		os.Exit(code)
 	}()
 
 	cmd.Cmd.Version = version
-	return cmd.Execute()
+	return cmd.ExitCode(cmd.Cmd.Execute())
 }

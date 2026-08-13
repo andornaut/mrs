@@ -59,8 +59,11 @@ func TestAnInterruptedEditingSessionLeavesNoPlaintext(t *testing.T) {
 			if err != nil {
 				t.Fatalf("failed to wait for mrs: %s", err)
 			}
-			if state.ExitCode() == 0 {
-				t.Fatalf("expected mrs to exit non-zero after %s", s.name)
+			// 128+signum, as a shell reports a command its signal killed. A
+			// run cut short must not exit 1, 2 or 3, each of which says
+			// something specific about a run that finished.
+			if got, want := state.ExitCode(), 128+int(s.sig); got != want {
+				t.Fatalf("expected mrs to exit %d after %s, got %d", want, s.name, got)
 			}
 			// The editor outlives mrs, but it is holding a file that is
 			// already gone.

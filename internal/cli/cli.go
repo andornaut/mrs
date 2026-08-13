@@ -33,3 +33,33 @@ func NeedsCommand(c *cobra.Command, args []string) error {
 	}
 	return Usagef("%s requires a command", c.CommandPath())
 }
+
+// NoArgs refuses operands. cobra.NoArgs reports them as an unknown command,
+// which misdescribes a command that takes no operands at all rather than one
+// that was misspelled.
+func NoArgs(c *cobra.Command, args []string) error {
+	if len(args) > 0 {
+		return Usagef("%s takes no arguments, but got %q", c.CommandPath(), args[0])
+	}
+	return nil
+}
+
+// RequireArgs validates an operand count, naming the command and what it
+// wanted. Cobra's own message ("accepts between 1 and 2 arg(s), received 0")
+// names neither. A maxArgs below zero means there is no upper bound.
+func RequireArgs(minArgs, maxArgs int, want string) cobra.PositionalArgs {
+	return func(c *cobra.Command, args []string) error {
+		if len(args) < minArgs || (maxArgs >= 0 && len(args) > maxArgs) {
+			return Usagef("%s requires %s", c.CommandPath(), want)
+		}
+		return nil
+	}
+}
+
+// Plural returns word, pluralised for n.
+func Plural(n int, word string) string {
+	if n == 1 {
+		return word
+	}
+	return word + "s"
+}

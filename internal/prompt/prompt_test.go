@@ -226,33 +226,6 @@ func TestTheFlagThatSuppliesAPasswordIsNamed(t *testing.T) {
 	}
 }
 
-func TestPromptNameRejectsAnEmptyAnswer(t *testing.T) {
-	capturePrompt(t)
-	withStdin(t, "\n")
-
-	_, err := PromptName()
-
-	if err == nil {
-		t.Fatal("expected an error when no name is given")
-	}
-	// "vault name cannot be empty" described the internal check; this names
-	// the flag that supplies one.
-	if !strings.Contains(err.Error(), "--vault") {
-		t.Errorf("expected the error to name --vault, got %q", err)
-	}
-}
-
-func TestGivenOrPromptNameReturnsWhatWasGiven(t *testing.T) {
-	capturePrompt(t)
-	got, err := GivenOrPromptName("personal")
-	if err != nil {
-		t.Fatalf("GivenOrPromptName() error: %s", err)
-	}
-	if got != "personal" {
-		t.Errorf("expected %q, got %q", "personal", got)
-	}
-}
-
 func TestOnlyYesConfirms(t *testing.T) {
 	tests := []struct {
 		input string

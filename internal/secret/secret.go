@@ -5,28 +5,21 @@ import (
 	"os"
 	"regexp"
 
+	"github.com/andornaut/mrs/internal/cli"
 	"github.com/andornaut/mrs/internal/crypto"
 	"github.com/andornaut/mrs/internal/prompt"
 	"github.com/andornaut/mrs/internal/vault"
 )
 
-// Plural returns word, pluralised for n.
-func Plural(n int, word string) string {
-	if n == 1 {
-		return word
-	}
-	return word + "s"
-}
-
 // Add prompts the user to add secrets to a vault
 func Add(v vault.UnlockedVault) (int, error) {
-	b, err := retrieveBriefcase(v)
+	b, err := readSecrets(v)
 	if err != nil {
 		return 0, err
 	}
 	defer b.Wipe()
 
-	nb, err := takeDictation([]byte("\n"))
+	nb, err := editSecrets([]byte("\n"))
 	if err != nil {
 		return 0, err
 	}
@@ -47,7 +40,7 @@ func Add(v vault.UnlockedVault) (int, error) {
 // it without asking. It reports whether the changes were saved, which is false
 // when the user declines to empty the vault.
 func Edit(assumeYes bool, v vault.UnlockedVault) (bool, error) {
-	b, err := retrieveBriefcase(v)
+	b, err := readSecrets(v)
 	if err != nil {
 		return false, err
 	}
@@ -55,7 +48,7 @@ func Edit(assumeYes bool, v vault.UnlockedVault) (bool, error) {
 	before := b.Len()
 
 	current := b.Bytes()
-	edited, err := takeDictation(current)
+	edited, err := editSecrets(current)
 	crypto.Wipe(current)
 	if err != nil {
 		return false, err
@@ -66,7 +59,7 @@ func Edit(assumeYes bool, v vault.UnlockedVault) (bool, error) {
 	// rather than treating it as an ordinary edit.
 	if before > 0 && edited.Len() == 0 {
 		msg := fmt.Sprintf("This will remove all %d %s from vault %s. Continue?",
-			before, Plural(before, "secret"), v.Name())
+			before, cli.Plural(before, "secret"), v.Name())
 		confirmed, err := prompt.Confirm(assumeYes, msg)
 		if err != nil {
 			return false, err
@@ -88,7 +81,7 @@ func Edit(assumeYes bool, v vault.UnlockedVault) (bool, error) {
 // warnDuplicateKeys reports keys that more than one secret shares. mrs does not
 // merge them, and a search returns each of them, so the user is told rather
 // than left to discover it.
-func warnDuplicateKeys(b *briefcase) {
+func warnDuplicateKeys(b *secretList) {
 	// The keys counted here are the keys printed below, so holding one as a
 	// string adds no exposure that the warning itself does not.
 	counts := make(map[string]int, b.Len())
@@ -109,7 +102,7 @@ func warnDuplicateKeys(b *briefcase) {
 // that reads a vault parses its contents first, so contents that fail here
 // would leave a vault that only export can read.
 func Validate(b []byte) error {
-	parsed, err := transcribe(b)
+	parsed, err := parseSecrets(b)
 	if err != nil {
 		return err
 	}
@@ -121,7 +114,7 @@ func Validate(b []byte) error {
 // the shape a vault is written in, along with how many matched. The caller is
 // responsible for wiping the returned slice.
 func Search(v vault.UnlockedVault, r regexp.Regexp, includeValues bool) ([]byte, int, error) {
-	b, err := retrieveBriefcase(v)
+	b, err := readSecrets(v)
 	if err != nil {
 		return nil, 0, err
 	}

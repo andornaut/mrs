@@ -176,9 +176,9 @@ func TestSearchOutputCanBeRedirectedOnItsOwn(t *testing.T) {
 	// stdout carries the matched secrets and nothing else, in the same shape a
 	// vault is written in, so a search can be piped or redirected as it stands.
 	r := l.Run("search", "-v", "work", "-p", pwFile, "email", "--full").AssertOK()
-	l.Run("vault", "create", "-v", "copy", "-p", pwFile,
+	l.Run("vault", "create", "copy", "-p", pwFile,
 		"-i", l.WriteFile("from-search.txt", r.Stdout)).AssertOK()
-	l.Run("vault", "export", "-v", "copy", "-p", pwFile).
+	l.Run("export", "-v", "copy", "-p", pwFile).
 		AssertOK().
 		AssertStdoutExactly("email\nuser: bob\npass: sekrit\n")
 }

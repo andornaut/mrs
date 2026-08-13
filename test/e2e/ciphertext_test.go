@@ -70,7 +70,7 @@ func TestSavingTheSameSecretsTwiceWritesDifferentBytes(t *testing.T) {
 	if len(first) != len(second) {
 		t.Fatalf("expected the same length for the same plaintext, got %d and %d", len(first), len(second))
 	}
-	l.Run("vault", "export", "-v", "personal", "-p", pwFile).
+	l.Run("export", "-v", "personal", "-p", pwFile).
 		AssertOK().
 		AssertStdoutExactly("a key\na value\n")
 }
@@ -107,7 +107,7 @@ func TestATamperedVaultIsRefused(t *testing.T) {
 		return b
 	})
 
-	l.Run("vault", "export", "-v", "personal", "-p", pwFile).
+	l.Run("export", "-v", "personal", "-p", pwFile).
 		AssertFailed().
 		AssertStderr("failed to decrypt").
 		AssertNoOutput("the-secret-value")
@@ -117,7 +117,7 @@ func TestATamperedVaultIsRefused(t *testing.T) {
 	if err := os.WriteFile(path, before, 0600); err != nil {
 		t.Fatalf("failed to restore the vault: %s", err)
 	}
-	l.Run("vault", "export", "-v", "personal", "-p", pwFile).
+	l.Run("export", "-v", "personal", "-p", pwFile).
 		AssertOK().
 		AssertStdout("the-secret-value")
 }
@@ -142,7 +142,7 @@ func TestADamagedVaultIsRefusedRatherThanGuessedAt(t *testing.T) {
 
 		// Every one of these has to be a clean refusal: mrs must never hand
 		// back part of a secret, or something that looks like one.
-		l.Run("vault", "export", "-v", "personal", "-p", pwFile).
+		l.Run("export", "-v", "personal", "-p", pwFile).
 			AssertFailed().
 			AssertStderr("failed to decrypt").
 			AssertNoOutput("the-secret-value")
@@ -176,7 +176,7 @@ func TestATamperedBackupIsRefused(t *testing.T) {
 	// A backup is restored by copying it over the vault, so it is protected
 	// exactly as the vault is and fails the same way.
 	copyFile(t, backup, l.VaultPath("personal"))
-	l.Run("vault", "export", "-v", "personal", "-p", pwFile).
+	l.Run("export", "-v", "personal", "-p", pwFile).
 		AssertFailed().
 		AssertStderr("failed to decrypt").
 		AssertNoOutput("first-value")
@@ -190,7 +190,7 @@ func TestAWrongPasswordRevealsNothingAboutTheSecrets(t *testing.T) {
 	// about the secrets, and nothing about how close the password was.
 	var answers []string
 	for _, guess := range []string{"a passwore", "a passwor", "a password ", "entirely different"} {
-		r := l.Run("vault", "export", "-v", "personal", "-p", l.PasswordFile("guess.pw", guess)).
+		r := l.Run("export", "-v", "personal", "-p", l.PasswordFile("guess.pw", guess)).
 			AssertFailed().
 			AssertNoOutput("4321").
 			AssertNoOutput("my bank")
@@ -245,7 +245,7 @@ func TestAReaderNeverSeesAPartiallyWrittenVault(t *testing.T) {
 	for reads.Load() < wantReads {
 		// Never a partial file, never a decryption failure, never an empty
 		// vault: a reader sees the version before the save or the one after.
-		l.Run("vault", "export", "-v", "personal", "-p", pwFile).
+		l.Run("export", "-v", "personal", "-p", pwFile).
 			AssertOK().
 			AssertStdoutExactly("a key\nthe-secret-value\n")
 		reads.Add(1)

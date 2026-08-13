@@ -46,18 +46,22 @@ make install
 
 ## Commands
 
-Command | Does | Vault name
---- | --- | ---
-`mrs add` | Add secrets in an editor | a prefix that fits one
-`mrs edit` | Edit secrets in an editor | a prefix that fits one
-`mrs search <regular expression>...` | Print matching secrets | a prefix that fits one
-`mrs vault list` | Print vault names | -
-`mrs vault default` | Print the default vault | -
-`mrs vault create` | Create a vault | a new name
-`mrs vault export` | Print every secret | a prefix that fits one
-`mrs vault change-password` | Re-encrypt under a new password | the whole name
-`mrs vault rename <source> <target>` | Rename a vault | the whole name
-`mrs vault delete` | Delete a vault, after confirming | the whole name
+Commands that read or write the secrets in a vault name it with `--vault`,
+which accepts a prefix. Commands that create, rename or destroy a vault take
+its whole name as an argument.
+
+Command | Does
+--- | ---
+`mrs add` | Add secrets in an editor
+`mrs edit` | Edit secrets in an editor
+`mrs search <regular expression>...` | Print matching secrets
+`mrs export` | Print every secret
+`mrs vault list` | Print vault names
+`mrs vault default` | Print the default vault
+`mrs vault create <name>` | Create a vault
+`mrs vault change-password <name>` | Re-encrypt under a new password
+`mrs vault rename <source> <target>` | Rename a vault
+`mrs vault delete <name>` | Delete a vault, after confirming
 
 `search` matches keys only, unless `--full`. Matching is case insensitive, and
 arguments are joined, so `mrs search bank account` matches `bank account`.
@@ -67,8 +71,8 @@ arguments are joined, so `mrs search bank account` matches `bank account`.
 
 Flag | Commands | Supplies
 --- | --- | ---
-`-v`, `--vault` | all but `vault list`, `vault default` and `vault rename` | the vault's name
-`-p`, `--password-file` | `add`, `edit`, `search`, `vault create`, `vault export`, `vault change-password` | the vault's current password
+`-v`, `--vault` | `add`, `edit`, `search`, `export` | the vault's name, or the start of it
+`-p`, `--password-file` | `add`, `edit`, `search`, `export`, `vault create`, `vault change-password` | the vault's current password
 `-n`, `--new-password-file` | `vault change-password` | the password to change it to
 `-i`, `--import-file` | `vault create` | unencrypted secrets to seed the vault with
 `-f`, `--full` | `search` | match values as well as keys
@@ -81,26 +85,29 @@ no short form, because both are worth spelling out.
 
 ## Naming a vault
 
-An exact name always wins, whatever longer names begin with it: with `work` and
-`work-archive`, `-v work` is `work`. Short of one, a prefix has to fit exactly
-one vault:
+`add`, `edit`, `search` and `export` name a vault with `-v`, which takes a
+prefix. An exact name always wins, whatever longer names begin with it: with
+`work` and `work-archive`, `-v work` is `work`. Short of one, a prefix has to
+fit exactly one vault:
 
 ```text
 $ mrs edit -v alph
 Error: "alph" begins the name of 2 vaults: alpha, alphabet. Use the whole name of the one you mean
 ```
 
-`vault change-password`, `vault rename` and `vault delete` take no prefix at
-all, and name the closest vault when given one.
+Without `-v`, those four use `$MRS_DEFAULT_VAULT_NAME`, or the only vault if
+there is just one. Unlike `-v`, the configured name has to match exactly. No
+vaults, or several with nothing configured, is an error rather than a guess.
 
-Without `-v`:
+`vault create`, `vault change-password`, `vault rename` and `vault delete` name
+the vault as an argument instead, and take no prefix at all: each one creates,
+re-keys, moves or destroys a vault, so a name short of the whole thing must not
+reach a neighbouring one. They name the closest vault when given a prefix:
 
-- `add`, `edit`, `search` and `vault export` use `$MRS_DEFAULT_VAULT_NAME`, or
-  the only vault if there is just one. Unlike `-v`, the configured name has to
-  match exactly.
-- No vaults, or several with nothing configured, is an error rather than a
-  guess.
-- The other `mrs vault` commands ask which vault.
+```text
+$ mrs vault delete alph
+Error: vault "alph" not found. Did you mean "alpha"?
+```
 
 Names may hold ASCII letters, digits, `_` and `-`, up to 200 characters.
 
@@ -121,16 +128,16 @@ Names may hold ASCII letters, digits, `_` and `-`, up to 200 characters.
 fails rather than assume an answer:
 
 ```text
-$ mrs vault delete -v old < /dev/null
+$ mrs vault delete old < /dev/null
 Error: cannot ask "Delete vault old?": stdin is not a terminal. Use --yes to answer it
 ```
 
 ## Output and exit codes
 
 stdout carries what a caller consumes: vault names from `vault list` and
-`vault default`, secrets from `vault export` and `search`. Prompts,
-warnings, errors and reports go to stderr, so `mrs vault export > secrets` and
-`mrs search key | less` carry the secrets alone.
+`vault default`, secrets from `export` and `search`. Prompts, warnings, errors
+and reports go to stderr, so `mrs export > secrets` and `mrs search key | less`
+carry the secrets alone.
 
 ```text
 $ mrs search bar
@@ -147,6 +154,7 @@ Code | Meaning
 1 | it failed
 2 | it was typed wrong: no command, an unknown command or flag, or a missing or extra argument
 3 | `mrs search` ran and matched nothing
+128+n | a signal ended it: 129 SIGHUP, 130 SIGINT, 131 SIGQUIT, 143 SIGTERM
 
 A wrong invocation prints the usage that would have been right; a command that
 ran and failed does not. `mrs --help` writes help to stdout and reports success.
@@ -181,6 +189,11 @@ Environment variable | Description
   vault and carried in its filename.
 - Vaults written with the earlier 4,096 iterations are still read, and are
   re-encrypted at 600,000 on the next save.
+
+The AES-GCM seal and open in [`internal/crypto`](./internal/crypto/crypto.go)
+are copied from [cryptopasta](https://github.com/gtank/cryptopasta), which its
+author placed in the public domain under CC0 to be copied rather than imported.
+The ciphertext is `nonce|ciphertext|tag` with a random 96-bit nonce per save.
 
 ## Developing
 

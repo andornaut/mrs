@@ -15,28 +15,6 @@ import (
 // Callers may treat this as a warning rather than a failed write.
 var ErrDirSync = errors.New("the parent directory could not be synced")
 
-// IsExists returns true if the given path exists.
-// IsExists returns an error if it cannot determine whether the path exists
-func IsExists(p string) (bool, error) {
-	if _, err := os.Stat(p); err == nil {
-		return true, nil
-	} else if os.IsNotExist(err) {
-		return false, nil
-	}
-	return false, fmt.Errorf("could not determine whether path %q exists", p)
-}
-
-// IsNotExists returns true if the given path does not exist or it is not accessible
-func IsNotExists(p string) bool {
-	_, err := os.Stat(p)
-	return os.IsNotExist(err)
-}
-
-// RemoveFile removes a file.
-func RemoveFile(p string) error {
-	return os.Remove(p)
-}
-
 // RemoveTempDir removes the temporary directory if it was created.
 // This should be called via defer in main.go.
 func RemoveTempDir() error {

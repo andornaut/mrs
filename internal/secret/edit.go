@@ -26,18 +26,18 @@ var instructionLines = []string{
 // The extra newline at the end is intended to create an inviting starting point for editing.
 var instructions = strings.Join(instructionLines, "\n") + "\n\n"
 
-func retrieveBriefcase(v vault.UnlockedVault) (*briefcase, error) {
+func readSecrets(v vault.UnlockedVault) (*secretList, error) {
 	plaintext, err := v.Decrypt()
 	if err != nil {
 		return nil, err
 	}
-	// transcribe copies what it keeps, so the vault's own plaintext is wiped
-	// here rather than left for the briefcase's owner to remember.
+	// parseSecrets copies what it keeps, so the vault's own plaintext is wiped
+	// here rather than left for the secretList's owner to remember.
 	defer crypto.Wipe(plaintext)
-	return transcribe(plaintext)
+	return parseSecrets(plaintext)
 }
 
-func takeDictation(content []byte) (*briefcase, error) {
+func editSecrets(content []byte) (*secretList, error) {
 	showInstructions := !config.HideEditorInstructions()
 	if showInstructions {
 		buf := make([]byte, 0, len(instructions)+len(content))
@@ -51,7 +51,7 @@ func takeDictation(content []byte) (*briefcase, error) {
 		return nil, err
 	}
 	defer func() {
-		_ = fs.RemoveFile(p)
+		_ = os.Remove(p)
 	}()
 
 	if err = prompt.Editor(p); err != nil {
@@ -67,9 +67,9 @@ func takeDictation(content []byte) (*briefcase, error) {
 		// it is wiped alongside the original rather than left behind by it.
 		stripped := stripInstructions(b)
 		defer crypto.Wipe(stripped)
-		return transcribe(stripped)
+		return parseSecrets(stripped)
 	}
-	return transcribe(b)
+	return parseSecrets(b)
 }
 
 // stripInstructions removes the instructions that mrs prepended to an editor
@@ -109,10 +109,10 @@ func isInstruction(line []byte) bool {
 // at all being read into memory a line at a time.
 const maxLineLen = 16 * 1024 * 1024
 
-// transcribe parses plaintext into secrets, copying what it keeps so that the
-// caller can wipe what it was given. The briefcase owns its copies, and its
+// parseSecrets parses plaintext into secrets, copying what it keeps so that the
+// caller can wipe what it was given. The secretList owns its copies, and its
 // Wipe method is what clears them.
-func transcribe(plaintext []byte) (*briefcase, error) {
+func parseSecrets(plaintext []byte) (*secretList, error) {
 	var (
 		entry   []byte
 		secrets []secret
@@ -149,5 +149,5 @@ func transcribe(plaintext []byte) (*briefcase, error) {
 		// where there are none.
 		secrets = append(secrets, secret(entry))
 	}
-	return newBriefcase(secrets), nil
+	return newSecretList(secrets), nil
 }

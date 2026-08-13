@@ -6,7 +6,6 @@ toolchain go1.26.3
 
 require (
 	github.com/gofrs/flock v0.13.0
-	github.com/gtank/cryptopasta v0.0.0-20170601214702-1f550f6f2f69
 	github.com/spf13/cobra v1.10.2
 	golang.org/x/crypto v0.54.0
 	golang.org/x/term v0.45.0

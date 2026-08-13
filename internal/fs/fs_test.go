@@ -6,35 +6,6 @@ import (
 	"testing"
 )
 
-func TestIsExists(t *testing.T) {
-	tmpDir := t.TempDir()
-	f := filepath.Join(tmpDir, "exists")
-	if err := os.WriteFile(f, []byte("test"), 0600); err != nil {
-		t.Fatal(err)
-	}
-
-	tests := []struct {
-		name     string
-		path     string
-		expected bool
-	}{
-		{"File exists", f, true},
-		{"File does not exist", filepath.Join(tmpDir, "nope"), false},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := IsExists(tt.path)
-			if err != nil {
-				t.Fatalf("IsExists() error = %v", err)
-			}
-			if got != tt.expected {
-				t.Errorf("IsExists() = %v, expected %v", got, tt.expected)
-			}
-		})
-	}
-}
-
 func TestWriteTempFile(t *testing.T) {
 	// Ensure config points to a test-specific temp dir
 	tmpRoot := t.TempDir()
@@ -45,7 +16,7 @@ func TestWriteTempFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("WriteTempFile() error = %v", err)
 	}
-	defer func() { _ = RemoveFile(path) }()
+	defer func() { _ = os.Remove(path) }()
 
 	// Verify content
 	got, err := os.ReadFile(path)

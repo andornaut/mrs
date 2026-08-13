@@ -1,7 +1,6 @@
 package vaultcmd
 
 import (
-	"errors"
 	"fmt"
 	"os"
 
@@ -27,49 +26,47 @@ var Cmd = &cobra.Command{
 	DisableFlagsInUseLine: true,
 }
 
-// noArgs refuses positional arguments. cobra.NoArgs reports them as an unknown
-// command, which is right for `mrs vault lst` but not for a command that has no
-// subcommands: `mrs vault export personal` names a vault, not a command.
-func noArgs(c *cobra.Command, args []string) error {
-	if len(args) == 0 {
-		return nil
-	}
-	msg := fmt.Sprintf("%s takes no arguments, but got %q", c.CommandPath(), args[0])
-	// A vault is named by a flag, so an argument is most often a name in the
-	// wrong place. list and get-default take no vault, so they say nothing.
-	if c.Flags().Lookup("vault") != nil {
-		msg += ". Use --vault to name a vault"
-	}
-	return cli.Usage(errors.New(msg))
-}
-
 type vaultOptions struct {
 	assumeYes       bool
 	force           bool
 	importFile      string
 	isPath          bool
-	namePrefix      string
 	newPasswordFile string
 	passwordFile    string
+}
+
+// locked resolves the vault named exactly by name and takes its exclusive
+// lock. Every command here changes or removes a vault, so none of them accepts
+// a prefix: a name that is short of the whole thing must not reach a
+// neighbouring vault. The vault is resolved before the lock is taken and
+// before anything is asked, so that a name that is not a vault is refused
+// outright rather than after the user has answered a prompt about it.
+func (o *vaultOptions) locked(name string) (vault.Vault, func(), error) {
+	v, err := vault.Exact(name)
+	if err != nil {
+		return "", nil, err
+	}
+	unlock, err := v.ExclusiveLockForce(o.force)
+	if err != nil {
+		return "", nil, err
+	}
+	return v, unlock, nil
 }
 
 func init() {
 	opts := &vaultOptions{}
 
 	create := &cobra.Command{
-		Use:   "create",
-		Short: "Create a vault",
-		Args:  noArgs,
+		Use:                   "create <name>",
+		Short:                 "Create a vault",
+		Args:                  cli.RequireArgs(1, 1, "a name for the new vault"),
+		DisableFlagsInUseLine: true,
 		RunE: func(c *cobra.Command, args []string) error {
-			name, err := prompt.GivenOrPromptName(opts.namePrefix)
-			if err != nil {
-				return err
-			}
+			name := args[0]
 			// The name and the import file are checked before anything is
-			// asked, as delete resolves its vault before asking, so that a
-			// create that cannot succeed does not first make the user type a
-			// password twice.
-			if err = vault.ValidateName(name); err != nil {
+			// asked, so that a create that cannot succeed does not first make
+			// the user type a password twice.
+			if err := vault.ValidateName(name); err != nil {
 				return err
 			}
 			// Advisory: vault.Create checks again under the lock, which is the
@@ -104,20 +101,12 @@ func init() {
 	}
 
 	changePassword := &cobra.Command{
-		Use:   "change-password",
-		Short: "Change a vault's password",
-		Args:  noArgs,
+		Use:                   "change-password <name>",
+		Short:                 "Change a vault's password",
+		Args:                  cli.RequireArgs(1, 1, "the name of a vault"),
+		DisableFlagsInUseLine: true,
 		RunE: func(c *cobra.Command, args []string) error {
-			name, err := prompt.GivenOrPromptName(opts.namePrefix)
-			if err != nil {
-				return err
-			}
-			// Re-keying a vault changes it, so it takes the whole name.
-			v, err := vault.Exact(name)
-			if err != nil {
-				return err
-			}
-			unlock, err := v.ExclusiveLockForce(opts.force)
+			v, unlock, err := opts.locked(args[0])
 			if err != nil {
 				return err
 			}
@@ -145,24 +134,13 @@ func init() {
 		},
 	}
 
-	delete := &cobra.Command{
-		Use:   "delete",
-		Short: "Delete a vault",
-		Args:  noArgs,
+	deleteCmd := &cobra.Command{
+		Use:                   "delete <name>",
+		Short:                 "Delete a vault",
+		Args:                  cli.RequireArgs(1, 1, "the name of a vault"),
+		DisableFlagsInUseLine: true,
 		RunE: func(c *cobra.Command, args []string) error {
-			name, err := prompt.GivenOrPromptName(opts.namePrefix)
-			if err != nil {
-				return err
-			}
-			// Resolved before the lock is taken and before anything is asked,
-			// so that a name that is not a vault is refused outright rather
-			// than after the user has confirmed deleting it. Deleting requires
-			// the whole name: a prefix must not reach a neighbouring vault.
-			v, err := vault.Exact(name)
-			if err != nil {
-				return err
-			}
-			unlock, err := v.ExclusiveLockForce(opts.force)
+			v, unlock, err := opts.locked(args[0])
 			if err != nil {
 				return err
 			}
@@ -180,67 +158,36 @@ func init() {
 			if err := vault.Delete(v); err != nil {
 				return err
 			}
-			fmt.Fprintf(os.Stderr, "Deleted vault %s\n", name)
+			fmt.Fprintf(os.Stderr, "Deleted vault %s\n", v.Name())
 			return nil
 		},
 	}
 
-	export := &cobra.Command{
-		Use:   "export",
-		Short: "Export secrets from a vault",
-		Args:  noArgs,
-		RunE: func(c *cobra.Command, args []string) error {
-			// Reading, so it takes a prefix and falls back to the default vault,
-			// as search does. The two differ only in what they print.
-			v, err := vault.Named(opts.namePrefix)
-			if err != nil {
-				return err
-			}
-
-			password, err := prompt.GivenOrPromptPassword(opts.passwordFile)
-			if err != nil {
-				return err
-			}
-			defer crypto.Wipe(password)
-
-			secrets, err := vault.Export(v, password)
-			if err != nil {
-				return err
-			}
-			defer crypto.Wipe(secrets)
-			_, err = os.Stdout.Write(secrets)
-			return err
-		},
-	}
-
 	getDefault := &cobra.Command{
-		Use: "default",
-		// The former name, kept so that it goes on working where it is
-		// already written down.
-		Aliases: []string{"get-default"},
-		Short:   "Print the default vault",
-		Long:    "Print the vault that $MRS_DEFAULT_VAULT_NAME names, or the only vault there is",
-		Args:    noArgs,
+		Use:                   "default",
+		Short:                 "Print the default vault",
+		Long:                  "Print the vault that $MRS_DEFAULT_VAULT_NAME names, or the only vault there is",
+		Args:                  cli.NoArgs,
+		DisableFlagsInUseLine: true,
 		RunE: func(c *cobra.Command, args []string) error {
 			v, err := vault.Default()
 			if err != nil {
 				return err
 			}
-			if v != vault.BadVault {
-				if opts.isPath {
-					fmt.Println(v.Path())
-				} else {
-					fmt.Println(v.Name())
-				}
+			if opts.isPath {
+				fmt.Println(v.Path())
+			} else {
+				fmt.Println(v.Name())
 			}
 			return nil
 		},
 	}
 
 	list := &cobra.Command{
-		Use:   "list",
-		Short: "List all vaults",
-		Args:  noArgs,
+		Use:                   "list",
+		Short:                 "List all vaults",
+		Args:                  cli.NoArgs,
+		DisableFlagsInUseLine: true,
 		RunE: func(c *cobra.Command, args []string) error {
 			vaults, err := vault.All()
 			if err != nil {
@@ -258,26 +205,13 @@ func init() {
 	}
 
 	rename := &cobra.Command{
-		Use:   "rename <source-name> <target-name>",
-		Short: "Rename a vault",
-		Args: func(c *cobra.Command, args []string) error {
-			if len(args) != 2 {
-				return cli.Usagef("%s requires a source name and a target name", c.CommandPath())
-			}
-			return nil
-		},
+		Use:                   "rename <source-name> <target-name>",
+		Short:                 "Rename a vault",
+		Args:                  cli.RequireArgs(2, 2, "a source name and a target name"),
+		DisableFlagsInUseLine: true,
 		RunE: func(c *cobra.Command, args []string) error {
-			sourceName := args[0]
-			targetName := args[1]
-
-			// Resolved exactly, and before the lock, for the same reason as
-			// delete: a rename moves a vault, so a prefix must not reach one
-			// the user did not name.
-			v, err := vault.Exact(sourceName)
-			if err != nil {
-				return err
-			}
-			unlock, err := v.ExclusiveLockForce(opts.force)
+			sourceName, targetName := args[0], args[1]
+			v, unlock, err := opts.locked(sourceName)
 			if err != nil {
 				return err
 			}
@@ -291,24 +225,16 @@ func init() {
 		},
 	}
 
-	// Reading a vault takes a name prefix; changing one takes the whole name,
-	// so that a prefix cannot reach a vault the user did not name. The help
-	// text says which, because the flag alone cannot.
-	create.Flags().StringVarP(&opts.namePrefix, "vault", "v", "", "name for the new vault")
-	export.Flags().StringVarP(&opts.namePrefix, "vault", "v", "", "name of a vault, or the start of one")
-	for _, c := range []*cobra.Command{changePassword, delete} {
-		c.Flags().StringVarP(&opts.namePrefix, "vault", "v", "", "full name of a vault")
-	}
-	for _, c := range []*cobra.Command{changePassword, create, export} {
+	for _, c := range []*cobra.Command{changePassword, create} {
 		c.Flags().StringVarP(&opts.passwordFile, "password-file", "p", "", "path to a file that contains your password")
 	}
 	// --force has no short form, because it is not the flag a hurried -f is
 	// reaching for: it breaks another process's lock rather than overwriting
 	// anything, and is worth spelling out.
-	for _, c := range []*cobra.Command{changePassword, create, delete, rename} {
+	for _, c := range []*cobra.Command{changePassword, create, deleteCmd, rename} {
 		c.Flags().BoolVar(&opts.force, "force", false, "delete the vault's lock file first")
 	}
-	delete.Flags().BoolVarP(&opts.assumeYes, "yes", "y", false, "answer yes to the confirmation")
+	deleteCmd.Flags().BoolVarP(&opts.assumeYes, "yes", "y", false, "answer yes to the confirmation")
 
 	changePassword.Flags().StringVarP(&opts.newPasswordFile, "new-password-file", "n", "", "path to a file that contains your new password")
 	create.Flags().StringVarP(&opts.importFile, "import-file", "i", "", "path to a file that contains unencrypted secrets")
@@ -319,7 +245,7 @@ func init() {
 	getDefault.Flags().BoolVar(&opts.isPath, "path", false, "print the vault path instead of the name")
 	list.Flags().BoolVar(&opts.isPath, "path", false, "print vault paths instead of names")
 
-	Cmd.AddCommand(changePassword, create, delete, export, getDefault, list, rename)
+	Cmd.AddCommand(changePassword, create, deleteCmd, getDefault, list, rename)
 }
 
 // readImportFile returns the secrets to seed a new vault with, and refuses a

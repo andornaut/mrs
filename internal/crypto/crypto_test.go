@@ -3,8 +3,6 @@ package crypto
 import (
 	"bytes"
 	"testing"
-
-	"github.com/gtank/cryptopasta"
 )
 
 func TestEncryptDecrypt(t *testing.T) {
@@ -46,7 +44,7 @@ func TestLegacyDecrypt(t *testing.T) {
 	// Manually encrypt with legacy iterations
 	k, _ := key(password, salt, LegacyIterations)
 	defer Wipe(k[:])
-	encrypted, _ := cryptopasta.Encrypt(data, k)
+	encrypted, _ := seal(data, k)
 
 	// Decrypt using the new Decrypt function which should fallback to legacy
 	decrypted, err := Decrypt(encrypted, password, salt)

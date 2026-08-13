@@ -7,7 +7,6 @@ import (
 
 	"github.com/andornaut/mrs/internal/config"
 	"github.com/andornaut/mrs/internal/crypto"
-	"github.com/andornaut/mrs/internal/fs"
 )
 
 func TestFindVaultsExcludesLockAndBackupFiles(t *testing.T) {
@@ -270,8 +269,7 @@ func TestWriteBackup(t *testing.T) {
 	}
 
 	bakPath := vaultPath + ".bak"
-	exists, err := fs.IsExists(bakPath)
-	if err == nil && exists {
+	if _, statErr := os.Stat(bakPath); statErr == nil {
 		t.Error("backup file should not exist after first write")
 	}
 
@@ -281,8 +279,7 @@ func TestWriteBackup(t *testing.T) {
 		t.Fatalf("second write failed: %v", err)
 	}
 
-	exists, err = fs.IsExists(bakPath)
-	if err != nil || !exists {
+	if _, statErr := os.Stat(bakPath); statErr != nil {
 		t.Error("backup file should exist after second write")
 	}
 

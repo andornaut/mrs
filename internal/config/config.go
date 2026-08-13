@@ -8,22 +8,23 @@ import (
 	"unicode"
 )
 
+// The temporary directory is the only one that has to be remembered:
+// os.MkdirTemp creates a new directory on every call, so a second caller would
+// otherwise get a directory that the cleanup on exit never removes. The other
+// two resolve an environment variable and create a directory that may already
+// exist, which is the same answer every time it is asked for.
 var (
-	baseDir     string
-	baseDirErr  error
-	baseDirOnce sync.Once
-
 	tempDir     string
 	tempDirErr  error
 	tempDirOnce sync.Once
-
-	vaultDir     string
-	vaultDirErr  error
-	vaultDirOnce sync.Once
 )
 
-// DefaultVaultName is the name of the default vault
-var DefaultVaultName = os.Getenv("MRS_DEFAULT_VAULT_NAME")
+// DefaultVaultName returns the vault named by $MRS_DEFAULT_VAULT_NAME, or the
+// empty string. It is read on each call rather than at startup, as every other
+// setting here is, so that the environment mrs runs in is the one it reads.
+func DefaultVaultName() string {
+	return os.Getenv("MRS_DEFAULT_VAULT_NAME")
+}
 
 // Editor returns the command to run to launch a text editor, as a program
 // followed by its arguments. $EDITOR commonly carries arguments - "vim -n",
@@ -90,55 +91,41 @@ func HideEditorInstructions() bool {
 
 // GetBaseDir returns the directory where mrs stores its files
 func GetBaseDir() (string, error) {
-	baseDirOnce.Do(func() {
-		b := os.Getenv("MRS_HOME")
-		if b != "" {
-			baseDir = b
-			return
-		}
-
-		dataDir := os.Getenv("XDG_DATA_HOME")
-		if dataDir != "" {
-			baseDir = path.Join(dataDir, "mrs")
-			return
-		}
-
-		homeDir, err := os.UserHomeDir()
-		if err != nil {
-			baseDirErr = err
-			return
-		}
-		baseDir = path.Join(homeDir, ".local/share/mrs")
-	})
-	return baseDir, baseDirErr
+	if b := os.Getenv("MRS_HOME"); b != "" {
+		return b, nil
+	}
+	if dataDir := os.Getenv("XDG_DATA_HOME"); dataDir != "" {
+		return path.Join(dataDir, "mrs"), nil
+	}
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return path.Join(homeDir, ".local/share/mrs"), nil
 }
 
-// GetVaultDir returns the directory where mrs stores vault files
+// GetVaultDir returns the directory where mrs stores vault files, creating it
+// if it does not exist.
 func GetVaultDir() (string, error) {
-	vaultDirOnce.Do(func() {
-		base, err := GetBaseDir()
-		if err != nil {
-			vaultDirErr = err
-			return
-		}
-		p := path.Join(base, "vaults")
-		if err := os.MkdirAll(p, 0700); err != nil {
-			vaultDirErr = err
-			return
-		}
-		// MkdirAll leaves a directory that already exists alone, so a vault
-		// directory readable by others - restored from an archive, or made
-		// under a permissive umask - has its group and other bits cleared.
-		// Only those: setting the mode outright would add write permission to
-		// a directory deliberately made read-only. This is best-effort, since
-		// a directory mrs may not chmod, or one on a filesystem that has no
-		// modes to set, is still usable for storing vaults.
-		if fi, statErr := os.Stat(p); statErr == nil {
-			_ = os.Chmod(p, fi.Mode().Perm()&^0077)
-		}
-		vaultDir = p
-	})
-	return vaultDir, vaultDirErr
+	base, err := GetBaseDir()
+	if err != nil {
+		return "", err
+	}
+	p := path.Join(base, "vaults")
+	if err := os.MkdirAll(p, 0700); err != nil {
+		return "", err
+	}
+	// MkdirAll leaves a directory that already exists alone, so a vault
+	// directory readable by others - restored from an archive, or made under a
+	// permissive umask - has its group and other bits cleared. Only those:
+	// setting the mode outright would add write permission to a directory
+	// deliberately made read-only. This is best-effort, since a directory mrs
+	// may not chmod, or one on a filesystem that has no modes to set, is still
+	// usable for storing vaults.
+	if fi, statErr := os.Stat(p); statErr == nil {
+		_ = os.Chmod(p, fi.Mode().Perm()&^0077)
+	}
+	return p, nil
 }
 
 // GetTempDir returns the directory where mrs stores temporary files.
@@ -167,17 +154,10 @@ func GetTempDir() (string, error) {
 	return tempDir, tempDirErr
 }
 
-// Reset resets the sync.Once states and variables. This is only used for testing.
+// Reset forgets the temporary directory, so that the next call creates a new
+// one. This is only used for testing.
 func Reset() {
-	baseDir = ""
-	baseDirErr = nil
-	baseDirOnce = sync.Once{}
-
 	tempDir = ""
 	tempDirErr = nil
 	tempDirOnce = sync.Once{}
-
-	vaultDir = ""
-	vaultDirErr = nil
-	vaultDirOnce = sync.Once{}
 }

@@ -86,12 +86,12 @@ func TestALongVaultNameIsRejectedClearly(t *testing.T) {
 	l := newLab(t)
 	pwFile := l.PasswordFile("pw", "a password")
 
-	l.Run("vault", "create", "-v", strings.Repeat("a", 201), "-p", pwFile).
+	l.Run("vault", "create", strings.Repeat("a", 201), "-p", pwFile).
 		AssertFailed().
 		AssertStderr("at most 200 characters")
 
 	// A name that fits is still accepted.
-	l.Run("vault", "create", "-v", strings.Repeat("a", 200), "-p", pwFile).AssertOK()
+	l.Run("vault", "create", strings.Repeat("a", 200), "-p", pwFile).AssertOK()
 }
 
 // An editor opens with the cursor on the first line, so typing straight into an
@@ -106,7 +106,7 @@ func TestInstructionsAreRemovedWhereverTheyEndUp(t *testing.T) {
 
 	l.Run("add", "-v", "personal", "-p", pwFile).AssertOK().AssertStderr("1 secret added")
 
-	l.Run("vault", "export", "-v", "personal", "-p", pwFile).
+	l.Run("export", "-v", "personal", "-p", pwFile).
 		AssertOK().
 		AssertStdoutExactly("top key\ntop value\n").
 		AssertNoOutput("# Secrets are separated by blank lines.")

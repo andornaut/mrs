@@ -1,17 +1,38 @@
 package e2e
 
 import (
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/rand"
 	"crypto/sha256"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/gtank/cryptopasta"
 	"golang.org/x/crypto/pbkdf2"
 
 	"github.com/andornaut/mrs/internal/crypto"
 )
+
+// gcm builds the AEAD that a vault file is sealed with. These tests construct
+// and read fixtures against crypto/aes directly rather than through mrs's own
+// crypto package, so that they check the file format rather than agreeing with
+// whatever that package currently does.
+func gcm(t *testing.T, password, salt string, iterations int) cipher.AEAD {
+	t.Helper()
+	k := pbkdf2.Key([]byte(password), []byte(salt), iterations, 32, sha256.New)
+	block, err := aes.NewCipher(k)
+	if err != nil {
+		t.Fatalf("failed to build the fixture cipher: %s", err)
+	}
+	aead, err := cipher.NewGCM(block)
+	if err != nil {
+		t.Fatalf("failed to build the fixture cipher: %s", err)
+	}
+	return aead
+}
 
 // Capability 6: vault files written by earlier versions of mrs, which are
 // upgraded in place, and the backup that is the way back from a save.
@@ -25,13 +46,13 @@ import (
 // given salt and iteration count would have written it.
 func encrypt(t *testing.T, plaintext, password, salt string, iterations int) []byte {
 	t.Helper()
-	var key [32]byte
-	copy(key[:], pbkdf2.Key([]byte(password), []byte(salt), iterations, 32, sha256.New))
-	b, err := cryptopasta.Encrypt([]byte(plaintext), &key)
-	if err != nil {
+	aead := gcm(t, password, salt, iterations)
+	nonce := make([]byte, aead.NonceSize())
+	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
 		t.Fatalf("failed to encrypt the fixture: %s", err)
 	}
-	return b
+	// The nonce is prefixed to the ciphertext, which is the layout mrs reads.
+	return aead.Seal(nonce, nonce, []byte(plaintext), nil)
 }
 
 // decrypts reports whether a vault file can be decrypted with a key derived
@@ -39,13 +60,16 @@ func encrypt(t *testing.T, plaintext, password, salt string, iterations int) []b
 // through a file that mrs will read either way.
 func decrypts(t *testing.T, path, password, salt string, iterations int) bool {
 	t.Helper()
-	var key [32]byte
-	copy(key[:], pbkdf2.Key([]byte(password), []byte(salt), iterations, 32, sha256.New))
+	aead := gcm(t, password, salt, iterations)
 	b, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("failed to read %s: %s", path, err)
 	}
-	_, err = cryptopasta.Decrypt(b, &key)
+	n := aead.NonceSize()
+	if len(b) < n {
+		return false
+	}
+	_, err = aead.Open(nil, b[:n], b[n:], nil)
 	return err == nil
 }
 
@@ -80,7 +104,7 @@ func TestAVaultFileWithNoSaltIsReportedAndIgnored(t *testing.T) {
 		AssertStderr("ignoring").
 		AssertStderr("personal")
 
-	l.Run("vault", "export", "-v", "personal", "-p", pwFile).
+	l.Run("export", "-v", "personal", "-p", pwFile).
 		AssertFailed().
 		AssertStderr("not found")
 
@@ -98,7 +122,7 @@ func TestAVaultFileWithNoSaltDoesNotBlockANewVault(t *testing.T) {
 	pwFile := l.PasswordFile("pw", "a password")
 
 	// The old file is not a vault, so it does not occupy the name.
-	l.Run("vault", "create", "-v", "personal", "-p", pwFile).AssertOK()
+	l.Run("vault", "create", "personal", "-p", pwFile).AssertOK()
 	l.Run("vault", "list").AssertOK().AssertStdoutEquals("personal")
 }
 
@@ -110,7 +134,7 @@ func TestAVaultAtTheOldIterationCountIsUpgradedWhenItIsSaved(t *testing.T) {
 	p := l.writeVaultFile("personal."+salt, "a password", "a key\na-value\n", salt, crypto.LegacyIterations)
 	pwFile := l.PasswordFile("pw", "a password")
 
-	l.Run("vault", "export", "-v", "personal", "-p", pwFile).
+	l.Run("export", "-v", "personal", "-p", pwFile).
 		AssertOK().
 		AssertStdoutExactly("a key\na-value\n").
 		// Its filename already carries a salt, so there is nothing to say.
@@ -143,11 +167,11 @@ func TestAnOldVaultKeepsItsSaltWhenRenamed(t *testing.T) {
 	if got := filepath.Base(l.VaultPath("archive")); got != "archive."+salt {
 		t.Fatalf("expected the salt to travel with the vault, got %q", got)
 	}
-	l.Run("vault", "export", "-v", "archive", "-p", pwFile).
+	l.Run("export", "-v", "archive", "-p", pwFile).
 		AssertOK().
 		AssertStdout("old-value")
 
-	l.Run("vault", "delete", "-v", "archive", "--yes").AssertOK()
+	l.Run("vault", "delete", "archive", "--yes").AssertOK()
 	l.Run("vault", "list").AssertOK().AssertStdoutEquals("")
 	// Nothing that still holds the secrets may be left behind. Lock files are
 	// left in place by every command and hold nothing, so they do not count.
@@ -167,14 +191,14 @@ func TestAPasswordThatEndsInANewlineIsStillAccepted(t *testing.T) {
 	l.writeVaultFile("personal."+salt, "a password\n", "a key\na-value\n", salt, crypto.CurrentIterations)
 	pwFile := l.PasswordFile("pw", "a password\n")
 
-	l.Run("vault", "export", "-v", "personal", "-p", pwFile).
+	l.Run("export", "-v", "personal", "-p", pwFile).
 		AssertOK().
 		AssertStdoutExactly("a key\na-value\n").
 		AssertStderr("ends in a newline")
 
 	// Saving re-encrypts with the trimmed password, so the notice stops.
 	l.Run("edit", "-v", "personal", "-p", pwFile).AssertOK()
-	l.Run("vault", "export", "-v", "personal", "-p", pwFile).
+	l.Run("export", "-v", "personal", "-p", pwFile).
 		AssertOK().
 		AssertNoOutput("ends in a newline")
 }
@@ -186,14 +210,14 @@ func TestTheBackupHoldsTheVersionBeforeTheSave(t *testing.T) {
 	l.editorWrites("a key\nsecond-value\n")
 
 	l.Run("edit", "-v", "personal", "-p", pwFile).AssertOK()
-	l.Run("vault", "export", "-v", "personal", "-p", pwFile).
+	l.Run("export", "-v", "personal", "-p", pwFile).
 		AssertOK().
 		AssertStdoutExactly("a key\nsecond-value\n")
 
 	// Copying the backup over the vault is the documented way back from an
 	// edit, so it has to decrypt and hold what was there before.
 	copyFile(t, vaultPath+".bak", vaultPath)
-	l.Run("vault", "export", "-v", "personal", "-p", pwFile).
+	l.Run("export", "-v", "personal", "-p", pwFile).
 		AssertOK().
 		AssertStdoutExactly("a key\nfirst-value\n")
 }

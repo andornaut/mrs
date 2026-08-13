@@ -13,19 +13,14 @@ import (
 	"github.com/andornaut/mrs/internal/fs"
 )
 
-// Vault is a secrets store
+// Vault is a secrets store, held as the path of the file it is stored in. The
+// zero value names no vault, and is what every function here returns alongside
+// an error.
 type Vault string
-
-var (
-	// BadVault is an invalid Vault
-	BadVault Vault
-	// BadUnlockedVault is an invalid UnlockedVault
-	BadUnlockedVault UnlockedVault
-)
 
 // Name returns the name of the vault
 func (v Vault) Name() string {
-	if v == BadVault {
+	if v == "" {
 		return ""
 	}
 	// basename must contain 0 or 1 "." characters.
@@ -34,7 +29,7 @@ func (v Vault) Name() string {
 
 // Salt returns a salt derived from the filename or empty string if one does not exist.
 func (v Vault) Salt() string {
-	if v == BadVault {
+	if v == "" {
 		return ""
 	}
 	// basename must contain 0 or 1 "." characters.
@@ -62,8 +57,8 @@ func (v Vault) Unlocked(password []byte) UnlockedVault {
 // ExclusiveLock acquires an exclusive lock on the vault.
 // It returns an unlock function and any error encountered.
 func (v Vault) ExclusiveLock() (func(), error) {
-	if v == BadVault {
-		return nil, fmt.Errorf("cannot lock bad vault")
+	if v == "" {
+		return nil, errors.New("cannot lock a vault with no name")
 	}
 	f := flock.New(v.lockPath())
 	locked, err := f.TryLock()
@@ -89,8 +84,8 @@ func (v Vault) ExclusiveLockForce(force bool) (func(), error) {
 
 // RemoveLock deletes the vault's lock file, breaking any lock held by another process.
 func (v Vault) RemoveLock() error {
-	if v == BadVault {
-		return fmt.Errorf("cannot remove lock on bad vault")
+	if v == "" {
+		return errors.New("cannot remove the lock on a vault with no name")
 	}
 	if err := os.Remove(v.lockPath()); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("could not remove lock on vault %s: %w", v.Name(), err)
@@ -112,11 +107,6 @@ type UnlockedVault struct {
 	password []byte
 }
 
-// IsBad returns true if the vault is invalid.
-func (v UnlockedVault) IsBad() bool {
-	return v.Vault == BadVault
-}
-
 // Decrypt returns the vault's plaintext. The caller owns the returned slice and
 // is responsible for wiping it. It is returned rather than wrapped in a reader
 // so that no copy of the plaintext exists without an owner that can wipe it: a
@@ -135,9 +125,11 @@ func (v *UnlockedVault) Decrypt() ([]byte, error) {
 	}
 	decrypted, err := crypto.Decrypt(b, v.password, salt)
 	if err != nil {
-		// Vaults created with --password-file before trailing newlines were
-		// trimmed may include the newline in their password. Retry with it
-		// re-appended. Saving re-encrypts with the trimmed password.
+		// CLEANUP (added 2026-08-13): vaults created with --password-file
+		// before trailing newlines were trimmed may include the newline in
+		// their password. Retry with it re-appended; saving re-encrypts with
+		// the trimmed password. Removable once every such vault has been saved
+		// at least once, which the warning below asks the user to do.
 		for _, suffix := range []string{"\n", "\r\n"} {
 			legacyPassword := append(append([]byte{}, v.password...), suffix...)
 			decrypted, err = crypto.Decrypt(b, legacyPassword, salt)
@@ -164,7 +156,8 @@ func (v *UnlockedVault) Write(plaintext []byte) error {
 		return fmt.Errorf("failed to encrypt secrets, so vault %s is unchanged", v)
 	}
 
-	if exists, existsErr := fs.IsExists(v.Path()); existsErr == nil && exists {
+	// A vault being written for the first time has nothing to back up.
+	if _, statErr := os.Stat(v.Path()); statErr == nil {
 		if copyErr := fs.CopyFile(v.Path(), v.Path()+".bak"); copyErr != nil {
 			warnf("failed to create backup for vault %s: %s", v.Name(), copyErr)
 		}

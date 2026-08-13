@@ -48,15 +48,15 @@ func TestExclusiveLockAndUnlock(t *testing.T) {
 	unlock2()
 }
 
-func TestExclusiveLockBadVault(t *testing.T) {
-	if _, err := BadVault.ExclusiveLock(); err == nil {
-		t.Error("expected ExclusiveLock() on BadVault to return an error")
+func TestExclusiveLockUnnamedVault(t *testing.T) {
+	if _, err := Vault("").ExclusiveLock(); err == nil {
+		t.Error("expected ExclusiveLock() on an unnamed vault to return an error")
 	}
 }
 
-func TestRemoveLockBadVault(t *testing.T) {
-	if err := BadVault.RemoveLock(); err == nil {
-		t.Error("expected RemoveLock() on BadVault to return an error")
+func TestRemoveLockUnnamedVault(t *testing.T) {
+	if err := Vault("").RemoveLock(); err == nil {
+		t.Error("expected RemoveLock() on an unnamed vault to return an error")
 	}
 }
 

@@ -293,7 +293,7 @@ func (l *lab) VaultPath(name string) string {
 func (l *lab) createVault(name, password string) string {
 	l.t.Helper()
 	pwFile := l.PasswordFile(name+".pw", password)
-	l.Run("vault", "create", "-v", name, "-p", pwFile).AssertOK()
+	l.Run("vault", "create", name, "-p", pwFile).AssertOK()
 	return pwFile
 }
 
@@ -302,7 +302,7 @@ func (l *lab) seedVault(name, password, contents string) string {
 	l.t.Helper()
 	pwFile := l.PasswordFile(name+".pw", password)
 	importFile := l.WriteFile(name+".import", contents)
-	l.Run("vault", "create", "-v", name, "-p", pwFile, "-i", importFile).AssertOK()
+	l.Run("vault", "create", name, "-p", pwFile, "-i", importFile).AssertOK()
 	return pwFile
 }
 
@@ -330,7 +330,7 @@ func (l *lab) captureEditorInput() func() string {
 // export returns a vault's decrypted contents.
 func (l *lab) export(name, pwFile string) string {
 	l.t.Helper()
-	return l.Run("vault", "export", "-v", name, "-p", pwFile).AssertOK().Stdout
+	return l.Run("export", "-v", name, "-p", pwFile).AssertOK().Stdout
 }
 
 func (r *result) describe() string {
@@ -352,6 +352,16 @@ func (r *result) AssertFailed() *result {
 	r.t.Helper()
 	if r.ExitCode == 0 {
 		r.t.Fatalf("expected failure, got exit 0\n%s", r.describe())
+	}
+	return r
+}
+
+// AssertUsageError asserts the status mrs gives a wrong invocation, which a
+// script uses to tell a command it typed wrong from one that ran and failed.
+func (r *result) AssertUsageError() *result {
+	r.t.Helper()
+	if r.ExitCode != 2 {
+		r.t.Fatalf("expected exit 2 for a wrong invocation, got exit %d\n%s", r.ExitCode, r.describe())
 	}
 	return r
 }

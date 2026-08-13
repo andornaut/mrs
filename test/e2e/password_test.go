@@ -15,7 +15,7 @@ func TestExportPrintsWhatWasImported(t *testing.T) {
 	contents := "zebra\nzebra value\n\nalpha\nalpha value\n"
 	pwFile := l.seedVault("work", "a password", contents)
 
-	l.Run("vault", "export", "-v", "work", "-p", pwFile).
+	l.Run("export", "-v", "work", "-p", pwFile).
 		AssertOK().
 		AssertStdoutExactly(contents)
 }
@@ -27,7 +27,7 @@ func TestExportPrintsTheSecretsInKeyOrderAfterAnEdit(t *testing.T) {
 
 	l.Run("edit", "-v", "work", "-p", pwFile).AssertOK()
 
-	l.Run("vault", "export", "-v", "work", "-p", pwFile).
+	l.Run("export", "-v", "work", "-p", pwFile).
 		AssertOK().
 		AssertStdoutExactly("alpha\nalpha value\n\nzebra\nzebra value\n")
 }
@@ -36,7 +36,7 @@ func TestExportOfAnEmptyVaultPrintsNothing(t *testing.T) {
 	l := newLab(t)
 	pwFile := l.createVault("empty", "a password")
 
-	l.Run("vault", "export", "-v", "empty", "-p", pwFile).
+	l.Run("export", "-v", "empty", "-p", pwFile).
 		AssertOK().
 		AssertStdoutExactly("")
 }
@@ -46,7 +46,7 @@ func TestExportRejectsAWrongPassword(t *testing.T) {
 	l.seedVault("work", "a password", "a key\nthe-secret-value\n")
 	wrong := l.PasswordFile("wrong.pw", "not the password")
 
-	l.Run("vault", "export", "-v", "work", "-p", wrong).
+	l.Run("export", "-v", "work", "-p", wrong).
 		AssertFailed().
 		AssertStderr("failed to decrypt").
 		AssertNoOutput("the-secret-value")
@@ -56,7 +56,7 @@ func TestExportReportsAMissingVault(t *testing.T) {
 	l := newLab(t)
 	pwFile := l.PasswordFile("pw", "a password")
 
-	l.Run("vault", "export", "-v", "nosuch", "-p", pwFile).
+	l.Run("export", "-v", "nosuch", "-p", pwFile).
 		AssertFailed().
 		AssertStderr("not found")
 }
@@ -66,7 +66,7 @@ func TestExportLeavesTheVaultUntouched(t *testing.T) {
 	pwFile := l.seedVault("work", "a password", "a key\na value\n")
 	before := readFile(t, l.VaultPath("work"))
 
-	l.Run("vault", "export", "-v", "work", "-p", pwFile).AssertOK()
+	l.Run("export", "-v", "work", "-p", pwFile).AssertOK()
 
 	if after := readFile(t, l.VaultPath("work")); after != before {
 		t.Fatal("expected an export to leave the vault file unchanged")
@@ -81,7 +81,7 @@ func TestExportNeedsAPasswordItCanRead(t *testing.T) {
 	// `mrs vault export > secrets` is the natural way to run this command, so
 	// nothing that is not a secret may be written to stdout - least of all a
 	// password prompt, which the user would never see.
-	r := l.RunStdin("a password\n", "vault", "export", "-v", "work").
+	r := l.RunStdin("a password\n", "export", "-v", "work").
 		AssertFailed().
 		AssertStderr("stdin is not a terminal").
 		AssertStderr("--password-file")
@@ -98,7 +98,7 @@ func TestSecretsSurviveImportAndExport(t *testing.T) {
 	contents := "alpha\n  indented value  \n#not a comment\n\nbeta\nbeta value\n"
 	pwFile := l.seedVault("work", "a password", contents)
 
-	l.Run("vault", "export", "-v", "work", "-p", pwFile).
+	l.Run("export", "-v", "work", "-p", pwFile).
 		AssertOK().
 		AssertStdoutExactly(contents)
 }
@@ -107,14 +107,14 @@ func TestImportReportsAMissingFile(t *testing.T) {
 	l := newLab(t)
 	pwFile := l.PasswordFile("pw", "a password")
 
-	l.Run("vault", "create", "-v", "work", "-p", pwFile, "-i", l.UserHome+"/nosuch.txt").
+	l.Run("vault", "create", "work", "-p", pwFile, "-i", l.UserHome+"/nosuch.txt").
 		AssertFailed().
 		AssertStderr("import file")
 
 	// A create that failed must not leave a half-made vault behind, and must
 	// not stand in the way of creating that vault properly afterwards.
 	l.Run("vault", "list").AssertOK().AssertStdoutEquals("")
-	l.Run("vault", "create", "-v", "work", "-p", pwFile).AssertOK()
+	l.Run("vault", "create", "work", "-p", pwFile).AssertOK()
 	l.Run("vault", "list").AssertOK().AssertStdoutEquals("work")
 }
 
@@ -126,7 +126,7 @@ func TestImportRefusesSecretsThatCannotBeReadBack(t *testing.T) {
 	// read, because add, edit and search each parse the secrets first.
 	huge := l.WriteFile("huge.txt", "huge\n"+strings.Repeat("x", 17*1024*1024)+"\n")
 
-	l.Run("vault", "create", "-v", "big", "-p", pwFile, "-i", huge).
+	l.Run("vault", "create", "big", "-p", pwFile, "-i", huge).
 		AssertFailed().
 		AssertStderr("longer than the 16 MiB limit")
 
@@ -140,7 +140,7 @@ func TestImportAcceptsALongLineWithinTheLimit(t *testing.T) {
 	// and must still import.
 	long := l.WriteFile("long.txt", "cert\n"+strings.Repeat("x", 1024*1024)+"\n")
 
-	l.Run("vault", "create", "-v", "certs", "-p", pwFile, "-i", long).AssertOK()
+	l.Run("vault", "create", "certs", "-p", pwFile, "-i", long).AssertOK()
 
 	// The vault is usable, not merely exportable.
 	l.Run("search", "-v", "certs", "-p", pwFile, "cert").
@@ -155,14 +155,14 @@ func TestChangePasswordSwapsTheOldPasswordForTheNew(t *testing.T) {
 	oldPw := l.seedVault("work", "a password", "a key\nthe-secret-value\n")
 	newPw := l.PasswordFile("new.pw", "a different password")
 
-	l.Run("vault", "change-password", "-v", "work", "-p", oldPw, "-n", newPw).
+	l.Run("vault", "change-password", "work", "-p", oldPw, "-n", newPw).
 		AssertOK().
 		AssertStderr("Changed password of vault work")
 
-	l.Run("vault", "export", "-v", "work", "-p", newPw).
+	l.Run("export", "-v", "work", "-p", newPw).
 		AssertOK().
 		AssertStdout("the-secret-value")
-	l.Run("vault", "export", "-v", "work", "-p", oldPw).
+	l.Run("export", "-v", "work", "-p", oldPw).
 		AssertFailed().
 		AssertStderr("failed to decrypt")
 }
@@ -173,12 +173,12 @@ func TestChangePasswordRejectsAWrongCurrentPassword(t *testing.T) {
 	wrong := l.PasswordFile("wrong.pw", "not the password")
 	newPw := l.PasswordFile("new.pw", "a different password")
 
-	l.Run("vault", "change-password", "-v", "work", "-p", wrong, "-n", newPw).
+	l.Run("vault", "change-password", "work", "-p", wrong, "-n", newPw).
 		AssertFailed().
 		AssertStderr("failed to decrypt")
 
 	// A change that did not happen leaves the old password working.
-	l.Run("vault", "export", "-v", "work", "-p", pwFile).
+	l.Run("export", "-v", "work", "-p", pwFile).
 		AssertOK().
 		AssertStdout("the-secret-value")
 }
@@ -188,11 +188,11 @@ func TestChangePasswordRejectsAWeakNewPassword(t *testing.T) {
 	pwFile := l.seedVault("work", "a password", "a key\nthe-secret-value\n")
 	short := l.PasswordFile("short.pw", "short")
 
-	l.Run("vault", "change-password", "-v", "work", "-p", pwFile, "-n", short).
+	l.Run("vault", "change-password", "work", "-p", pwFile, "-n", short).
 		AssertFailed().
 		AssertStderr("at least 8 characters")
 
-	l.Run("vault", "export", "-v", "work", "-p", pwFile).
+	l.Run("export", "-v", "work", "-p", pwFile).
 		AssertOK().
 		AssertStdout("the-secret-value")
 }
@@ -203,13 +203,13 @@ func TestChangePasswordNamesTheFlagForTheNewPassword(t *testing.T) {
 
 	// Without --new-password-file there is nothing to read the new password
 	// from, and --password-file is no help: it supplies the current one.
-	l.RunStdin("a different password\n", "vault", "change-password", "-v", "work", "-p", pwFile).
+	l.RunStdin("a different password\n", "vault", "change-password", "work", "-p", pwFile).
 		AssertFailed().
 		AssertStderr("New password").
 		AssertStderr("stdin is not a terminal").
 		AssertStderr("--new-password-file")
 
-	l.Run("vault", "export", "-v", "work", "-p", pwFile).
+	l.Run("export", "-v", "work", "-p", pwFile).
 		AssertOK().
 		AssertStdout("the-secret-value")
 }
@@ -218,11 +218,11 @@ func TestChangePasswordReportsAMissingNewPasswordFile(t *testing.T) {
 	l := newLab(t)
 	pwFile := l.seedVault("work", "a password", "a key\nthe-secret-value\n")
 
-	l.Run("vault", "change-password", "-v", "work", "-p", pwFile, "-n", l.UserHome+"/nosuch.pw").
+	l.Run("vault", "change-password", "work", "-p", pwFile, "-n", l.UserHome+"/nosuch.pw").
 		AssertFailed().
 		AssertStderr("password file")
 
-	l.Run("vault", "export", "-v", "work", "-p", pwFile).AssertOK()
+	l.Run("export", "-v", "work", "-p", pwFile).AssertOK()
 }
 
 func TestChangePasswordReportsAMissingVault(t *testing.T) {
@@ -231,7 +231,7 @@ func TestChangePasswordReportsAMissingVault(t *testing.T) {
 
 	// The vault is resolved before any password is read, so this fails for the
 	// right reason even without a terminal.
-	l.Run("vault", "change-password", "-v", "nosuch", "-p", pwFile).
+	l.Run("vault", "change-password", "nosuch", "-p", pwFile).
 		AssertFailed().
 		AssertStderr("not found")
 }
@@ -241,7 +241,7 @@ func TestChangePasswordLeavesNoLockHeld(t *testing.T) {
 	pwFile := l.seedVault("work", "a password", "a key\na value\n")
 	short := l.PasswordFile("short.pw", "short")
 
-	l.Run("vault", "change-password", "-v", "work", "-p", pwFile, "-n", short).AssertFailed()
+	l.Run("vault", "change-password", "work", "-p", pwFile, "-n", short).AssertFailed()
 
 	// A command that failed must not lock the vault out of later writes.
 	l.editorAppends("b key\nb value\n")
@@ -256,19 +256,19 @@ func TestAPasswordFileMayEndWithANewline(t *testing.T) {
 	// `echo secret > pw` leaves a trailing newline that is not part of the
 	// password, so a vault created that way is readable with either form.
 	withNewline := l.PasswordFile("pw-newline", "a password\n")
-	l.Run("vault", "create", "-v", "work", "-p", withNewline).AssertOK()
+	l.Run("vault", "create", "work", "-p", withNewline).AssertOK()
 
 	bare := l.PasswordFile("pw-bare", "a password")
-	l.Run("vault", "export", "-v", "work", "-p", bare).AssertOK()
+	l.Run("export", "-v", "work", "-p", bare).AssertOK()
 }
 
 func TestAPasswordFileMayContainSpaces(t *testing.T) {
 	l := newLab(t)
 	// Only trailing newlines are trimmed: spaces are part of the password.
 	pwFile := l.PasswordFile("pw", "  a password with spaces  ")
-	l.Run("vault", "create", "-v", "work", "-p", pwFile).AssertOK()
+	l.Run("vault", "create", "work", "-p", pwFile).AssertOK()
 
 	trimmed := l.PasswordFile("pw-trimmed", "a password with spaces")
-	l.Run("vault", "export", "-v", "work", "-p", trimmed).AssertFailed()
-	l.Run("vault", "export", "-v", "work", "-p", pwFile).AssertOK()
+	l.Run("export", "-v", "work", "-p", trimmed).AssertFailed()
+	l.Run("export", "-v", "work", "-p", pwFile).AssertOK()
 }

@@ -18,75 +18,56 @@ func All() ([]Vault, error) {
 }
 
 // Default returns the vault to use when none is named: the one that
-// $MRS_DEFAULT_VAULT_NAME names, or the only vault there is. It returns
-// BadVault without an error when there are no vaults at all, because a vault
-// directory that is still empty is not a misconfiguration.
+// $MRS_DEFAULT_VAULT_NAME names, or the only vault there is.
 func Default() (Vault, error) {
-	if config.DefaultVaultName != "" {
+	if name := config.DefaultVaultName(); name != "" {
 		// Exactly, unlike --vault. A name written into a shell profile is read
 		// on every run and looked at almost never, so a typo that reaches a
 		// neighbouring vault would go on doing so unnoticed.
-		vs, err := findVaults(config.DefaultVaultName)
+		vs, err := findVaults(name)
 		if err != nil {
-			return BadVault, err
+			return "", err
 		}
-		if v, ok := named(vs, config.DefaultVaultName); ok {
+		if v, ok := named(vs, name); ok {
 			return v, nil
 		}
-		return BadVault, fmt.Errorf(
-			"default vault %q not found. $MRS_DEFAULT_VAULT_NAME must name a vault exactly",
-			config.DefaultVaultName)
+		return "", fmt.Errorf(
+			"default vault %q not found. $MRS_DEFAULT_VAULT_NAME must name a vault exactly", name)
 	}
 	vs, err := All()
 	if err != nil {
-		return BadVault, err
+		return "", err
 	}
 	switch len(vs) {
 	case 0:
-		return BadVault, nil
+		return "", errors.New("no vaults found. Run \"mrs vault create\" to create one")
 	case 1:
 		return vs[0], nil
 	}
 	// Which of several vaults a secret belongs in is not a guess worth making
 	// on the user's behalf, so it is asked for rather than assumed.
-	return BadVault, errors.New(
+	return "", errors.New(
 		"several vaults exist, so there is no default. Use --vault to name one, or set $MRS_DEFAULT_VAULT_NAME")
 }
 
-// Named returns the vault that prefix names, or the default vault when prefix
-// is empty. It is the one way a command names a vault it does not destroy or
-// move; those use Exact.
+// Named returns the vault that prefix names, or the single vault whose name it
+// begins, or the default vault when prefix is empty. It refuses a prefix that
+// could have meant more than one vault: choosing between them alphabetically
+// would read one vault while the user meant another, and write to one while
+// they meant another.
+//
+// It is the one way a command names a vault it does not create, destroy or
+// move; those take a whole name and use Exact.
 func Named(prefix string) (Vault, error) {
 	if prefix == "" {
-		return orDefault()
+		return Default()
 	}
-	return Unique(prefix)
-}
-
-func orDefault() (Vault, error) {
-	v, err := Default()
-	if err != nil {
-		return BadVault, err
-	}
-	if v == BadVault {
-		// Default returns BadVault without an error only when there are no
-		// vaults, so there is no name the user could give that would help.
-		return BadVault, errors.New("no vaults found. Run \"mrs vault create\" to create one")
-	}
-	return v, nil
-}
-
-// Unique returns the vault that prefix names, or the single vault whose name it
-// begins, and refuses a prefix that could have meant more than one. Choosing
-// between them alphabetically would read one vault while the user meant
-// another, and write to one while they meant another.
-func Unique(prefix string) (Vault, error) {
 	v, matched, err := resolve(prefix)
 	if err != nil {
-		return BadVault, err
+		return "", err
 	}
 	if len(matched) > 1 && v.Name() != prefix {
-		return BadVault, fmt.Errorf("%q begins the name of %d vaults: %s. Use the whole name of the one you mean",
+		return "", fmt.Errorf("%q begins the name of %d vaults: %s. Use the whole name of the one you mean",
 			prefix, len(matched), strings.Join(names(matched), ", "))
 	}
 	return v, nil
@@ -105,14 +86,14 @@ func names(vs []Vault) []string {
 // matched, so that a caller can tell an exact name from an ambiguous prefix.
 func resolve(prefix string) (Vault, []Vault, error) {
 	if prefix == "" {
-		return BadVault, nil, fmt.Errorf("vault name cannot be empty")
+		return "", nil, fmt.Errorf("vault name cannot be empty")
 	}
 	vs, err := findVaults(prefix)
 	if err != nil {
-		return BadVault, nil, err
+		return "", nil, err
 	}
 	if vs == nil {
-		return BadVault, nil, fmt.Errorf("vault %q not found. Run \"mrs vault create\" to create one", prefix)
+		return "", nil, fmt.Errorf("vault %q not found. Run \"mrs vault create\" to create one", prefix)
 	}
 	if v, ok := named(vs, prefix); ok {
 		return v, vs, nil
@@ -131,18 +112,18 @@ func named(vs []Vault, name string) (Vault, bool) {
 			return v, true
 		}
 	}
-	return BadVault, false
+	return "", false
 }
 
 // ChangePassword changes a vault's password. It re-keys the vault, so it takes
 // the whole name rather than a prefix that could reach a neighbouring one.
 func ChangePassword(v Vault, oldPassword, newPassword []byte) (UnlockedVault, error) {
 	if err := validatePassword(newPassword); err != nil {
-		return BadUnlockedVault, fmt.Errorf("invalid new password: %w", err)
+		return UnlockedVault{}, fmt.Errorf("invalid new password: %w", err)
 	}
 	u := v.Unlocked(oldPassword)
 	if err := u.changePassword(newPassword); err != nil {
-		return BadUnlockedVault, err
+		return UnlockedVault{}, err
 	}
 	return u, nil
 }
@@ -152,21 +133,21 @@ func ChangePassword(v Vault, oldPassword, newPassword []byte) (UnlockedVault, er
 // from contents that mrs cannot read back.
 func Create(name string, password, contents []byte, force bool) (UnlockedVault, error) {
 	if err := ValidateName(name); err != nil {
-		return BadUnlockedVault, err
+		return UnlockedVault{}, err
 	}
 	if err := validatePassword(password); err != nil {
-		return BadUnlockedVault, err
+		return UnlockedVault{}, err
 	}
 
 	// Lock the vault name before creating files.
 	// We use toPath(name) to get a base path for the lock file.
 	p, err := toPath(name)
 	if err != nil {
-		return BadUnlockedVault, err
+		return UnlockedVault{}, err
 	}
 	unlock, err := Vault(p).ExclusiveLockForce(force)
 	if err != nil {
-		return BadUnlockedVault, err
+		return UnlockedVault{}, err
 	}
 	defer unlock()
 
@@ -175,23 +156,23 @@ func Create(name string, password, contents []byte, force bool) (UnlockedVault, 
 	// with the path of an existing vault of the same name.
 	exists, err := Exists(name)
 	if err != nil {
-		return BadUnlockedVault, err
+		return UnlockedVault{}, err
 	}
 	if exists {
-		return BadUnlockedVault, fmt.Errorf("a vault named %q already exists", name)
+		return UnlockedVault{}, fmt.Errorf("a vault named %q already exists", name)
 	}
 
 	salt, err := crypto.Salt()
 	if err != nil {
-		return BadUnlockedVault, err
+		return UnlockedVault{}, err
 	}
 	p, err = toPathWithSalt(name, salt)
 	if err != nil {
-		return BadUnlockedVault, err
+		return UnlockedVault{}, err
 	}
 	u := Vault(p).Unlocked(password)
 	if err = u.Write(contents); err != nil {
-		return BadUnlockedVault, err
+		return UnlockedVault{}, err
 	}
 	return u, nil
 }

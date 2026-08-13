@@ -21,9 +21,9 @@ Key2
 Key3
 Value3
 `
-	b, err := transcribe([]byte(input))
+	b, err := parseSecrets([]byte(input))
 	if err != nil {
-		t.Fatalf("transcribe failed: %v", err)
+		t.Fatalf("parseSecrets failed: %v", err)
 	}
 
 	if b.Len() != 3 {
@@ -43,9 +43,9 @@ Value3
 
 func TestTranscribePreservesWhitespaceWithinSecrets(t *testing.T) {
 	input := "Key1\n  indented\ntrailing   \n\nKey2\nValue2\n"
-	b, err := transcribe([]byte(input))
+	b, err := parseSecrets([]byte(input))
 	if err != nil {
-		t.Fatalf("transcribe failed: %v", err)
+		t.Fatalf("parseSecrets failed: %v", err)
 	}
 	if got, expected := string(b.secrets[0]), "Key1\n  indented\ntrailing   \n"; got != expected {
 		t.Errorf("expected %q, got %q", expected, got)
@@ -116,7 +116,7 @@ func TestStripInstructions(t *testing.T) {
 	}
 }
 
-func TestBriefcaseSearch(t *testing.T) {
+func TestSecretListSearch(t *testing.T) {
 	secrets := []secret{
 		secret(`Apple
 color: red`),
@@ -125,7 +125,7 @@ color: yellow`),
 		secret(`Cherry
 color: red`),
 	}
-	b := newBriefcase(secrets)
+	b := newSecretList(secrets)
 
 	// Search by key
 	re1 := regexp.MustCompile("(?i)apple")
@@ -149,10 +149,10 @@ color: red`),
 	}
 }
 
-func TestBriefcaseCombined(t *testing.T) {
-	b1 := newBriefcase([]secret{secret(`A
+func TestSecretListCombined(t *testing.T) {
+	b1 := newSecretList([]secret{secret(`A
 val`)})
-	b2 := newBriefcase([]secret{secret(`B
+	b2 := newSecretList([]secret{secret(`B
 val`)})
 
 	combined := b1.Combined(b2)
@@ -179,21 +179,21 @@ More Value`)
 	}
 }
 
-// The rules that make wiping mean anything: a briefcase owns copies of what it
+// The rules that make wiping mean anything: a secretList owns copies of what it
 // was parsed from, wiping it clears them, and what it hands back is a copy that
 // the wipe does not reach.
-func TestABriefcaseOwnsAndWipesItsSecrets(t *testing.T) {
+func TestASecretListOwnsAndWipesItsSecrets(t *testing.T) {
 	plaintext := []byte("Key1\nValue1\n\nKey2\nValue2\n")
-	b, err := transcribe(plaintext)
+	b, err := parseSecrets(plaintext)
 	if err != nil {
-		t.Fatalf("transcribe failed: %v", err)
+		t.Fatalf("parseSecrets failed: %v", err)
 	}
 
-	// Wiping what it was parsed from leaves the briefcase intact, so a caller
+	// Wiping what it was parsed from leaves the secretList intact, so a caller
 	// can clear the vault's plaintext as soon as it has been read.
 	crypto.Wipe(plaintext)
 	if got := string(b.secrets[0]); got != "Key1\nValue1\n" {
-		t.Errorf("expected the briefcase to hold its own copy, got %q", got)
+		t.Errorf("expected the secretList to hold its own copy, got %q", got)
 	}
 
 	// What it hands back outlives the wipe, which is what lets Search return

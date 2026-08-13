@@ -61,7 +61,7 @@ func TestDeleteAndRenameAreRefusedWhileAVaultIsOpen(t *testing.T) {
 
 	// Deleting is refused before the confirmation is asked, so answering "y"
 	// cannot get past the lock.
-	l.RunStdin("y\n", "vault", "delete", "-v", "work").
+	l.RunStdin("y\n", "vault", "delete", "work").
 		AssertFailed().
 		AssertStderr("locked by another process")
 
@@ -81,7 +81,7 @@ func TestReadersAreNotBlockedWhileAVaultIsOpen(t *testing.T) {
 
 	// A write is atomic, so a reader sees either the old vault or the new one
 	// and never a half-written file. Making readers wait would buy nothing.
-	l.Run("vault", "export", "-v", "work", "-p", pwFile).
+	l.Run("export", "-v", "work", "-p", pwFile).
 		AssertOK().
 		AssertStdout("the-secret-value")
 
@@ -134,14 +134,14 @@ func TestCreateIsRefusedWhileTheNameIsHeldAndCanBeForced(t *testing.T) {
 	// so the collision is the more useful thing to say.
 	newPw := l.PasswordFile("new.pw", "another password")
 	for _, args := range [][]string{
-		{"vault", "create", "-v", "work", "-p", newPw},
-		{"vault", "create", "--force", "-v", "work", "-p", newPw},
+		{"vault", "create", "work", "-p", newPw},
+		{"vault", "create", "--force", "work", "-p", newPw},
 	} {
 		l.Run(args...).AssertFailed().AssertStderr("already exists")
 	}
 
 	// A free name creates normally once the lock is out of the way.
-	l.Run("vault", "create", "--force", "-v", "other", "-p", newPw).AssertOK()
+	l.Run("vault", "create", "--force", "other", "-p", newPw).AssertOK()
 }
 
 func TestAReleasedLockDoesNotBlockLaterWrites(t *testing.T) {

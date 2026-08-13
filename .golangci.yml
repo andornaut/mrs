@@ -15,10 +15,10 @@ linters:
   settings:
     gosec:
       excludes:
-        - G115
-        - G204
-        - G304
-        - G703
+        - G115 # integer conversion overflow - signal numbers and file modes
+        - G204 # subprocess launched with variable - running $EDITOR is the point
+        - G304 # file operations with user paths - vault and password paths are the tool's purpose
+        - G703 # path traversal - validating user paths is the tool's purpose
     govet:
       disable:
         - fieldalignment
@@ -30,14 +30,21 @@ linters:
   exclusions:
     generated: lax
     rules:
-      # Tests get a shorter leash: cleanup errors and repeated fixture literals
-      # are both normal.
+      # Tests get a longer leash than the code they exercise: fixture literals
+      # repeat by nature (goconst), helpers take parameters only some cases use
+      # (unparam), and the untrusted input gosec warns about is input the test
+      # wrote itself.
       - linters:
-          - errcheck
           - goconst
           - gosec
           - unparam
         path: _test\.go
+      # errcheck stays narrow. Only teardown is fire-and-forget; a dropped error
+      # anywhere else in a test is a test that passes without checking anything.
+      - linters:
+          - errcheck
+        path: _test\.go
+        text: Error return value of `os\.(Remove|RemoveAll)` is not checked
 issues:
   max-issues-per-linter: 0
   max-same-issues: 0

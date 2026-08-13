@@ -9,27 +9,6 @@ import (
 	"github.com/andornaut/mrs/internal/crypto"
 )
 
-func PromptName() (string, error) {
-	name, err := TrimmedLine("Vault name")
-	if err != nil {
-		return "", err
-	}
-	if name == "" {
-		// Reached by a user who answered the prompt with a bare newline, and
-		// by any caller with nothing on stdin to answer it. Neither learns
-		// anything from being told a name cannot be empty.
-		return "", errors.New("no vault name given. Use --vault to name one")
-	}
-	return name, nil
-}
-
-func GivenOrPromptName(namePrefix string) (string, error) {
-	if namePrefix == "" {
-		return PromptName()
-	}
-	return namePrefix, nil
-}
-
 func GivenOrPromptPassword(passwordFile string) ([]byte, error) {
 	if passwordFile != "" {
 		return readPasswordFile(passwordFile)

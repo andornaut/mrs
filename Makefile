@@ -45,4 +45,4 @@ coverage-html: test
 	@echo "Coverage report generated: coverage.html"
 
 uninstall:
-	rm -f "$(DESTDIR)$(BINPREFIX)/$(TARGET)"
+	sudo rm -f "$(DESTDIR)$(BINPREFIX)/$(TARGET)"

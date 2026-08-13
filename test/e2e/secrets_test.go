@@ -20,7 +20,7 @@ func TestAddWritesSecretsToAnEmptyVault(t *testing.T) {
 		AssertStderr("2 secrets added to vault personal")
 
 	// Secrets are sorted by key, case-insensitively.
-	l.Run("vault", "export", "-v", "personal", "-p", pwFile).
+	l.Run("export", "-v", "personal", "-p", pwFile).
 		AssertOK().
 		AssertStdoutExactly("alpha key\nalpha value\n\nzebra key\nzebra value\n")
 }
@@ -87,7 +87,7 @@ func TestEditReplacesTheSecrets(t *testing.T) {
 
 	l.Run("edit", "-v", "personal", "-p", pwFile).AssertOK()
 
-	l.Run("vault", "export", "-v", "personal", "-p", pwFile).
+	l.Run("export", "-v", "personal", "-p", pwFile).
 		AssertOK().
 		AssertStdoutExactly("new key\nnew value\n").
 		AssertNoOutput("old value")
@@ -102,7 +102,7 @@ func TestEditToEmptyIsConfirmedFirst(t *testing.T) {
 		AssertOK().
 		AssertStderr("Saved changes to vault personal")
 
-	l.Run("vault", "export", "-v", "personal", "-p", pwFile).AssertOK().AssertStdoutEquals("")
+	l.Run("export", "-v", "personal", "-p", pwFile).AssertOK().AssertStdoutEquals("")
 	// The backup written before the save is the user's way back.
 	if _, err := os.Stat(l.VaultPath("personal") + ".bak"); err != nil {
 		t.Fatalf("expected a backup of the emptied vault: %s", err)
@@ -139,7 +139,7 @@ func TestAnEditThatRemovesSomeSecretsIsNotConfirmed(t *testing.T) {
 		AssertOK().
 		AssertStderr("Saved changes")
 
-	l.Run("vault", "export", "-v", "personal", "-p", pwFile).
+	l.Run("export", "-v", "personal", "-p", pwFile).
 		AssertOK().
 		AssertStdoutExactly("a key\na value\n")
 }
@@ -153,7 +153,7 @@ func TestACommentLineIsKeptAsASecret(t *testing.T) {
 
 	l.Run("edit", "-v", "personal", "-p", pwFile).AssertOK()
 
-	l.Run("vault", "export", "-v", "personal", "-p", pwFile).
+	l.Run("export", "-v", "personal", "-p", pwFile).
 		AssertOK().
 		AssertStdoutExactly("#1 bank pin\npin: 4321\n")
 	l.Run("search", "bank", "-v", "personal", "-p", pwFile).
@@ -170,7 +170,7 @@ func TestTheInstructionsAreStrippedEvenIfPartlyDeleted(t *testing.T) {
 
 	l.Run("add", "-v", "personal", "-p", pwFile).AssertOK()
 
-	l.Run("vault", "export", "-v", "personal", "-p", pwFile).
+	l.Run("export", "-v", "personal", "-p", pwFile).
 		AssertOK().
 		AssertStdoutExactly("# my own note\na key\na value\n")
 }
@@ -184,7 +184,7 @@ func TestWhitespaceWithinASecretIsPreserved(t *testing.T) {
 
 	l.Run("add", "-v", "personal", "-p", pwFile).AssertOK()
 
-	l.Run("vault", "export", "-v", "personal", "-p", pwFile).
+	l.Run("export", "-v", "personal", "-p", pwFile).
 		AssertOK().
 		AssertStdoutExactly(content)
 }
@@ -228,7 +228,7 @@ func TestInstructionsAreShownAndNeverSaved(t *testing.T) {
 	if got := input(); !strings.Contains(got, "# Secrets are separated by blank lines.") {
 		t.Fatalf("expected the editor to be shown the instructions, got %q", got)
 	}
-	l.Run("vault", "export", "-v", "personal", "-p", pwFile).
+	l.Run("export", "-v", "personal", "-p", pwFile).
 		AssertOK().
 		AssertStdoutExactly("a key\na value\n")
 }
@@ -263,7 +263,7 @@ func TestSecretsSurviveARoundTrip(t *testing.T) {
 
 			l.Run("add", "-v", "personal", "-p", pwFile).AssertOK()
 
-			l.Run("vault", "export", "-v", "personal", "-p", pwFile).
+			l.Run("export", "-v", "personal", "-p", pwFile).
 				AssertOK().
 				AssertStdoutExactly(content)
 		})
@@ -282,7 +282,7 @@ func TestANullByteInAValueSurvivesAnEdit(t *testing.T) {
 	// secrets and writing them back.
 	l.Run("edit", "-v", "personal", "-p", pwFile).AssertOK()
 
-	l.Run("vault", "export", "-v", "personal", "-p", pwFile).
+	l.Run("export", "-v", "personal", "-p", pwFile).
 		AssertOK().
 		AssertStdoutExactly(content)
 }
@@ -298,7 +298,7 @@ func TestSecretsAreSeparatedByBlankLines(t *testing.T) {
 		AssertOK().
 		AssertStderr("2 secrets added")
 
-	l.Run("vault", "export", "-v", "personal", "-p", pwFile).
+	l.Run("export", "-v", "personal", "-p", pwFile).
 		AssertOK().
 		AssertStdoutExactly("first key\nfirst value\n\nsecond key\nsecond value\n")
 }
@@ -312,7 +312,7 @@ func TestWindowsLineEndingsAreAccepted(t *testing.T) {
 		AssertOK().
 		AssertStderr("2 secrets added")
 
-	l.Run("vault", "export", "-v", "personal", "-p", pwFile).
+	l.Run("export", "-v", "personal", "-p", pwFile).
 		AssertOK().
 		AssertStdoutExactly("a key\na value\n\nb key\nb value\n")
 }

@@ -40,7 +40,7 @@ func TestAVaultLoosenedByHandIsTightenedWhenItIsSaved(t *testing.T) {
 
 		assertFileMode(t, path, 0600)
 	}
-	l.Run("vault", "export", "-v", "personal", "-p", pwFile).
+	l.Run("export", "-v", "personal", "-p", pwFile).
 		AssertOK().
 		AssertStdoutExactly("a key\na value\n")
 }
@@ -56,7 +56,7 @@ func TestAStricterVaultModeIsKept(t *testing.T) {
 	l.Run("edit", "-v", "personal", "-p", pwFile).AssertOK()
 
 	assertFileMode(t, path, 0400)
-	l.Run("vault", "export", "-v", "personal", "-p", pwFile).
+	l.Run("export", "-v", "personal", "-p", pwFile).
 		AssertOK().
 		AssertStdoutExactly("a key\na value\n")
 }
@@ -124,7 +124,7 @@ func TestAReadOnlyVaultDirectoryFailsTheSaveAndKeepsTheVault(t *testing.T) {
 	}
 
 	chmod(t, l.VaultDir(), 0700)
-	l.Run("vault", "export", "-v", "personal", "-p", pwFile).
+	l.Run("export", "-v", "personal", "-p", pwFile).
 		AssertOK().
 		AssertStdoutExactly("a key\nthe-secret-value\n")
 }
@@ -139,7 +139,7 @@ func TestAnUnreadableVaultIsReported(t *testing.T) {
 
 	// Nothing can be decrypted, so say why rather than reporting a vault that
 	// failed to decrypt, which would send the user looking for their password.
-	l.Run("vault", "export", "-v", "personal", "-p", pwFile).
+	l.Run("export", "-v", "personal", "-p", pwFile).
 		AssertFailed().
 		AssertStderr("permission denied").
 		AssertNoOutput("the-secret-value")
