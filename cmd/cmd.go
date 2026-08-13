@@ -90,8 +90,13 @@ func init() {
 			uv := v.Unlocked(password)
 			defer uv.Wipe()
 
-			if err := secret.Edit(uv); err != nil {
+			saved, err := secret.Edit(uv)
+			if err != nil {
 				return err
+			}
+			if !saved {
+				fmt.Println("Cancelled")
+				return nil
 			}
 			fmt.Printf("Saved changes to vault %s\n", uv)
 			return nil

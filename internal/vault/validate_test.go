@@ -50,17 +50,25 @@ func TestValidatePassword(t *testing.T) {
 }
 
 func TestValidateNameWithOptionalSalt(t *testing.T) {
+	const salt = "12345678901234567890123456789012" // 32 characters, as crypto.Salt() returns
 	tests := []struct {
 		name    string
 		isValid bool
 	}{
-		{"vault", true},
-		{"vault.salt", true},
-		{"vault.salt.extra", false},
+		{"vault", true}, // a legacy vault, which has no salt
+		{"vault." + salt, true},
+		{"vault-1." + salt, true},
+		{"vault." + salt + ".extra", false},
 		{"vault.", false},
-		{".salt", false},
-		{"invalid name.salt", false},
+		{"." + salt, false},
+		{"invalid name." + salt, false},
 		{"vault.invalid salt!", false},
+		// A salt-shaped segment is required, so unrelated files in the vault
+		// directory are not mistaken for vaults.
+		{"README.md", false},
+		{"notes.txt", false},
+		{"vault.tooshort", false},
+		{"vault." + salt + "0", false},
 	}
 
 	for _, tt := range tests {

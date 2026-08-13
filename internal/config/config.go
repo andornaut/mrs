@@ -3,7 +3,9 @@ package config
 import (
 	"os"
 	"path"
+	"strings"
 	"sync"
+	"unicode"
 )
 
 var (
@@ -23,13 +25,62 @@ var (
 // DefaultVaultName is the name of the default vault
 var DefaultVaultName = os.Getenv("MRS_DEFAULT_VAULT_NAME")
 
-// Editor returns the command to run to launch a text editor
-func Editor() string {
-	e := os.Getenv("EDITOR")
-	if e != "" {
-		return e
+// Editor returns the command to run to launch a text editor, as a program
+// followed by its arguments. $EDITOR commonly carries arguments - "vim -n",
+// "code -w", "emacsclient -t" - so it is split rather than treated as a single
+// program name. Arguments are split on whitespace, honouring single quotes,
+// double quotes and backslash escapes, so that a program whose path contains a
+// space can be quoted. The editor is executed directly rather than through a
+// shell, so no shell metacharacters are interpreted.
+func Editor() []string {
+	argv := splitArgs(os.Getenv("EDITOR"))
+	if len(argv) == 0 {
+		return []string{"nano"}
 	}
-	return "nano"
+	return argv
+}
+
+func splitArgs(s string) []string {
+	var (
+		argv    []string
+		current strings.Builder
+		quote   rune
+		escaped bool
+		started bool
+	)
+	for _, r := range s {
+		switch {
+		case escaped:
+			current.WriteRune(r)
+			escaped = false
+		case r == '\\' && quote != '\'':
+			// A backslash is literal inside single quotes.
+			escaped = true
+			started = true
+		case quote != 0:
+			if r == quote {
+				quote = 0
+			} else {
+				current.WriteRune(r)
+			}
+		case r == '\'' || r == '"':
+			quote = r
+			started = true
+		case unicode.IsSpace(r):
+			if started {
+				argv = append(argv, current.String())
+				current.Reset()
+				started = false
+			}
+		default:
+			current.WriteRune(r)
+			started = true
+		}
+	}
+	if started {
+		argv = append(argv, current.String())
+	}
+	return argv
 }
 
 // HideEditorInstructions indicates that instructions comments should be omitted from the top of editor sessions

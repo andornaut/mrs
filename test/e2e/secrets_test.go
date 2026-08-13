@@ -1,0 +1,437 @@
+package e2e
+
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"syscall"
+	"testing"
+)
+
+// Capability 2: authoring secrets with `add` and `edit`, through a real editor
+// process editing a real plaintext file.
+
+func TestAddWritesSecretsToAnEmptyVault(t *testing.T) {
+	l := newLab(t)
+	pwFile := l.createVault("personal", "a password")
+	l.editorWrites("zebra key\nzebra value\n\nalpha key\nalpha value\n")
+
+	l.Run("add", "-v", "personal", "-p", pwFile).
+		AssertOK().
+		AssertStdout("2 secret(s) added to vault personal")
+
+	// Secrets are sorted by key, case-insensitively.
+	l.Run("vault", "export", "-v", "personal", "-p", pwFile).
+		AssertOK().
+		AssertStdoutExactly("alpha key\nalpha value\n\nzebra key\nzebra value\n")
+}
+
+func TestAddKeepsTheExistingSecrets(t *testing.T) {
+	l := newLab(t)
+	pwFile := l.seedVault("personal", "a password", "existing key\nexisting value\n")
+	l.editorWrites("new key\nnew value\n")
+
+	l.Run("add", "-v", "personal", "-p", pwFile).
+		AssertOK().
+		AssertStdout("1 secret(s) added")
+
+	got := l.export("personal", pwFile)
+	for _, want := range []string{"existing value", "new value"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("expected the vault to contain %q, got %q", want, got)
+		}
+	}
+}
+
+func TestAddShowsTheEditorOnlyTheNewSecrets(t *testing.T) {
+	l := newLab(t)
+	pwFile := l.seedVault("personal", "a password", "existing key\nexisting value\n")
+	input := l.captureEditorInput()
+
+	l.Run("add", "-v", "personal", "-p", pwFile).AssertOK()
+
+	// Unlike edit, add must not put the existing secrets in front of the user,
+	// nor leave them in a plaintext file for longer than needed.
+	if got := input(); strings.Contains(got, "existing value") {
+		t.Fatalf("expected add not to show the existing secrets, got %q", got)
+	}
+}
+
+func TestAddReportsWhenNothingWasAdded(t *testing.T) {
+	l := newLab(t)
+	pwFile := l.createVault("personal", "a password")
+	l.Setenv("FAKE_EDITOR_MODE", "noop")
+
+	l.Run("add", "-v", "personal", "-p", pwFile).
+		AssertOK().
+		AssertStdout("No secrets added to vault personal")
+}
+
+func TestEditShowsTheEditorTheExistingSecrets(t *testing.T) {
+	l := newLab(t)
+	pwFile := l.seedVault("personal", "a password", "a key\na value\n")
+	input := l.captureEditorInput()
+
+	l.Run("edit", "-v", "personal", "-p", pwFile).
+		AssertOK().
+		AssertStdout("Saved changes to vault personal")
+
+	if got := input(); !strings.Contains(got, "a value") {
+		t.Fatalf("expected edit to show the existing secrets, got %q", got)
+	}
+}
+
+func TestEditReplacesTheSecrets(t *testing.T) {
+	l := newLab(t)
+	pwFile := l.seedVault("personal", "a password", "old key\nold value\n")
+	l.editorWrites("new key\nnew value\n")
+
+	l.Run("edit", "-v", "personal", "-p", pwFile).AssertOK()
+
+	l.Run("vault", "export", "-v", "personal", "-p", pwFile).
+		AssertOK().
+		AssertStdoutExactly("new key\nnew value\n").
+		AssertNoOutput("old value")
+}
+
+func TestEditToEmptyIsConfirmedFirst(t *testing.T) {
+	l := newLab(t)
+	pwFile := l.seedVault("personal", "a password", "a key\na value\n\nb key\nb value\n")
+	l.Setenv("FAKE_EDITOR_MODE", "clear")
+
+	l.RunStdin("y\n", "edit", "-v", "personal", "-p", pwFile).
+		AssertOK().
+		AssertStdout("remove all 2 secret(s) from vault personal")
+
+	l.Run("vault", "export", "-v", "personal", "-p", pwFile).AssertOK().AssertStdoutEquals("")
+	// The backup written before the save is the user's way back.
+	if _, err := os.Stat(l.VaultPath("personal") + ".bak"); err != nil {
+		t.Fatalf("expected a backup of the emptied vault: %s", err)
+	}
+}
+
+func TestEditToEmptyIsRefusedByDefault(t *testing.T) {
+	l := newLab(t)
+	pwFile := l.seedVault("personal", "a password", "a key\na value\n")
+	l.Setenv("FAKE_EDITOR_MODE", "clear")
+
+	// Declining keeps the secrets, and so does reaching end-of-input without
+	// answering, which is what an unattended script does.
+	for _, stdin := range []string{"n\n", ""} {
+		l.RunStdin(stdin, "edit", "-v", "personal", "-p", pwFile).
+			AssertOK().
+			AssertStdout("Cancelled").
+			AssertNoOutput("Saved changes")
+
+		if got := l.export("personal", pwFile); !strings.Contains(got, "a value") {
+			t.Fatalf("expected the secrets to survive, got %q", got)
+		}
+	}
+}
+
+func TestAnEditThatRemovesSomeSecretsIsNotConfirmed(t *testing.T) {
+	l := newLab(t)
+	pwFile := l.seedVault("personal", "a password", "a key\na value\n\nb key\nb value\n")
+	l.editorWrites("a key\na value\n")
+
+	// Only emptying a vault is confirmed; an ordinary edit is not interrupted.
+	l.Run("edit", "-v", "personal", "-p", pwFile).
+		AssertOK().
+		AssertStdout("Saved changes")
+
+	l.Run("vault", "export", "-v", "personal", "-p", pwFile).
+		AssertOK().
+		AssertStdoutExactly("a key\na value\n")
+}
+
+func TestACommentLineIsKeptAsASecret(t *testing.T) {
+	l := newLab(t)
+	// A key such as "#1 bank pin" is content, not a comment. It used to be
+	// dropped by any edit at all, including one that changed nothing.
+	pwFile := l.seedVault("personal", "a password", "#1 bank pin\npin: 4321\n")
+	l.Setenv("FAKE_EDITOR_MODE", "noop")
+
+	l.Run("edit", "-v", "personal", "-p", pwFile).AssertOK()
+
+	l.Run("vault", "export", "-v", "personal", "-p", pwFile).
+		AssertOK().
+		AssertStdoutExactly("#1 bank pin\npin: 4321\n")
+	l.Run("search", "bank", "-v", "personal", "-p", pwFile).
+		AssertOK().
+		AssertStdout("pin: 4321")
+}
+
+func TestTheInstructionsAreStrippedEvenIfPartlyDeleted(t *testing.T) {
+	l := newLab(t)
+	pwFile := l.createVault("personal", "a password")
+	// An editor session in which the user deleted one instruction line and
+	// wrote a comment of their own above their first secret.
+	l.editorWrites("# The first line of each secret is its unique key.\n\n# my own note\na key\na value\n")
+
+	l.Run("add", "-v", "personal", "-p", pwFile).AssertOK()
+
+	l.Run("vault", "export", "-v", "personal", "-p", pwFile).
+		AssertOK().
+		AssertStdoutExactly("# my own note\na key\na value\n")
+}
+
+func TestWhitespaceWithinASecretIsPreserved(t *testing.T) {
+	l := newLab(t)
+	pwFile := l.createVault("personal", "a password")
+	// A value that is indented, or that ends in a space, must survive intact.
+	content := "ssh config\n    IdentityFile ~/.ssh/id\npassword: trailing  \n"
+	l.editorWrites(content)
+
+	l.Run("add", "-v", "personal", "-p", pwFile).AssertOK()
+
+	l.Run("vault", "export", "-v", "personal", "-p", pwFile).
+		AssertOK().
+		AssertStdoutExactly(content)
+}
+
+func TestDuplicateKeysAreReported(t *testing.T) {
+	l := newLab(t)
+	pwFile := l.seedVault("personal", "a password", "shared key\nfirst value\n")
+	l.editorWrites("shared key\nsecond value\n")
+
+	l.Run("add", "-v", "personal", "-p", pwFile).
+		AssertOK().
+		AssertStderr(`2 secrets share the key "shared key"`)
+
+	// Both are kept, and a search returns both.
+	l.Run("search", "shared", "-v", "personal", "-p", pwFile).
+		AssertOK().
+		AssertStdout("first value").
+		AssertStdout("second value")
+}
+
+func TestEditSurvivesAnEditorThatRemovesTheFile(t *testing.T) {
+	l := newLab(t)
+	pwFile := l.seedVault("personal", "a password", "a key\na value\n")
+	l.Setenv("FAKE_EDITOR_MODE", "delete")
+
+	l.Run("edit", "-v", "personal", "-p", pwFile).AssertFailed()
+
+	if got := l.export("personal", pwFile); !strings.Contains(got, "a value") {
+		t.Fatalf("expected the secrets to survive, got %q", got)
+	}
+}
+
+func TestInstructionsAreShownAndNeverSaved(t *testing.T) {
+	l := newLab(t)
+	pwFile := l.createVault("personal", "a password")
+	input := l.captureEditorInput()
+	l.editorAppends("a key\na value\n")
+
+	l.Run("add", "-v", "personal", "-p", pwFile).AssertOK()
+
+	if got := input(); !strings.Contains(got, "# Secrets are separated by blank lines.") {
+		t.Fatalf("expected the editor to be shown the instructions, got %q", got)
+	}
+	l.Run("vault", "export", "-v", "personal", "-p", pwFile).
+		AssertOK().
+		AssertStdoutExactly("a key\na value\n")
+}
+
+func TestInstructionsCanBeHidden(t *testing.T) {
+	l := newLab(t)
+	pwFile := l.createVault("personal", "a password")
+	l.Setenv("MRS_HIDE_EDITOR_INSTRUCTIONS", "1")
+	input := l.captureEditorInput()
+
+	l.Run("add", "-v", "personal", "-p", pwFile).AssertOK()
+
+	if got := input(); strings.Contains(got, "#") {
+		t.Fatalf("expected no instructions in the editor, got %q", got)
+	}
+}
+
+func TestSecretsSurviveARoundTrip(t *testing.T) {
+	contents := map[string]string{
+		"unicode":            "パスワード\n🔐 emoji value\nÜmlaut: naïve café\n",
+		"punctuation":        "key: with: colons\nvalue = a\\b/c\"d'e`f$g\n",
+		"a long value":       "long key\n" + strings.Repeat("0123456789abcdef", 4096) + "\n",
+		"many lines":         "many lines key\n" + strings.Repeat("a line\n", 500),
+		"tabs within a line": "tab key\nuser\tpassword\n",
+	}
+	for desc, content := range contents {
+		t.Run(desc, func(t *testing.T) {
+			l := newLab(t)
+			pwFile := l.createVault("personal", "a password")
+			l.editorWrites(content)
+
+			l.Run("add", "-v", "personal", "-p", pwFile).AssertOK()
+
+			l.Run("vault", "export", "-v", "personal", "-p", pwFile).
+				AssertOK().
+				AssertStdoutExactly(content)
+		})
+	}
+}
+
+func TestSecretsAreSeparatedByBlankLines(t *testing.T) {
+	l := newLab(t)
+	pwFile := l.createVault("personal", "a password")
+	// Repeated and whitespace-only separators are all one separator, and
+	// leading and trailing blank lines are discarded.
+	l.editorWrites("\n\nfirst key\nfirst value\n\n \t \n\nsecond key\nsecond value\n\n\n")
+
+	l.Run("add", "-v", "personal", "-p", pwFile).
+		AssertOK().
+		AssertStdout("2 secret(s) added")
+
+	l.Run("vault", "export", "-v", "personal", "-p", pwFile).
+		AssertOK().
+		AssertStdoutExactly("first key\nfirst value\n\nsecond key\nsecond value\n")
+}
+
+func TestWindowsLineEndingsAreAccepted(t *testing.T) {
+	l := newLab(t)
+	pwFile := l.createVault("personal", "a password")
+	l.editorWrites("a key\r\na value\r\n\r\nb key\r\nb value\r\n")
+
+	l.Run("add", "-v", "personal", "-p", pwFile).
+		AssertOK().
+		AssertStdout("2 secret(s) added")
+
+	l.Run("vault", "export", "-v", "personal", "-p", pwFile).
+		AssertOK().
+		AssertStdoutExactly("a key\na value\n\nb key\nb value\n")
+}
+
+func TestAddReportsAMissingVault(t *testing.T) {
+	l := newLab(t)
+	pwFile := l.PasswordFile("pw", "a password")
+
+	l.Run("add", "-v", "absent", "-p", pwFile).AssertFailed().AssertOutput("not found")
+	l.Run("edit", "-v", "absent", "-p", pwFile).AssertFailed().AssertOutput("not found")
+}
+
+func TestAddRejectsAWrongPassword(t *testing.T) {
+	l := newLab(t)
+	l.seedVault("personal", "a password", "a key\na value\n")
+	wrong := l.PasswordFile("wrong.pw", "another password")
+	l.editorWrites("new key\nnew value\n")
+
+	l.Run("add", "-v", "personal", "-p", wrong).
+		AssertFailed().
+		AssertOutput("failed to decrypt")
+	l.Run("edit", "-v", "personal", "-p", wrong).
+		AssertFailed().
+		AssertOutput("failed to decrypt")
+
+	// A wrong password must never overwrite the secrets it could not read.
+	correct := l.PasswordFile("personal.pw", "a password")
+	if got := l.export("personal", correct); !strings.Contains(got, "a value") {
+		t.Fatalf("expected the secrets to survive, got %q", got)
+	}
+}
+
+func TestPlaintextIsNotLeftBehind(t *testing.T) {
+	l := newLab(t)
+	pwFile := l.seedVault("personal", "a password", "a key\nthe-secret-value\n")
+	l.editorAppends("new key\nanother-secret-value\n")
+
+	l.Run("add", "-v", "personal", "-p", pwFile).AssertOK()
+	l.Run("edit", "-v", "personal", "-p", pwFile).AssertOK()
+
+	assertNoPlaintextUnder(t, l.Temp, "the-secret-value", "another-secret-value")
+	// The vault directory must hold ciphertext only, backups included.
+	assertNoPlaintextUnder(t, l.VaultDir(), "the-secret-value", "another-secret-value")
+}
+
+func TestTheFileBeingEditedIsNotReadableByOthers(t *testing.T) {
+	l := newLab(t)
+	pwFile := l.seedVault("personal", "a password", "a key\na value\n")
+	statFile := filepath.Join(filepath.Dir(l.Home), "editor-stat")
+	l.Setenv("FAKE_EDITOR_STAT", statFile)
+
+	l.Run("edit", "-v", "personal", "-p", pwFile).AssertOK()
+
+	stat := readFile(t, statFile)
+	if !strings.Contains(stat, "file=0600") {
+		t.Fatalf("expected the decrypted file to be readable only by its owner, got %q", stat)
+	}
+	if !strings.Contains(stat, "dir=0700") {
+		t.Fatalf("expected the decrypted file's directory to be private, got %q", stat)
+	}
+	if !strings.HasPrefix(strings.SplitN(stat, "path=", 2)[1], l.Temp) {
+		t.Fatalf("expected the decrypted file to live under MRS_TEMP (%s), got %q", l.Temp, stat)
+	}
+}
+
+func TestAVaultWithALongLineStaysUsable(t *testing.T) {
+	l := newLab(t)
+	// A certificate or token pasted without line breaks. Such a vault can be
+	// created by import and read by export, so add, edit and search must not
+	// refuse it and lock the user out of their own secrets.
+	long := strings.Repeat("A", 200_000)
+	pwFile := l.seedVault("personal", "a password", "tls cert\n"+long+"\n")
+
+	l.Run("edit", "-v", "personal", "-p", pwFile).AssertOK()
+	l.Run("search", "cert", "-v", "personal", "-p", pwFile).AssertOK().AssertStdout("1 secret(s) matched")
+
+	l.editorAppends("another key\nanother value\n")
+	l.Run("add", "-v", "personal", "-p", pwFile).AssertOK()
+
+	if got := l.export("personal", pwFile); !strings.Contains(got, long) {
+		t.Fatal("expected the long line to survive an edit")
+	}
+}
+
+func TestAnInterruptedEditingSessionLeavesNoPlaintext(t *testing.T) {
+	l := newLab(t)
+	pwFile := l.seedVault("personal", "a password", "a key\nthe-secret-value\n")
+	ready := filepath.Join(filepath.Dir(l.Home), "editor-ready")
+	l.Setenv("FAKE_EDITOR_MODE", "hang")
+	l.Setenv("FAKE_EDITOR_SLEEP", "60")
+	l.Setenv("FAKE_EDITOR_READY", ready)
+
+	cmd := l.Start("edit", "-v", "personal", "-p", pwFile)
+	waitForFile(t, ready)
+	// The decrypted secrets are on disk right now, mid-session.
+	editing := strings.TrimSpace(readFile(t, ready))
+	if b, err := os.ReadFile(editing); err != nil || !strings.Contains(string(b), "the-secret-value") {
+		t.Fatalf("expected the decrypted file at %s to hold the secrets (err: %v)", editing, err)
+	}
+
+	// A user pressing Ctrl-C, or a shell shutting down, must not leave them there.
+	if err := cmd.Process.Signal(syscall.SIGTERM); err != nil {
+		t.Fatalf("failed to signal mrs: %s", err)
+	}
+	if err := cmd.Wait(); err == nil {
+		t.Fatal("expected mrs to exit non-zero after being interrupted")
+	}
+	// The editor outlives mrs, but it is holding a file that is already gone.
+
+	assertNotExists(t, editing)
+	assertNoPlaintextUnder(t, l.Temp, "the-secret-value")
+	// The vault itself is untouched by an interrupted session.
+	if got := l.export("personal", pwFile); !strings.Contains(got, "the-secret-value") {
+		t.Fatalf("expected the vault to be unchanged, got %q", got)
+	}
+}
+
+// assertNoPlaintextUnder walks a directory and fails if any file contains one
+// of the given secrets.
+func assertNoPlaintextUnder(t *testing.T, dir string, secrets ...string) {
+	t.Helper()
+	err := filepath.Walk(dir, func(p string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() {
+			return err
+		}
+		b, err := os.ReadFile(p)
+		if err != nil {
+			return err
+		}
+		for _, s := range secrets {
+			if strings.Contains(string(b), s) {
+				t.Errorf("found plaintext %q in %s", s, p)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("failed to walk %s: %s", dir, err)
+	}
+}

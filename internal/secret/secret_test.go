@@ -7,16 +7,16 @@ import (
 )
 
 func TestTranscribe(t *testing.T) {
+	// Every line is a line of secrets, including one that begins with a "#".
+	// Only mrs's own instructions are removed, and only by stripInstructions.
 	input := `
-# This is a comment
 Key1
 Value1
 More Value1
 
 Key2
-Value2
+#Value2
 
-# Another comment
 Key3
 Value3
 `
@@ -35,6 +35,72 @@ Value3
 		if b.secrets[i].Key() != key {
 			t.Errorf("expected key %d to be %q, got %q", i, key, b.secrets[i].Key())
 		}
+	}
+	if got := b.secrets[1].String(); got != "Key2\n#Value2\n" {
+		t.Errorf("expected a value beginning with # to be kept, got %q", got)
+	}
+}
+
+func TestTranscribePreservesWhitespaceWithinSecrets(t *testing.T) {
+	input := "Key1\n  indented\ntrailing   \n\nKey2\nValue2\n"
+	b, err := transcribe(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("transcribe failed: %v", err)
+	}
+	if got, expected := b.secrets[0].String(), "Key1\n  indented\ntrailing   \n"; got != expected {
+		t.Errorf("expected %q, got %q", expected, got)
+	}
+}
+
+func TestStripInstructions(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "the instructions mrs prepends",
+			input:    instructions + "Key1\nValue1\n",
+			expected: "Key1\nValue1\n",
+		},
+		{
+			name:     "instructions the user partly deleted",
+			input:    instructionLines[1] + "\n\nKey1\nValue1\n",
+			expected: "Key1\nValue1\n",
+		},
+		{
+			name:     "a comment of the user's own is kept",
+			input:    instructions + "# my own note\nKey1\nValue1\n",
+			expected: "# my own note\nKey1\nValue1\n",
+		},
+		{
+			name:     "content that begins with a blank line",
+			input:    instructions + "\n\nKey1\nValue1\n",
+			expected: "Key1\nValue1\n",
+		},
+		{
+			name:     "no instructions at all",
+			input:    "Key1\nValue1\n",
+			expected: "Key1\nValue1\n",
+		},
+		{
+			name:     "nothing but instructions",
+			input:    instructions,
+			expected: "",
+		},
+		{
+			name:     "an empty session",
+			input:    "",
+			expected: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := string(stripInstructions([]byte(tt.input))); got != tt.expected {
+				t.Errorf("stripInstructions() = %q, expected %q", got, tt.expected)
+			}
+		})
 	}
 }
 

@@ -13,8 +13,16 @@ import (
 
 // Cmd implements ./mrs vault
 var Cmd = &cobra.Command{
-	Use:          "vault [command]",
-	Short:        "Manage vaults",
+	Use:   "vault [command]",
+	Short: "Manage vaults",
+	// Without Args and RunE, an unrecognised subcommand prints help and exits 0,
+	// which hides a typo such as `mrs vault lst` from a script. Args alone is
+	// not enough: cobra returns help before validating the arguments of a
+	// command that has no RunE.
+	Args: cobra.NoArgs,
+	RunE: func(c *cobra.Command, args []string) error {
+		return c.Help()
+	},
 	SilenceUsage: true,
 }
 
@@ -124,7 +132,9 @@ func init() {
 			defer unlock()
 
 			if !prompt.Bool(fmt.Sprintf("Delete vault %s?", name), false) {
-				return errors.New("cancelled")
+				// Declining the confirmation is a normal outcome, not a failure.
+				fmt.Println("Cancelled")
+				return nil
 			}
 			if err := vault.Delete(name); err != nil {
 				return err

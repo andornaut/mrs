@@ -19,6 +19,12 @@ key and the subsequent lines are the secret value. When searching with
 `mrs search` only the key is searched, but you can include a `--full` flag to
 search through the full secret contents.
 
+When you `mrs add` or `mrs edit`, a few instruction lines are shown at the top
+of the editor and removed when you save. Every other line is kept exactly as
+you typed it, including indentation, trailing spaces, and lines that begin with
+a `#`. Secrets are sorted by key when they are saved. Two secrets may share a
+key, and `mrs` prints a warning when they do.
+
 ```text
 $ mrs vault export
 Vault password:
@@ -94,7 +100,7 @@ You can use environment variables to customize some settings.
 
 Environment variable | Description
 --- | ---
-EDITOR | The editor to use to add or edit secrets (default: nano)
+EDITOR | The editor to use to add or edit secrets (default: nano). May include arguments, such as `vim -n` or `code -w`. Quote a path that contains spaces.
 MRS_DEFAULT_VAULT_NAME | The vault to use when `--vault` is not specified (default: the first vault found)
 MRS_HIDE_EDITOR_INSTRUCTIONS | If set to any value, then instructions comments will not be included when adding or editing secrets
 MRS_HOME | The directory where `mrs` stores encrypted vault files (default: `${HOME}/.local/share/mrs`)

@@ -7,10 +7,10 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strings"
 
 	"github.com/andornaut/mrs/internal/config"
 	"github.com/andornaut/mrs/internal/crypto"
-	"github.com/andornaut/mrs/internal/fs"
 )
 
 // All returns a slice of all vaults
@@ -92,15 +92,15 @@ func Create(name string, password []byte, importFile string) (UnlockedVault, err
 	}
 	defer unlock()
 
-	// Ensure that a legacy vault - one that does not have a salt - does not exist.
-	legacyPath, err := toPath(name)
+	// Ensure that no vault of this name exists, whether it is a legacy vault -
+	// one that does not have a salt - or a salted one. Comparing paths is not
+	// enough, because a new vault is given a fresh random salt and so never
+	// collides with the path of an existing vault of the same name.
+	exists, err := existsByName(name)
 	if err != nil {
 		return BadUnlockedVault, err
 	}
-	var exists bool
-	if exists, err = fs.IsExists(legacyPath); err != nil {
-		return BadUnlockedVault, err
-	} else if exists {
+	if exists {
 		return BadUnlockedVault, fmt.Errorf("a vault named \"%s\" already exists", name)
 	}
 
@@ -111,12 +111,6 @@ func Create(name string, password []byte, importFile string) (UnlockedVault, err
 	p, err = toPathWithSalt(name, salt)
 	if err != nil {
 		return BadUnlockedVault, err
-	}
-	exists, err = fs.IsExists(p)
-	if err != nil {
-		return BadUnlockedVault, err
-	} else if exists {
-		return BadUnlockedVault, fmt.Errorf("a vault named \"%s\" already exists", name)
 	}
 	u := Vault(p).Unlocked(password)
 	content := ""
@@ -192,6 +186,15 @@ func Rename(sourceName, targetName string) error {
 	if err != nil {
 		return err
 	}
+	// Comparing paths is not enough, because the target keeps the source's salt
+	// and so never collides with the path of an existing vault of the same name.
+	exists, err := existsByName(targetName)
+	if err != nil {
+		return err
+	}
+	if exists {
+		return fmt.Errorf("a vault named \"%s\" already exists", targetName)
+	}
 	var targetPath string
 	salt := sourceVault.Salt()
 	if salt == "" {
@@ -202,14 +205,6 @@ func Rename(sourceName, targetName string) error {
 	}
 	if err != nil {
 		return err
-	}
-	var exists bool
-	exists, err = fs.IsExists(targetPath)
-	if err != nil {
-		return err
-	}
-	if exists {
-		return fmt.Errorf("the target path \"%s\" already exists", targetPath)
 	}
 	if err := os.Rename(sourceVault.Path(), targetPath); err != nil {
 		return err
@@ -249,6 +244,21 @@ func removeTempFiles(vaultPath string) error {
 		}
 	}
 	return errors.Join(errs...)
+}
+
+// existsByName reports whether a vault with exactly the given name exists,
+// whatever salt its filename carries.
+func existsByName(name string) (bool, error) {
+	vs, err := findVaults(name)
+	if err != nil {
+		return false, err
+	}
+	for _, v := range vs {
+		if v.Name() == name {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func exact(name string) (Vault, error) {
@@ -291,9 +301,15 @@ func findVaults(prefix string) ([]Vault, error) {
 		if ext == ".lock" || ext == ".bak" || ext == ".tmp" {
 			continue
 		}
-		// Skip stray files that do not match the vault filename shape
-		// (e.g. .DS_Store, editor swap files) instead of failing the listing.
+		// Skip stray files that do not match the vault filename shape instead of
+		// failing the listing, but say so, so that a vault whose file was
+		// renamed by hand does not disappear without explanation. Hidden files
+		// (.DS_Store, editor swap files) are never vaults, so they are skipped
+		// quietly.
 		if err := validateNameWithOptionalSalt(base); err != nil {
+			if !strings.HasPrefix(base, ".") {
+				warnf("ignoring \"%s\", because a vault file is named <name> or <name>.<salt>", p)
+			}
 			continue
 		}
 		// A file that has a vault-shaped name but cannot be stat'd or is a

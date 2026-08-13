@@ -32,12 +32,19 @@ func Bool(msg string, defaultTrue bool) bool {
 
 // Editor opens the file at p using a text editor
 func Editor(p string) error {
-	cmd := exec.Command(config.Editor(), p)
+	argv := config.Editor()
+	args := append(append([]string{}, argv[1:]...), p)
+	cmd := exec.Command(argv[0], args...)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.Dir = filepath.Dir(p)
-	return cmd.Run()
+	if err := cmd.Run(); err != nil {
+		// Name the editor, because the failure is usually a mistyped or unset
+		// $EDITOR rather than anything to do with the secrets being edited.
+		return fmt.Errorf("editor \"%s\" failed: %w", strings.Join(argv, " "), err)
+	}
+	return nil
 }
 
 // Password prompts the user to enter a password without echoing their input.
