@@ -50,7 +50,15 @@ func TestListPathsPrintsAbsolutePaths(t *testing.T) {
 	if got := strings.TrimSpace(r.Stdout); got != l.VaultPath("personal") {
 		t.Fatalf("expected the vault path %q, got %q", l.VaultPath("personal"), got)
 	}
-	l.Run("vault", "list", "-p").AssertOK().AssertStdout(l.VaultDir())
+
+	// --path has no short form, so that -p means the password file on every
+	// command that takes one.
+	for _, args := range [][]string{
+		{"vault", "list", "-p"},
+		{"vault", "get-default", "-p"},
+	} {
+		l.Run(args...).AssertFailed().AssertOutput("unknown shorthand flag")
+	}
 }
 
 func TestCreateRejectsADuplicateName(t *testing.T) {

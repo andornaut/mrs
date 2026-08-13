@@ -149,7 +149,9 @@ func init() {
 	}
 	add.Flags().BoolVarP(&opts.force, "force", "f", false, "delete the vault's lock file before adding")
 	edit.Flags().BoolVarP(&opts.force, "force", "f", false, "delete the vault's lock file before editing")
-	search.Flags().BoolVarP(&opts.includeValues, "full", "f", false, "search the full contents, instead of the first line of each secret")
+	// -a, not -f: search takes no lock, so --force means nothing to it, and -f
+	// is --force on every command that does take one.
+	search.Flags().BoolVarP(&opts.includeValues, "full", "a", false, "search the full contents, instead of the first line of each secret")
 	Cmd.AddCommand(add, edit, search, vaultcmd.Cmd)
 }
 

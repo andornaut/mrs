@@ -99,10 +99,15 @@ func TestSearchFullHasAShortFlag(t *testing.T) {
 	l := newLab(t)
 	pwFile := l.seedVault("work", "a password", searchVault)
 
-	// -f means --full here, unlike on add and edit where it means --force.
-	l.Run("search", "-v", "work", "-p", pwFile, "-f", "sekrit").
+	l.Run("search", "-v", "work", "-p", pwFile, "-a", "sekrit").
 		AssertOK().
 		AssertStdout("1 secret(s) matched")
+
+	// Not -f: search takes no lock, so --force means nothing to it, and -f is
+	// --force on every command that does take one.
+	l.Run("search", "-v", "work", "-p", pwFile, "-f", "sekrit").
+		AssertFailed().
+		AssertOutput("unknown shorthand flag")
 }
 
 func TestSearchPrintsEveryMatchSeparatedByABlankLine(t *testing.T) {

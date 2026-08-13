@@ -56,6 +56,11 @@ Flag | Command | Supplies
 `-n`, `--new-password-file` | `vault change-password` | the password to change it to
 `-i`, `--import-file` | `vault create` | unencrypted secrets to seed the vault with
 
+A short flag means the same thing everywhere: `-p` is always the password file
+and `-f` is always `--force`, which deletes a vault's lock file before writing.
+`--path`, on `vault list` and `vault get-default`, has no short form for that
+reason, and `search` spells its full-contents flag `-a`, `--full`.
+
 A trailing newline is trimmed, so `echo 'a password' > pw` works. Any other
 whitespace is part of the password.
 

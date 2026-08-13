@@ -259,8 +259,12 @@ func init() {
 
 	changePassword.Flags().StringVarP(&opts.newPasswordFile, "new-password-file", "n", "", "path to a file that contains your new password")
 	create.Flags().StringVarP(&opts.importFile, "import-file", "i", "", "path to a file that contains unencrypted secrets")
-	getDefault.Flags().BoolVarP(&opts.isPath, "path", "p", false, "print the vault path instead of the name")
-	list.Flags().BoolVarP(&opts.isPath, "path", "p", false, "print vault paths instead of names")
+	// --path has no short form, so that -p means the password file on every
+	// command that has one. These two never take a password, but -p meaning
+	// two things under `mrs vault` is a trap for the person typing, not for
+	// the parser.
+	getDefault.Flags().BoolVar(&opts.isPath, "path", false, "print the vault path instead of the name")
+	list.Flags().BoolVar(&opts.isPath, "path", false, "print vault paths instead of names")
 
 	Cmd.AddCommand(changePassword, create, delete, export, getDefault, list, rename)
 }
