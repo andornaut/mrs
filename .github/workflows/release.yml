@@ -29,7 +29,7 @@ jobs:
   test:
     uses: ./.github/workflows/test.yml
 
-  build:
+  build-platform:
     runs-on: ubuntu-latest
 
     # The platforms .goreleaser.yaml builds for a tag. macOS is Apple Silicon
@@ -79,6 +79,25 @@ jobs:
         with:
           name: mrs_${{ matrix.goos }}_${{ matrix.asset_arch }}
           path: mrs_${{ matrix.goos }}_${{ matrix.asset_arch }}.tar.gz
+
+  # A matrix leg reports as `build-platform (linux, amd64, x86_64)`, a name that
+  # changes whenever the matrix does, and a required check that stops reporting
+  # blocks every pull request forever. This job reports under one stable name,
+  # so branch protection has a single check to require no matter how the matrix
+  # grows.
+  #
+  # `always()` and not `!cancelled()`, which looks tidier and is a hole: a
+  # cancelled run would skip this job, and GitHub counts a skipped required
+  # check as passing, so an unverified commit becomes mergeable. Failing closed
+  # costs a red check on runs that were cancelled anyway.
+  build:
+    needs: build-platform
+    if: always()
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check that every platform built
+        run: '[ "${{ needs.build-platform.result }}" = success ]'
 
   goreleaser:
     needs: [build, test]
