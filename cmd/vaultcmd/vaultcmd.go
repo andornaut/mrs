@@ -76,6 +76,16 @@ func init() {
 			if err = vault.ValidateName(name); err != nil {
 				return err
 			}
+			// Advisory: vault.Create checks again under the lock, which is the
+			// answer that counts. This one only spares the user from typing a
+			// password for a vault that is already there.
+			taken, err := vault.Exists(name)
+			if err != nil {
+				return err
+			}
+			if taken {
+				return fmt.Errorf("a vault named %q already exists", name)
+			}
 			contents, err := readImportFile(opts.importFile)
 			if err != nil {
 				return err
@@ -129,7 +139,7 @@ func init() {
 			}
 			defer crypto.Wipe(newPassword)
 
-			uv, err := vault.ChangePassword(name, oldPassword, newPassword)
+			uv, err := vault.ChangePassword(v, oldPassword, newPassword)
 			if err != nil {
 				return err
 			}
@@ -171,7 +181,7 @@ func init() {
 				fmt.Fprintln(os.Stderr, "Cancelled")
 				return nil
 			}
-			if err := vault.Delete(name); err != nil {
+			if err := vault.Delete(v); err != nil {
 				return err
 			}
 			fmt.Fprintf(os.Stderr, "Deleted vault %s\n", name)
@@ -273,7 +283,7 @@ func init() {
 			}
 			defer unlock()
 
-			if err := vault.Rename(sourceName, targetName); err != nil {
+			if err := vault.Rename(v, targetName); err != nil {
 				return err
 			}
 			fmt.Fprintf(os.Stderr, "Renamed vault %s to %s\n", sourceName, targetName)

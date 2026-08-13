@@ -5,13 +5,19 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # Called by the release workflow, so that nothing is published that this has
+  # not passed. Workflows do not wait on each other, so a green Test run beside
+  # a release says nothing about whether the release waited for it.
+  workflow_call:
   workflow_dispatch:
 
 permissions:
   contents: read
 
+# Keyed by the calling workflow as well as the ref, so that the run started by
+# a push and the run the release workflow calls do not cancel each other.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: test-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:

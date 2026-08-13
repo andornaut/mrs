@@ -160,17 +160,12 @@ func named(vs []Vault, name string) (Vault, bool) {
 
 // ChangePassword changes a vault's password. It re-keys the vault, so it takes
 // the whole name rather than a prefix that could reach a neighbouring one.
-func ChangePassword(name string, oldPassword, newPassword []byte) (UnlockedVault, error) {
-	v, err := Exact(name)
-	if err != nil {
-		return BadUnlockedVault, err
-	}
-	if err = validatePassword(newPassword); err != nil {
+func ChangePassword(v Vault, oldPassword, newPassword []byte) (UnlockedVault, error) {
+	if err := validatePassword(newPassword); err != nil {
 		return BadUnlockedVault, fmt.Errorf("invalid new password: %w", err)
 	}
 	u := v.Unlocked(oldPassword)
-	err = u.changePassword(newPassword)
-	if err != nil {
+	if err := u.changePassword(newPassword); err != nil {
 		return BadUnlockedVault, err
 	}
 	return u, nil
@@ -202,7 +197,7 @@ func Create(name string, password, contents []byte, force bool) (UnlockedVault, 
 	// Ensure that no vault of this name exists. Comparing paths is not enough,
 	// because a new vault is given a fresh random salt and so never collides
 	// with the path of an existing vault of the same name.
-	exists, err := existsByName(name)
+	exists, err := Exists(name)
 	if err != nil {
 		return BadUnlockedVault, err
 	}
@@ -226,11 +221,7 @@ func Create(name string, password, contents []byte, force bool) (UnlockedVault, 
 }
 
 // Delete deletes a vault, along with its backup and temporary files
-func Delete(name string) error {
-	v, err := Exact(name)
-	if err != nil {
-		return err
-	}
+func Delete(v Vault) error {
 	if err := os.Remove(v.Path()); err != nil {
 		return err
 	}
@@ -266,21 +257,17 @@ func Export(v Vault, password []byte) (string, error) {
 }
 
 // Rename renames a vault
-func Rename(sourceName, targetName string) error {
+func Rename(sourceVault Vault, targetName string) error {
+	sourceName := sourceVault.Name()
 	if sourceName == targetName {
 		return fmt.Errorf("the source and target vault names cannot both be %q", sourceName)
 	}
 	if err := ValidateName(targetName); err != nil {
 		return err
 	}
-
-	sourceVault, err := Exact(sourceName)
-	if err != nil {
-		return err
-	}
 	// Comparing paths is not enough, because the target keeps the source's salt
 	// and so never collides with the path of an existing vault of the same name.
-	exists, err := existsByName(targetName)
+	exists, err := Exists(targetName)
 	if err != nil {
 		return err
 	}
@@ -332,9 +319,10 @@ func removeTempFiles(vaultPath string) error {
 	return errors.Join(errs...)
 }
 
-// existsByName reports whether a vault with exactly the given name exists,
-// whatever salt its filename carries.
-func existsByName(name string) (bool, error) {
+// Exists reports whether a vault with exactly the given name exists, whatever
+// salt its filename carries. A command may use it to refuse early, but Create
+// asks again while holding the lock, which is the answer that decides.
+func Exists(name string) (bool, error) {
 	vs, err := findVaults(name)
 	if err != nil {
 		return false, err

@@ -149,7 +149,11 @@ func TestDeleteRemovesCompanionFiles(t *testing.T) {
 		}
 	}
 
-	if err = Delete("test"); err != nil {
+	v, err := Exact("test")
+	if err != nil {
+		t.Fatalf("Exact() failed: %v", err)
+	}
+	if err = Delete(v); err != nil {
 		t.Fatalf("Delete() failed: %v", err)
 	}
 
@@ -196,7 +200,11 @@ func TestDeleteReportsBackupRemovalFailure(t *testing.T) {
 		t.Fatalf("failed to populate backup dir: %v", err)
 	}
 
-	if err = Delete("test"); err == nil {
+	v, err := Exact("test")
+	if err != nil {
+		t.Fatalf("Exact() failed: %v", err)
+	}
+	if err = Delete(v); err == nil {
 		t.Fatal("expected Delete() to return an error when the backup cannot be removed")
 	}
 	// The vault itself must still have been deleted.
@@ -235,7 +243,11 @@ func TestRenameReportsBackupMoveFailure(t *testing.T) {
 		t.Fatalf("failed to create target backup dir: %v", err)
 	}
 
-	if err = Rename("src", "dst"); err == nil {
+	src, err := Exact("src")
+	if err != nil {
+		t.Fatalf("Exact() failed: %v", err)
+	}
+	if err = Rename(src, "dst"); err == nil {
 		t.Fatal("expected Rename() to return an error when the backup cannot be moved")
 	}
 	// The vault itself must still have been renamed.

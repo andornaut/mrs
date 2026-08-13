@@ -141,6 +141,14 @@ func TestCreateChecksWhatItCanBeforeAskingForAPassword(t *testing.T) {
 	if names := l.Vaults(); len(names) != 0 {
 		t.Fatalf("expected no files to be created, found %v", names)
 	}
+
+	// A name already taken is the same case: the create cannot succeed, so
+	// there is no reason to make the user type a password for it first.
+	l.createVault("personal", "a password")
+	l.Run("vault", "create", "-v", "personal").
+		AssertFailed().
+		AssertStderr(`a vault named "personal" already exists`).
+		AssertNoOutput("terminal")
 }
 
 func TestCreatePromptsForTheVaultName(t *testing.T) {
