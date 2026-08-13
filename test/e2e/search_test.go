@@ -19,11 +19,12 @@ func TestSearchPrintsTheWholeMatchingSecret(t *testing.T) {
 	pwFile := l.seedVault("work", "a password", searchVault)
 
 	// A match prints the value as well as the key: retrieving a secret is the
-	// point of a search, not merely knowing that it is there.
+	// point of a search, not merely knowing that it is there. The secrets go to
+	// stdout alone, so the output can be redirected or piped as it is.
 	l.Run("search", "-v", "work", "-p", pwFile, "github").
 		AssertOK().
-		AssertStdoutExactly("1 secret(s) matched regular expression \"(?i)github\" in vault work\n\n" +
-			"github\nuser: alice\ntoken: abc123\n")
+		AssertStdoutExactly("github\nuser: alice\ntoken: abc123\n").
+		AssertStderr("1 secret matched \"github\" in vault work")
 }
 
 func TestSearchDoesNotPrintSecretsItDidNotMatch(t *testing.T) {
@@ -43,7 +44,7 @@ func TestSearchIsCaseInsensitive(t *testing.T) {
 	for _, pattern := range []string{"GITHUB", "GitHub", "gItHuB"} {
 		l.Run("search", "-v", "work", "-p", pwFile, pattern).
 			AssertOK().
-			AssertStdout("1 secret(s) matched").
+			AssertStderr("1 secret matched").
 			AssertStdout("token: abc123")
 	}
 }
@@ -57,7 +58,7 @@ func TestSearchIsCaseInsensitiveBeyondAscii(t *testing.T) {
 	for _, pattern := range []string{"café", "CAFÉ", "Café"} {
 		l.Run("search", "-v", "work", "-p", pwFile, pattern).
 			AssertOK().
-			AssertStdout("1 secret(s) matched").
+			AssertStderr("1 secret matched").
 			AssertStdout("value: naïve")
 	}
 }
@@ -67,11 +68,14 @@ func TestSearchJoinsItsArgumentsWithWhitespace(t *testing.T) {
 	pwFile := l.seedVault("work", "a password", searchVault)
 
 	// A shell splits `mrs search bank account` into two arguments and drops the
-	// spacing between them, so mrs matches any run of whitespace instead.
+	// spacing between them, so mrs matches any run of whitespace instead. The
+	// report quotes what the user typed, not the pattern mrs built from it.
 	l.Run("search", "-v", "work", "-p", pwFile, "bank", "account").
 		AssertOK().
-		AssertStdoutExactly("1 secret(s) matched regular expression \"(?i)bank\\s+account\" in vault work\n\n" +
-			"bank account\npin: 9999\n")
+		AssertStdoutExactly("bank account\npin: 9999\n").
+		AssertStderr("1 secret matched \"bank account\" in vault work").
+		AssertNoOutput("\\s+").
+		AssertNoOutput("(?i)")
 }
 
 func TestSearchIgnoresValuesByDefault(t *testing.T) {
@@ -80,8 +84,9 @@ func TestSearchIgnoresValuesByDefault(t *testing.T) {
 
 	// "alice" appears only in a value, so a default search does not find it.
 	l.Run("search", "-v", "work", "-p", pwFile, "alice").
-		AssertOK().
-		AssertStdoutExactly("No secrets matched regular expression \"(?i)alice\" in vault work\n").
+		AssertFailed().
+		AssertStdoutExactly("").
+		AssertStderr("No secrets matched \"alice\" in vault work").
 		AssertNoOutput("abc123")
 }
 
@@ -91,8 +96,8 @@ func TestSearchFullLooksAtValuesToo(t *testing.T) {
 
 	l.Run("search", "-v", "work", "-p", pwFile, "--full", "alice").
 		AssertOK().
-		AssertStdoutExactly("1 secret(s) matched regular expression \"(?i)alice\" in vault work\n\n" +
-			"github\nuser: alice\ntoken: abc123\n")
+		AssertStdoutExactly("github\nuser: alice\ntoken: abc123\n").
+		AssertStderr("1 secret matched \"alice\" in vault work")
 }
 
 func TestSearchFullHasAShortFlag(t *testing.T) {
@@ -101,7 +106,7 @@ func TestSearchFullHasAShortFlag(t *testing.T) {
 
 	l.Run("search", "-v", "work", "-p", pwFile, "-a", "sekrit").
 		AssertOK().
-		AssertStdout("1 secret(s) matched")
+		AssertStderr("1 secret matched")
 
 	// Not -f: search takes no lock, so --force means nothing to it, and -f is
 	// --force on every command that does take one.
@@ -116,11 +121,12 @@ func TestSearchPrintsEveryMatchSeparatedByABlankLine(t *testing.T) {
 		"alpha\nalpha value\n\nbeta\nbeta value\n\ngamma\ngamma value\n")
 
 	// Matches are printed in key order, in the same shape as the vault itself,
-	// so that the output can be fed back into `vault create --import-file`.
+	// and on stdout alone, so that the output can be fed straight back into
+	// `vault create --import-file`.
 	l.Run("search", "-v", "work", "-p", pwFile, "a").
 		AssertOK().
-		AssertStdoutExactly("3 secret(s) matched regular expression \"(?i)a\" in vault work\n\n" +
-			"alpha\nalpha value\n\nbeta\nbeta value\n\ngamma\ngamma value\n")
+		AssertStdoutExactly("alpha\nalpha value\n\nbeta\nbeta value\n\ngamma\ngamma value\n").
+		AssertStderr("3 secrets matched \"a\" in vault work")
 }
 
 func TestSearchAcceptsRegularExpressionSyntax(t *testing.T) {
@@ -130,23 +136,28 @@ func TestSearchAcceptsRegularExpressionSyntax(t *testing.T) {
 	// Anchors apply to the key alone, which is the first line of a secret.
 	l.Run("search", "-v", "work", "-p", pwFile, "^email$").
 		AssertOK().
-		AssertStdout("1 secret(s) matched").
+		AssertStderr("1 secret matched").
 		AssertStdout("pass: sekrit")
 
 	l.Run("search", "-v", "work", "-p", pwFile, "github|email").
 		AssertOK().
-		AssertStdout("2 secret(s) matched")
+		AssertStderr("2 secrets matched")
 }
 
 func TestSearchReportsNoMatches(t *testing.T) {
 	l := newLab(t)
 	pwFile := l.seedVault("work", "a password", searchVault)
 
-	// Finding nothing is an answer, not a failure: a script can tell the two
-	// apart by the exit code.
-	l.Run("search", "-v", "work", "-p", pwFile, "nothing-like-this").
-		AssertOK().
-		AssertStdout("No secrets matched")
+	// Finding nothing is not a failure and is not reported as one, but it
+	// exits non-zero so that a script can tell it from finding something, as
+	// it can with grep.
+	r := l.Run("search", "-v", "work", "-p", pwFile, "nothing-like-this").
+		AssertFailed().
+		AssertStderr("No secrets matched \"nothing-like-this\" in vault work").
+		AssertNoOutput("Error")
+	if r.Stdout != "" {
+		t.Fatalf("expected nothing on stdout, got %q", r.Stdout)
+	}
 }
 
 func TestSearchOfAnEmptyVaultReportsNoMatches(t *testing.T) {
@@ -154,8 +165,63 @@ func TestSearchOfAnEmptyVaultReportsNoMatches(t *testing.T) {
 	pwFile := l.createVault("empty", "a password")
 
 	l.Run("search", "-v", "empty", "-p", pwFile, "anything").
+		AssertFailed().
+		AssertStderr("No secrets matched")
+}
+
+func TestSearchOutputCanBeRedirectedOnItsOwn(t *testing.T) {
+	l := newLab(t)
+	pwFile := l.seedVault("work", "a password", searchVault)
+
+	// stdout carries the matched secrets and nothing else, in the same shape a
+	// vault is written in, so a search can be piped or redirected as it stands.
+	r := l.Run("search", "-v", "work", "-p", pwFile, "email", "--full").AssertOK()
+	l.Run("vault", "create", "-v", "copy", "-p", pwFile,
+		"-i", l.WriteFile("from-search.txt", r.Stdout)).AssertOK()
+	l.Run("vault", "export", "-v", "copy", "-p", pwFile).
 		AssertOK().
-		AssertStdout("No secrets matched")
+		AssertStdoutExactly("email\nuser: bob\npass: sekrit\n")
+}
+
+func TestSearchReportsWhatWasTypedNotThePatternItBuilt(t *testing.T) {
+	l := newLab(t)
+	pwFile := l.seedVault("work", "a password", searchVault)
+
+	// mrs lowercases the match and joins the arguments itself, so reporting
+	// the compiled pattern would show the user a search they did not write.
+	r := l.Run("search", "-v", "work", "-p", pwFile, "BANK", "account").AssertOK()
+	for _, unwanted := range []string{"(?i)", `\s+`, "regular expression"} {
+		if strings.Contains(r.Stderr, unwanted) {
+			t.Errorf("expected the report not to contain %q, got %q", unwanted, r.Stderr)
+		}
+	}
+	r.AssertStderr(`matched "BANK account" in vault work`)
+}
+
+func TestSearchCountsAreSingularOrPlural(t *testing.T) {
+	l := newLab(t)
+	pwFile := l.seedVault("work", "a password", searchVault)
+
+	l.Run("search", "-v", "work", "-p", pwFile, "github").
+		AssertOK().
+		AssertStderr("1 secret matched").
+		AssertNoOutput("secret(s)")
+	l.Run("search", "-v", "work", "-p", pwFile, "a").
+		AssertOK().
+		AssertStderr("2 secrets matched").
+		AssertNoOutput("secret(s)")
+
+	// add reports the same way.
+	l.editorWrites("one key\none value\n")
+	l.Run("add", "-v", "work", "-p", pwFile).
+		AssertOK().
+		AssertStdout("1 secret added").
+		AssertNoOutput("secret(s)")
+	l.editorWrites("two key\ntwo value\n\nthree key\nthree value\n")
+	l.Run("add", "-v", "work", "-p", pwFile).
+		AssertOK().
+		AssertStdout("2 secrets added").
+		AssertNoOutput("secret(s)")
 }
 
 func TestSearchRejectsAnInvalidRegularExpression(t *testing.T) {
@@ -203,7 +269,7 @@ func TestSearchAcceptsAVaultNamePrefix(t *testing.T) {
 
 	l.Run("search", "-v", "pers", "-p", pwFile, "github").
 		AssertOK().
-		AssertStdout("1 secret(s) matched")
+		AssertStderr("1 secret matched")
 }
 
 func TestSearchLeavesTheVaultUntouched(t *testing.T) {
@@ -265,5 +331,5 @@ func TestSearchMatchesALongLine(t *testing.T) {
 
 	l.Run("search", "-v", "work", "-p", pwFile, "cert").
 		AssertOK().
-		AssertStdout("1 secret(s) matched")
+		AssertStderr("1 secret matched")
 }

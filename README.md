@@ -80,11 +80,20 @@ bank account password: an insecure password
 
 $ mrs search bar
 Vault password:
-1 secret(s) matched regular expression "(?i)bar" in vault example
+1 secret matched "bar" in vault example
 
 another secret key bar
 bank account number: 1234
 bank account password: an insecure password
+```
+
+`search` writes the matching secrets to stdout and everything else to stderr,
+so `mrs search aws > keys` and `mrs search aws | less` carry the secrets alone.
+It exits 0 when something matched and 1 when nothing did, as `grep` does, so a
+script can tell the difference:
+
+```text
+$ mrs search aws -p pw >/dev/null && echo found || echo none
 ```
 
 ## Usage

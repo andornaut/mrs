@@ -10,6 +10,10 @@ import (
 	"github.com/andornaut/mrs/internal/fs"
 )
 
+// version is the release this binary was built from. GoReleaser sets it at
+// link time; a build made any other way reports "dev".
+var version = "dev"
+
 func main() {
 	os.Exit(run())
 }
@@ -38,8 +42,6 @@ func run() int {
 		os.Exit(1)
 	}()
 
-	if err := cmd.Cmd.Execute(); err != nil {
-		return 1
-	}
-	return 0
+	cmd.Cmd.Version = version
+	return cmd.Execute()
 }

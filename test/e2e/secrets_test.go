@@ -17,7 +17,7 @@ func TestAddWritesSecretsToAnEmptyVault(t *testing.T) {
 
 	l.Run("add", "-v", "personal", "-p", pwFile).
 		AssertOK().
-		AssertStdout("2 secret(s) added to vault personal")
+		AssertStdout("2 secrets added to vault personal")
 
 	// Secrets are sorted by key, case-insensitively.
 	l.Run("vault", "export", "-v", "personal", "-p", pwFile).
@@ -32,7 +32,7 @@ func TestAddKeepsTheExistingSecrets(t *testing.T) {
 
 	l.Run("add", "-v", "personal", "-p", pwFile).
 		AssertOK().
-		AssertStdout("1 secret(s) added")
+		AssertStdout("1 secret added")
 
 	got := l.export("personal", pwFile)
 	for _, want := range []string{"existing value", "new value"} {
@@ -295,7 +295,7 @@ func TestSecretsAreSeparatedByBlankLines(t *testing.T) {
 
 	l.Run("add", "-v", "personal", "-p", pwFile).
 		AssertOK().
-		AssertStdout("2 secret(s) added")
+		AssertStdout("2 secrets added")
 
 	l.Run("vault", "export", "-v", "personal", "-p", pwFile).
 		AssertOK().
@@ -309,7 +309,7 @@ func TestWindowsLineEndingsAreAccepted(t *testing.T) {
 
 	l.Run("add", "-v", "personal", "-p", pwFile).
 		AssertOK().
-		AssertStdout("2 secret(s) added")
+		AssertStdout("2 secrets added")
 
 	l.Run("vault", "export", "-v", "personal", "-p", pwFile).
 		AssertOK().
@@ -386,7 +386,7 @@ func TestAVaultWithALongLineStaysUsable(t *testing.T) {
 	pwFile := l.seedVault("personal", "a password", "tls cert\n"+long+"\n")
 
 	l.Run("edit", "-v", "personal", "-p", pwFile).AssertOK()
-	l.Run("search", "cert", "-v", "personal", "-p", pwFile).AssertOK().AssertStdout("1 secret(s) matched")
+	l.Run("search", "cert", "-v", "personal", "-p", pwFile).AssertOK().AssertStderr("1 secret matched")
 
 	l.editorAppends("another key\nanother value\n")
 	l.Run("add", "-v", "personal", "-p", pwFile).AssertOK()

@@ -456,7 +456,7 @@ func TestAPrefixSelectsTheFirstMatchAndSaysWhich(t *testing.T) {
 
 	l.Run("search", "-v", "alph", "-p", pwFile, "key").
 		AssertOK().
-		AssertStdout("in vault alpha\n").
+		AssertStderr("in vault alpha\n").
 		AssertStdout("alpha value").
 		AssertNoOutput("alphabet value")
 
@@ -592,4 +592,18 @@ func TestUnknownCommandFails(t *testing.T) {
 	l := newLab(t)
 	l.Run("nonsense").AssertFailed().AssertOutput("unknown command")
 	l.Run("vault", "nonsense").AssertFailed().AssertOutput("unknown command")
+}
+
+func TestVersionIsReported(t *testing.T) {
+	l := newLab(t)
+
+	// A binary installed from a release archive has to be able to say what it
+	// is, so that a bug report can name a version. GoReleaser sets this at
+	// link time; a build made any other way says "dev".
+	l.Run("--version").AssertOK().AssertStdout("mrs version")
+
+	// Not -v. Cobra gives --version that shorthand unless the flag is already
+	// registered, and -v is --vault on every command under mrs.
+	l.Run("-v").AssertFailed().AssertOutput("unknown shorthand flag")
+	l.Run("help").AssertOK().AssertNoOutput("-v, --version")
 }

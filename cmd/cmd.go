@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 	"regexp"
 	"strings"
 
@@ -20,6 +21,34 @@ var Cmd = &cobra.Command{
 	Short:        "Mr. Secretary",
 	Long:         "Mr. Secretary - Organise and secure your secrets",
 	SilenceUsage: true,
+}
+
+// noMatch records that a search ran and matched nothing. Finding nothing is
+// not a failure and is not reported as one, so it is tracked here rather than
+// returned as an error: an error would be printed as one, and silencing that
+// would also silence the flag and argument errors cobra raises before a
+// command ever runs.
+var noMatch bool
+
+// Execute runs mrs and returns the exit code the process should use.
+func Execute() int {
+	if err := Cmd.Execute(); err != nil {
+		return 1
+	}
+	// Exit non-zero for a search that found nothing, as grep does, so that a
+	// script can tell it from one that found something.
+	if noMatch {
+		return 1
+	}
+	return 0
+}
+
+// plural returns word, pluralised for n.
+func plural(n int, word string) string {
+	if n == 1 {
+		return word
+	}
+	return word + "s"
 }
 
 type rootOptions struct {
@@ -61,7 +90,7 @@ func init() {
 			if n == 0 {
 				fmt.Printf("No secrets added to vault %s\n", uv.Name())
 			} else {
-				fmt.Printf("%d secret(s) added to vault %s\n", n, uv)
+				fmt.Printf("%d %s added to vault %s\n", n, plural(n, "secret"), uv)
 			}
 			return nil
 		},
@@ -108,37 +137,7 @@ func init() {
 		Short: "Search for secrets in a vault",
 		Args:  cobra.MinimumNArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
-			// Internal whitespace is stripped by cobra, so we search for any amount of internal whitespace.
-			// Users can surround a single argument with quotation marks for more precise control of internal whitespace.
-			// Additionally, add a "case-insensitive" flag.
-			rs := "(?i)" + strings.Join(args, "\\s+")
-			r, err := regexp.Compile(rs)
-			if err != nil {
-				return fmt.Errorf("invalid regular expression \"%s\": %s", rs, err)
-			}
-			v, err := opts.getVault()
-			if err != nil {
-				return err
-			}
-
-			password, err := prompt.GivenOrPromptPassword(opts.passwordFile)
-			if err != nil {
-				return err
-			}
-			uv := v.Unlocked(password)
-			defer uv.Wipe()
-
-			secrets, err := secret.Search(uv, *r, opts.includeValues)
-			if err != nil {
-				return err
-			}
-			n := len(secrets)
-			if n == 0 {
-				fmt.Printf("No secrets matched regular expression \"%s\" in vault %s\n", r, uv)
-			} else {
-				fmt.Printf("%d secret(s) matched regular expression \"%s\" in vault %s\n\n%s", n, r, uv, strings.Join(secrets, "\n"))
-			}
-			return nil
+			return opts.runSearch(args)
 		},
 	}
 
@@ -152,7 +151,55 @@ func init() {
 	// -a, not -f: search takes no lock, so --force means nothing to it, and -f
 	// is --force on every command that does take one.
 	search.Flags().BoolVarP(&opts.includeValues, "full", "a", false, "search the full contents, instead of the first line of each secret")
+	// Registered here so that cobra does not add it with a "-v" shorthand of
+	// its own, which would make -v mean --version on `mrs` and --vault on
+	// every command under it.
+	Cmd.Flags().Bool("version", false, "version for mrs")
 	Cmd.AddCommand(add, edit, search, vaultcmd.Cmd)
+}
+
+// runSearch compiles the query, reads the vault, and reports what matched.
+func (o *rootOptions) runSearch(args []string) error {
+	// Internal whitespace is stripped by cobra, so we search for any amount of internal whitespace.
+	// Users can surround a single argument with quotation marks for more precise control of internal whitespace.
+	// Additionally, add a "case-insensitive" flag.
+	rs := "(?i)" + strings.Join(args, "\\s+")
+	// What the user typed, for reporting back. The pattern above adds a
+	// case-insensitivity flag and joins the arguments, so echoing it would show
+	// them a search they did not write.
+	query := strings.Join(args, " ")
+	r, err := regexp.Compile(rs)
+	if err != nil {
+		return fmt.Errorf("invalid regular expression \"%s\": %s", query, err)
+	}
+	v, err := o.getVault()
+	if err != nil {
+		return err
+	}
+
+	password, err := prompt.GivenOrPromptPassword(o.passwordFile)
+	if err != nil {
+		return err
+	}
+	uv := v.Unlocked(password)
+	defer uv.Wipe()
+
+	secrets, err := secret.Search(uv, *r, o.includeValues)
+	if err != nil {
+		return err
+	}
+	// The report goes to stderr and the secrets to stdout, so that
+	// `mrs search aws > keys` and `mrs search aws | less` carry the secrets
+	// alone, as `vault export` already does.
+	n := len(secrets)
+	if n == 0 {
+		fmt.Fprintf(os.Stderr, "No secrets matched \"%s\" in vault %s\n", query, uv)
+		noMatch = true
+		return nil
+	}
+	fmt.Fprintf(os.Stderr, "%d %s matched \"%s\" in vault %s\n\n", n, plural(n, "secret"), query, uv)
+	fmt.Print(strings.Join(secrets, "\n"))
+	return nil
 }
 
 func (o *rootOptions) getVault() (vault.Vault, error) {

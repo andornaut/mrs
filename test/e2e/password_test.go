@@ -145,7 +145,7 @@ func TestImportAcceptsALongLineWithinTheLimit(t *testing.T) {
 	// The vault is usable, not merely exportable.
 	l.Run("search", "-v", "certs", "-p", pwFile, "cert").
 		AssertOK().
-		AssertStdout("1 secret(s) matched")
+		AssertStderr("1 secret matched")
 	l.editorAppends("b key\nb value\n")
 	l.Run("edit", "-v", "certs", "-p", pwFile).AssertOK()
 }
