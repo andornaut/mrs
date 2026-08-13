@@ -126,6 +126,16 @@ func GetVaultDir() (string, error) {
 			vaultDirErr = err
 			return
 		}
+		// MkdirAll leaves a directory that already exists alone, so a vault
+		// directory readable by others - restored from an archive, or made
+		// under a permissive umask - has its group and other bits cleared.
+		// Only those: setting the mode outright would add write permission to
+		// a directory deliberately made read-only. This is best-effort, since
+		// a directory mrs may not chmod, or one on a filesystem that has no
+		// modes to set, is still usable for storing vaults.
+		if fi, statErr := os.Stat(p); statErr == nil {
+			_ = os.Chmod(p, fi.Mode().Perm()&^0077)
+		}
 		vaultDir = p
 	})
 	return vaultDir, vaultDirErr

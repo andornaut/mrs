@@ -117,6 +117,45 @@ func TestWriteFileAtomicPreservesMode(t *testing.T) {
 	}
 }
 
+// TestWriteFileAtomicNarrowsAWideMode checks the other direction: a mode is
+// preserved only as far as the owner's bits. A vault left readable by everyone
+// would otherwise stay that way through every save.
+func TestWriteFileAtomicNarrowsAWideMode(t *testing.T) {
+	tests := []struct {
+		before, want os.FileMode
+	}{
+		{0644, 0600},
+		{0666, 0600},
+		{0640, 0600},
+		{0604, 0600},
+		{0777, 0700},
+		{0600, 0600},
+		{0400, 0400},
+	}
+	for _, tt := range tests {
+		tmpDir := t.TempDir()
+		p := filepath.Join(tmpDir, "target")
+		if err := os.WriteFile(p, []byte("old"), tt.before); err != nil {
+			t.Fatal(err)
+		}
+		// os.WriteFile applies the umask, so set the mode explicitly.
+		if err := os.Chmod(p, tt.before); err != nil {
+			t.Fatal(err)
+		}
+
+		if err := WriteFileAtomic(p, []byte("new"), 0600); err != nil {
+			t.Fatalf("WriteFileAtomic() error = %v", err)
+		}
+		info, err := os.Stat(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if info.Mode().Perm() != tt.want {
+			t.Errorf("mode %04o became %04o, expected %04o", tt.before, info.Mode().Perm(), tt.want)
+		}
+	}
+}
+
 func TestWriteFileAtomicWritesThroughSymlink(t *testing.T) {
 	tmpDir := t.TempDir()
 	target := filepath.Join(tmpDir, "target")

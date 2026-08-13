@@ -48,6 +48,20 @@ func TestSearchIsCaseInsensitive(t *testing.T) {
 	}
 }
 
+func TestSearchIsCaseInsensitiveBeyondAscii(t *testing.T) {
+	l := newLab(t)
+	pwFile := l.seedVault("work", "a password", "café ☕\nvalue: naïve\n")
+
+	// Go's regexp folds case by unicode rules, so an accented key is found
+	// however it was typed.
+	for _, pattern := range []string{"café", "CAFÉ", "Café"} {
+		l.Run("search", "-v", "work", "-p", pwFile, pattern).
+			AssertOK().
+			AssertStdout("1 secret(s) matched").
+			AssertStdout("value: naïve")
+	}
+}
+
 func TestSearchJoinsItsArgumentsWithWhitespace(t *testing.T) {
 	l := newLab(t)
 	pwFile := l.seedVault("work", "a password", searchVault)

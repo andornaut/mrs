@@ -83,8 +83,9 @@ func CopyFile(src, dst string) error {
 // WriteFileAtomic writes data to the file at path p by writing to a temporary
 // file in the same directory and renaming it into place, so that a crash or
 // full disk cannot leave a truncated file. If p is a symlink, the write goes
-// through to its target. An existing file's permissions are preserved;
-// otherwise defaultPerm is used. The parent directory is synced afterwards so
+// through to its target. An existing file's permissions are preserved except
+// for its group and other bits, which are always cleared; otherwise
+// defaultPerm is used. The parent directory is synced afterwards so
 // that the rename survives power loss; if only that sync fails, the file is
 // durably written and the returned error wraps ErrDirSync so callers can treat
 // it as a warning rather than a failed write.
@@ -95,7 +96,11 @@ func WriteFileAtomic(p string, data []byte, defaultPerm os.FileMode) (err error)
 	}
 	perm := defaultPerm
 	if fi, statErr := os.Stat(p); statErr == nil {
-		perm = fi.Mode().Perm()
+		// Keep the mode the file already has, so that a stricter one a user
+		// chose is not undone by a save, but never carry group or other bits
+		// across: a vault loosened by a umask, a restored archive or an rsync
+		// would otherwise stay readable by everyone through every save.
+		perm = fi.Mode().Perm() &^ 0077
 	}
 
 	f, err := os.CreateTemp(filepath.Dir(p), filepath.Base(p)+".*.tmp")

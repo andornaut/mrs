@@ -252,6 +252,7 @@ func TestSecretsSurviveARoundTrip(t *testing.T) {
 		"a long value":       "long key\n" + strings.Repeat("0123456789abcdef", 4096) + "\n",
 		"many lines":         "many lines key\n" + strings.Repeat("a line\n", 500),
 		"tabs within a line": "tab key\nuser\tpassword\n",
+		"control characters": "control key\nbell\aform\ffeed\vvertical\n",
 	}
 	for desc, content := range contents {
 		t.Run(desc, func(t *testing.T) {
@@ -266,6 +267,23 @@ func TestSecretsSurviveARoundTrip(t *testing.T) {
 				AssertStdoutExactly(content)
 		})
 	}
+}
+
+func TestANullByteInAValueSurvivesAnEdit(t *testing.T) {
+	l := newLab(t)
+	// A value can hold arbitrary bytes: a key blob or a token pasted whole.
+	// This one arrives by import, because an environment variable, which is
+	// how the fake editor is handed its content, cannot carry a null.
+	content := "binary key\nbefore\x00after\nplain line\n"
+	pwFile := l.seedVault("personal", "a password", content)
+
+	// The editor changes nothing, so anything lost is lost by mrs parsing the
+	// secrets and writing them back.
+	l.Run("edit", "-v", "personal", "-p", pwFile).AssertOK()
+
+	l.Run("vault", "export", "-v", "personal", "-p", pwFile).
+		AssertOK().
+		AssertStdoutExactly(content)
 }
 
 func TestSecretsAreSeparatedByBlankLines(t *testing.T) {
