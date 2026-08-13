@@ -36,10 +36,14 @@ func Default() (Vault, error) {
 		// the default vault's existence is optional.
 		return BadVault, nil
 	}
+	if v, ok := named(vs, config.DefaultVaultName); ok {
+		return v, nil
+	}
 	return vs[0], nil
 }
 
-// First returns the first vault to match the vault name prefix or an error
+// First returns the vault named prefix, or the first vault whose name begins
+// with it, or an error.
 func First(prefix string) (Vault, error) {
 	if prefix == "" {
 		return BadVault, fmt.Errorf("vault name cannot be empty")
@@ -51,7 +55,24 @@ func First(prefix string) (Vault, error) {
 	if vs == nil {
 		return BadVault, fmt.Errorf("vault \"%s\" not found. run `mrs vault create` to create one", prefix)
 	}
+	if v, ok := named(vs, prefix); ok {
+		return v, nil
+	}
 	return vs[0], nil
+}
+
+// named returns the vault whose name is exactly name. A vault is matched by a
+// glob on its name, so a shorter name is always matched alongside every longer
+// one that begins with it. Without preferring the exact match, a vault named
+// "work" is read and written as "work-archive" whenever both exist, because a
+// "-" sorts before the "." that separates a name from its salt.
+func named(vs []Vault, name string) (Vault, bool) {
+	for _, v := range vs {
+		if v.Name() == name {
+			return v, true
+		}
+	}
+	return BadVault, false
 }
 
 // ChangePassword changes a vault's password

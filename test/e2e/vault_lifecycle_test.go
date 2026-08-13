@@ -362,17 +362,85 @@ func TestDeleteReportsAMissingVault(t *testing.T) {
 		AssertOutput("not found")
 }
 
-func TestVaultNamePrefixSelectsTheFirstMatch(t *testing.T) {
+func TestAPrefixSelectsTheFirstMatch(t *testing.T) {
 	l := newLab(t)
 	l.seedVault("alpha", "a password", "alpha key\nalpha value\n")
 	l.seedVault("alphabet", "a password", "alphabet key\nalphabet value\n")
 
-	// A prefix that matches several vaults picks the first in sorted order.
+	// A prefix that names no vault exactly picks the first in sorted order.
 	pwFile := l.PasswordFile("alpha.pw", "a password")
-	l.Run("vault", "export", "-v", "alpha", "-p", pwFile).
+	l.Run("search", "-v", "alph", "-p", pwFile, "key").
 		AssertOK().
 		AssertStdout("alpha value").
 		AssertNoOutput("alphabet value")
+}
+
+// A vault is found by a glob on its name, so a shorter name is matched
+// alongside every longer one beginning with it. Only "-" sorts before the "."
+// that separates a name from its salt, so "work-archive" is the case that
+// displaced "work" in the glob's order and shadowed it everywhere.
+func TestAnExactNameIsNeverShadowedByALongerOne(t *testing.T) {
+	l := newLab(t)
+	workPw := l.seedVault("work", "a password", "k\nwork-value\n")
+	l.seedVault("work-archive", "a password", "k\narchive-value\n")
+
+	// Reading commands must read the vault that was named, not its neighbour.
+	l.Run("vault", "export", "-v", "work", "-p", workPw).
+		AssertOK().
+		AssertStdoutExactly("k\nwork-value\n")
+	l.Run("search", "-v", "work", "-p", workPw, "k").
+		AssertOK().
+		AssertStdout("work-value").
+		AssertNoOutput("archive-value")
+
+	// And writing commands must write to it. Saving to the wrong vault is the
+	// same defect, but silent: only the vault named in the success message
+	// would have told the user.
+	l.editorAppends("added key\nadded-value\n")
+	l.Run("add", "-v", "work", "-p", workPw).
+		AssertOK().
+		AssertStdout("added to vault work").
+		AssertNoOutput("work-archive")
+
+	archivePw := l.PasswordFile("archive.pw", "a password")
+	if got := l.export("work-archive", archivePw); strings.Contains(got, "added-value") {
+		t.Fatalf("expected the neighbouring vault to be untouched, got %q", got)
+	}
+}
+
+func TestAnExactNameIsReachableByEveryCommand(t *testing.T) {
+	l := newLab(t)
+	workPw := l.seedVault("work", "a password", "k\nwork-value\n")
+	l.seedVault("work-archive", "a password", "k\narchive-value\n")
+
+	// rename, delete and change-password each require an exact name, and so
+	// each reported "work" as missing while it sat behind "work-archive".
+	newPw := l.PasswordFile("new.pw", "a different password")
+	l.Run("vault", "change-password", "-v", "work", "-p", workPw, "-n", newPw).
+		AssertOK().
+		AssertStdout("Changed password of vault work")
+
+	l.Run("vault", "rename", "work", "current").AssertOK()
+	l.Run("vault", "list").AssertOK().AssertStdoutEquals("current\nwork-archive")
+
+	l.RunStdin("y\n", "vault", "delete", "-v", "work-archive").AssertOK()
+	l.Run("vault", "list").AssertOK().AssertStdoutEquals("current")
+	l.Run("vault", "export", "-v", "current", "-p", newPw).
+		AssertOK().
+		AssertStdoutExactly("k\nwork-value\n")
+}
+
+func TestTheDefaultVaultNameIsNotShadowedEither(t *testing.T) {
+	l := newLab(t)
+	workPw := l.seedVault("work", "a password", "k\nwork-value\n")
+	l.seedVault("work-archive", "a password", "k\narchive-value\n")
+	l.Setenv("MRS_DEFAULT_VAULT_NAME", "work")
+
+	l.Run("vault", "get-default").AssertOK().AssertStdoutEquals("work")
+	l.Run("search", "-p", workPw, "k").
+		AssertOK().
+		AssertStdout("work-value").
+		AssertNoOutput("archive-value")
 }
 
 func TestVaultNamesAreCaseSensitive(t *testing.T) {
