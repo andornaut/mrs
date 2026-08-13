@@ -21,9 +21,9 @@ func TestValidateName(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		err := validateName(tt.name)
+		err := ValidateName(tt.name)
 		if (err == nil) != tt.isValid {
-			t.Errorf("validateName(%q) expected valid=%v, got err=%v", tt.name, tt.isValid, err)
+			t.Errorf("ValidateName(%q) expected valid=%v, got err=%v", tt.name, tt.isValid, err)
 		}
 	}
 }

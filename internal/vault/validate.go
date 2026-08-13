@@ -27,7 +27,8 @@ var (
 // write with an obscure "file name too long".
 const maxNameLen = 200
 
-func validateName(n string) error {
+// ValidateName reports whether a name can be used for a vault.
+func ValidateName(n string) error {
 	if !nameRegex.MatchString(n) {
 		return fmt.Errorf("invalid vault name %q", n)
 	}
@@ -49,7 +50,7 @@ func validateSalt(s string) error {
 // one is not a vault this version of mrs can open.
 func validateFilename(n string) error {
 	name, salt, hasSalt := strings.Cut(n, ".")
-	if err := validateName(name); err != nil {
+	if err := ValidateName(name); err != nil {
 		return err
 	}
 	if !hasSalt {

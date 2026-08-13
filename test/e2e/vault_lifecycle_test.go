@@ -121,6 +121,28 @@ func TestCreateReportsAMissingPasswordFile(t *testing.T) {
 		AssertStderr("could not read from password file")
 }
 
+// A create that cannot succeed says so before asking for a password, as delete
+// resolves its vault before asking whether to delete it.
+func TestCreateChecksWhatItCanBeforeAskingForAPassword(t *testing.T) {
+	l := newLab(t)
+
+	// No --password-file, so reaching the password prompt at all would fail
+	// with "stdin is not a terminal" and never name the real problem.
+	l.Run("vault", "create", "-v", "bad name").
+		AssertFailed().
+		AssertStderr(`invalid vault name "bad name"`).
+		AssertNoOutput("terminal")
+
+	l.Run("vault", "create", "-v", "personal", "-i", filepath.Join(l.UserHome, "absent")).
+		AssertFailed().
+		AssertStderr("could not read from import file").
+		AssertNoOutput("terminal")
+
+	if names := l.Vaults(); len(names) != 0 {
+		t.Fatalf("expected no files to be created, found %v", names)
+	}
+}
+
 func TestCreatePromptsForTheVaultName(t *testing.T) {
 	l := newLab(t)
 	pwFile := l.PasswordFile("pw", "a password")

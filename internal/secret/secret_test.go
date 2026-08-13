@@ -74,6 +74,18 @@ func TestStripInstructions(t *testing.T) {
 			expected: "# my own note\nKey1\nValue1\n",
 		},
 		{
+			// An editor opens with the cursor on the first line, so this is
+			// what typing straight into an `mrs add` session produces.
+			name:     "instructions the user typed above",
+			input:    "Key1\nValue1\n" + instructions,
+			expected: "Key1\nValue1\n\n",
+		},
+		{
+			name:     "instructions left in the middle",
+			input:    "Key1\nValue1\n\n" + instructions + "Key2\nValue2\n",
+			expected: "Key1\nValue1\n\n\nKey2\nValue2\n",
+		},
+		{
 			name:     "content that begins with a blank line",
 			input:    instructions + "\n\nKey1\nValue1\n",
 			expected: "Key1\nValue1\n",

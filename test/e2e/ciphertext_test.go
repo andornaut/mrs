@@ -218,16 +218,29 @@ func TestAReaderNeverSeesAPartiallyWrittenVault(t *testing.T) {
 	// writes.
 	const wantReads = 5
 	var reads atomic.Int64
+	stop := make(chan struct{})
 	writes := make(chan error, 1)
 	go func() {
+		defer close(writes)
 		var err error
 		for reads.Load() < wantReads && err == nil {
+			select {
+			case <-stop:
+				return
+			default:
+			}
 			cmd := exec.Command(mrsBin, "edit", "-v", "personal", "-p", pwFile)
 			cmd.Env, cmd.Dir = env, dir
 			err = cmd.Run()
 		}
-		writes <- err
+		if err != nil {
+			writes <- err
+		}
 	}()
+	// A failed assertion below ends this goroutine's test without reads ever
+	// reaching wantReads, so the writer is stopped and waited for here rather
+	// than left saving into a directory the test is about to remove.
+	t.Cleanup(func() { close(stop); <-writes })
 
 	for reads.Load() < wantReads {
 		// Never a partial file, never a decryption failure, never an empty

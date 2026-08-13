@@ -3,7 +3,7 @@
 // mrs hands it; its behaviour is scripted through environment variables.
 //
 //	FAKE_EDITOR_MODE     what to do with the file (default: noop)
-//	FAKE_EDITOR_CONTENT  the content used by the replace and append modes
+//	FAKE_EDITOR_CONTENT  the content used by the replace, append and prepend modes
 //	FAKE_EDITOR_CAPTURE  if set, a path to copy the file to before editing it,
 //	                     so that a test can assert on what mrs handed the editor
 //	FAKE_EDITOR_LOG      if set, a path to append one line per invocation to
@@ -73,7 +73,10 @@ func run() int {
 	}
 
 	if ready := os.Getenv("FAKE_EDITOR_READY"); ready != "" {
-		if err := os.WriteFile(ready, []byte(p), 0600); err != nil {
+		// Written and renamed into place, because a test waits for this path to
+		// exist and then reads it: a plain write creates the file before it
+		// holds anything, and a poll landing in between reads nothing.
+		if err := signalReady(ready, p); err != nil {
 			fmt.Fprintf(os.Stderr, "fake-editor: could not signal readiness: %s\n", err)
 			return 2
 		}
@@ -92,6 +95,9 @@ func run() int {
 			updated += "\n"
 		}
 		updated += content
+	case "prepend":
+		// What an editor whose cursor starts on the first line produces.
+		updated = content + original
 	case "clear":
 		updated = ""
 	case "delete":
@@ -130,6 +136,15 @@ func run() int {
 		return 2
 	}
 	return 0
+}
+
+// signalReady atomically publishes the path being edited.
+func signalReady(out, p string) error {
+	tmp := out + ".tmp"
+	if err := os.WriteFile(tmp, []byte(p), 0600); err != nil {
+		return err
+	}
+	return os.Rename(tmp, out)
 }
 
 // writeStat records how exposed the decrypted file is while it is being edited.

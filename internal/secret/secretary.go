@@ -65,20 +65,26 @@ func takeDictation(content string) (*briefcase, error) {
 }
 
 // stripInstructions removes the instructions that mrs prepended to an editor
-// session. Only those exact lines are removed, so a line of the user's own that
-// begins with a "#" is kept as a secret rather than silently discarded.
+// session, wherever they ended up. An editor opens with the cursor on the first
+// line, so a user who starts typing pushes them down the buffer, and removing
+// only a leading block would encrypt them as part of a secret. Only those exact
+// lines are removed, so a line of the user's own that begins with a "#" is kept
+// as a secret rather than silently discarded.
 func stripInstructions(b []byte) []byte {
-	for {
-		line, rest, hasMore := bytes.Cut(b, []byte("\n"))
+	var kept [][]byte
+	for _, line := range bytes.Split(b, []byte("\n")) {
 		s := strings.TrimSpace(string(line))
-		if s != "" && !isInstruction(s) {
-			return b
+		if isInstruction(s) {
+			continue
 		}
-		if !hasMore {
-			return nil
+		// A blank line before anything else is the gap mrs left below the
+		// instructions, so it goes with them.
+		if len(kept) == 0 && s == "" {
+			continue
 		}
-		b = rest
+		kept = append(kept, line)
 	}
+	return bytes.Join(kept, []byte("\n"))
 }
 
 func isInstruction(line string) bool {

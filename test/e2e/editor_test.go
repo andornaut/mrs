@@ -93,3 +93,21 @@ func TestALongVaultNameIsRejectedClearly(t *testing.T) {
 	// A name that fits is still accepted.
 	l.Run("vault", "create", "-v", strings.Repeat("a", 200), "-p", pwFile).AssertOK()
 }
+
+// An editor opens with the cursor on the first line, so typing straight into an
+// `mrs add` session pushes the instructions below what was typed. Removing them
+// only when they come first would encrypt them as part of the secret.
+func TestInstructionsAreRemovedWhereverTheyEndUp(t *testing.T) {
+	l := newLab(t)
+	pwFile := l.createVault("personal", "a password")
+	l.Unsetenv("MRS_HIDE_EDITOR_INSTRUCTIONS")
+	l.Setenv("FAKE_EDITOR_MODE", "prepend")
+	l.Setenv("FAKE_EDITOR_CONTENT", "top key\ntop value\n")
+
+	l.Run("add", "-v", "personal", "-p", pwFile).AssertOK().AssertStderr("1 secret added")
+
+	l.Run("vault", "export", "-v", "personal", "-p", pwFile).
+		AssertOK().
+		AssertStdoutExactly("top key\ntop value\n").
+		AssertNoOutput("# Secrets are separated by blank lines.")
+}

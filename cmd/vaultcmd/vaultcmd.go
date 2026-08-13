@@ -69,8 +69,11 @@ func init() {
 			if err != nil {
 				return err
 			}
-			password, err := prompt.GivenOrPromptConfirmedPassword(opts.passwordFile)
-			if err != nil {
+			// The name and the import file are checked before anything is
+			// asked, as delete resolves its vault before asking, so that a
+			// create that cannot succeed does not first make the user type a
+			// password twice.
+			if err = vault.ValidateName(name); err != nil {
 				return err
 			}
 			contents, err := readImportFile(opts.importFile)
@@ -78,6 +81,11 @@ func init() {
 				return err
 			}
 			defer crypto.Wipe(contents)
+
+			password, err := prompt.GivenOrPromptConfirmedPassword(opts.passwordFile)
+			if err != nil {
+				return err
+			}
 
 			v, err := vault.Create(name, password, contents, opts.force)
 			if err != nil {

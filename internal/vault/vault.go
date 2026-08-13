@@ -180,7 +180,7 @@ func ChangePassword(name string, oldPassword, newPassword []byte) (UnlockedVault
 // caller reads and validates any import file, so that a vault is never created
 // from contents that mrs cannot read back.
 func Create(name string, password, contents []byte, force bool) (UnlockedVault, error) {
-	if err := validateName(name); err != nil {
+	if err := ValidateName(name); err != nil {
 		return BadUnlockedVault, err
 	}
 	if err := validatePassword(password); err != nil {
@@ -270,7 +270,7 @@ func Rename(sourceName, targetName string) error {
 	if sourceName == targetName {
 		return fmt.Errorf("the source and target vault names cannot both be %q", sourceName)
 	}
-	if err := validateName(targetName); err != nil {
+	if err := ValidateName(targetName); err != nil {
 		return err
 	}
 
@@ -371,7 +371,7 @@ func findVaults(prefix string) ([]Vault, error) {
 	if prefix == "" {
 		prefix = "/*"
 	} else {
-		if err := validateName(prefix); err != nil {
+		if err := ValidateName(prefix); err != nil {
 			return nil, err
 		}
 		prefix += "*"

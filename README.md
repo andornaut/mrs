@@ -90,6 +90,13 @@ file, and `--path`, on `vault list` and `vault get-default`.
 A trailing newline is trimmed, so `echo 'a password' > pw` works. Any other
 whitespace is part of the password.
 
+Every save first copies the vault to `<name>.<salt>.bak`, so that a write which
+goes wrong has something to go back to. After `mrs vault change-password` that
+backup is still the version the previous password opens, until the next save
+overwrites it. It is written mode 0600 beside a vault the same user already
+owns, so it is no more exposed than the vault itself, but delete it if the
+password you changed away from is one you no longer trust.
+
 ## Confirmations
 
 Emptying a vault with `mrs edit`, and `mrs vault delete`, ask before they go
