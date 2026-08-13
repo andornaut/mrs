@@ -7,6 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/andornaut/mrs/internal/cli"
 	"github.com/andornaut/mrs/internal/crypto"
 	"github.com/andornaut/mrs/internal/prompt"
 	"github.com/andornaut/mrs/internal/secret"
@@ -18,11 +19,11 @@ var Cmd = &cobra.Command{
 	Use:   "vault",
 	Short: "Manage vaults",
 	// Without Args and RunE, an unrecognised subcommand prints help and exits 0,
-	// which hides a typo such as `mrs vault lst` from a script. Args alone is
-	// not enough: cobra returns help before validating the arguments of a
-	// command that has no RunE.
-	Args: cobra.NoArgs,
+	// which hides a typo such as `mrs vault lst` from a script.
 	RunE: func(c *cobra.Command, args []string) error {
+		if len(args) > 0 {
+			return cli.Usagef("unknown command %q for %q. Run \"%s --help\" for usage", args[0], c.CommandPath(), c.CommandPath())
+		}
 		return c.Help()
 	},
 	// `mrs vault` takes no flags of its own beyond --help, so the usage line
@@ -44,7 +45,7 @@ func noArgs(c *cobra.Command, args []string) error {
 	if c.Flags().Lookup("vault") != nil {
 		msg += ". Use --vault to name a vault"
 	}
-	return errors.New(msg)
+	return cli.Usage(errors.New(msg))
 }
 
 type vaultOptions struct {
@@ -196,7 +197,7 @@ func init() {
 		RunE: func(c *cobra.Command, args []string) error {
 			// Reading, so it takes a prefix and falls back to the default vault,
 			// as search does. The two differ only in what they print.
-			v, err := vault.ForReading(opts.namePrefix)
+			v, err := vault.Named(opts.namePrefix)
 			if err != nil {
 				return err
 			}
@@ -218,10 +219,13 @@ func init() {
 	}
 
 	getDefault := &cobra.Command{
-		Use:   "get-default",
-		Short: "Print the default vault",
-		Long:  "Print the vault that $MRS_DEFAULT_VAULT_NAME names, or the only vault there is",
-		Args:  noArgs,
+		Use: "default",
+		// The former name, kept so that it goes on working where it is
+		// already written down.
+		Aliases: []string{"get-default"},
+		Short:   "Print the default vault",
+		Long:    "Print the vault that $MRS_DEFAULT_VAULT_NAME names, or the only vault there is",
+		Args:    noArgs,
 		RunE: func(c *cobra.Command, args []string) error {
 			v, err := vault.Default()
 			if err != nil {
@@ -263,7 +267,7 @@ func init() {
 		Short: "Rename a vault",
 		Args: func(c *cobra.Command, args []string) error {
 			if len(args) != 2 {
-				return fmt.Errorf("%s requires a source name and a target name", c.CommandPath())
+				return cli.Usagef("%s requires a source name and a target name", c.CommandPath())
 			}
 			return nil
 		},

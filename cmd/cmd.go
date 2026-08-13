@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"regexp"
@@ -9,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/andornaut/mrs/cmd/vaultcmd"
+	"github.com/andornaut/mrs/internal/cli"
 	"github.com/andornaut/mrs/internal/crypto"
 	"github.com/andornaut/mrs/internal/prompt"
 	"github.com/andornaut/mrs/internal/secret"
@@ -22,6 +24,12 @@ var Cmd = &cobra.Command{
 	Short:        "Mr. Secretary",
 	Long:         "Mr. Secretary - Organise and secure your secrets",
 	SilenceUsage: true,
+	// Cobra reports an unknown command from its own argument validator, which
+	// this replaces so that the failure is marked as a wrong invocation and
+	// exits 2. Without a RunE the root would never validate its arguments at
+	// all: it would print help and report success for a mistyped command.
+	Args: unknownCommand,
+	RunE: func(c *cobra.Command, args []string) error { return c.Help() },
 }
 
 // noMatch records that a search ran and matched nothing. Finding nothing is
@@ -31,18 +39,24 @@ var Cmd = &cobra.Command{
 // command ever runs.
 var noMatch bool
 
-// Exit codes, as grep uses them: a search that found nothing is not an error,
-// and a script has to be able to tell the two apart.
+// Exit codes. 2 is kept for a wrong invocation so that a script can tell a
+// command it typed wrong from one that ran and failed, and 3 for a search that
+// matched nothing, which is neither.
 const (
 	exitOK      = 0
-	exitNoMatch = 1
-	exitError   = 2
+	exitFailed  = 1
+	exitUsage   = 2
+	exitNoMatch = 3
 )
 
 // Execute runs mrs and returns the exit code the process should use.
 func Execute() int {
 	if err := Cmd.Execute(); err != nil {
-		return exitError
+		var u cli.UsageError
+		if errors.As(err, &u) {
+			return exitUsage
+		}
+		return exitFailed
 	}
 	if noMatch {
 		return exitNoMatch
@@ -50,12 +64,20 @@ func Execute() int {
 	return exitOK
 }
 
+// unknownCommand reports an argument that names no command.
+func unknownCommand(c *cobra.Command, args []string) error {
+	if len(args) > 0 {
+		return cli.Usagef("unknown command %q for %q. Run \"%s --help\" for usage", args[0], c.CommandPath(), c.CommandPath())
+	}
+	return nil
+}
+
 // noArgs refuses positional arguments for add and edit. cobra.NoArgs reports
 // them as an unknown command, which misdescribes `mrs add "my key"`: that is a
 // user expecting to name a secret, and the answer is where secrets are typed.
 func noArgs(c *cobra.Command, args []string) error {
 	if len(args) > 0 {
-		return fmt.Errorf("%s takes no arguments, but got %q. Secrets are typed in your editor, not on the command line",
+		return cli.Usagef("%s takes no arguments, but got %q. Secrets are typed in your editor, not on the command line",
 			c.CommandPath(), args[0])
 	}
 	return nil
@@ -78,7 +100,7 @@ func init() {
 		Long:  "Use an editor ($EDITOR) to add secrets to a vault",
 		Args:  noArgs,
 		RunE: func(c *cobra.Command, args []string) error {
-			v, err := vault.ForWriting(opts.namePrefix)
+			v, err := vault.Named(opts.namePrefix)
 			if err != nil {
 				return err
 			}
@@ -114,7 +136,7 @@ func init() {
 		Long:  "Use an editor ($EDITOR) to edit the secrets in a vault",
 		Args:  noArgs,
 		RunE: func(c *cobra.Command, args []string) error {
-			v, err := vault.ForWriting(opts.namePrefix)
+			v, err := vault.Named(opts.namePrefix)
 			if err != nil {
 				return err
 			}
@@ -152,7 +174,7 @@ func init() {
 			"with any amount of whitespace between the words.",
 		Args: func(c *cobra.Command, args []string) error {
 			if len(args) == 0 {
-				return fmt.Errorf("%s requires a regular expression, as in \"%s aws\"", c.CommandPath(), c.CommandPath())
+				return cli.Usagef("%s requires a regular expression, as in \"%s aws\"", c.CommandPath(), c.CommandPath())
 			}
 			return nil
 		},
@@ -182,6 +204,8 @@ func init() {
 	// its own, which would make -v mean --version on `mrs` and --vault on
 	// every command under it.
 	Cmd.Flags().Bool("version", false, "version for mrs")
+	// A flag cobra could not parse is a wrong invocation, and exits 2 like one.
+	Cmd.SetFlagErrorFunc(func(c *cobra.Command, err error) error { return cli.Usage(err) })
 	// The generated completion command is noise in the listing of a program
 	// with this few commands, and still works when it is not listed.
 	Cmd.CompletionOptions.HiddenDefaultCmd = true
@@ -202,7 +226,7 @@ func (o *rootOptions) runSearch(args []string) error {
 	if err != nil {
 		return fmt.Errorf("invalid regular expression %q: %w", query, err)
 	}
-	v, err := vault.ForReading(o.namePrefix)
+	v, err := vault.Named(o.namePrefix)
 	if err != nil {
 		return err
 	}

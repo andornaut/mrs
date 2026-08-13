@@ -4,6 +4,35 @@ A command line secrets manager for Linux and macOS. Secrets are organised into
 encrypted vaults: one file each, edited in `$EDITOR`, searched with regular
 expressions.
 
+## Installation
+
+Archives are published on the
+[releases page](https://github.com/andornaut/mrs/releases): one per tagged
+version, plus a `dev` release rebuilt on every push to `main`.
+
+Platform | Asset
+--- | ---
+Linux x86_64 | `mrs_linux_x86_64.tar.gz`
+Linux arm64 | `mrs_linux_arm64.tar.gz`
+macOS Apple Silicon | `mrs_darwin_arm64.tar.gz`
+
+The archive carries `LICENSE` and `README.md` alongside the binary, so name the
+binary rather than extracting everything into the current directory:
+
+```bash
+tar -xzf mrs_linux_x86_64.tar.gz mrs
+sudo install -m 755 mrs /usr/local/bin/mrs
+```
+
+To compile from source, with [Go](https://golang.org/doc/install) and
+[Make](https://www.gnu.org/software/make/):
+
+```bash
+git clone https://github.com/andornaut/mrs.git
+cd mrs
+make install
+```
+
 ## Secrets
 
 - A vault holds secrets separated by blank lines.
@@ -21,11 +50,11 @@ Command | Does | Vault name
 --- | --- | ---
 `mrs add` | Add secrets in an editor | a prefix that fits one
 `mrs edit` | Edit secrets in an editor | a prefix that fits one
-`mrs search <regular expression>...` | Print matching secrets | a prefix
+`mrs search <regular expression>...` | Print matching secrets | a prefix that fits one
 `mrs vault list` | Print vault names | -
-`mrs vault get-default` | Print the default vault | -
+`mrs vault default` | Print the default vault | -
 `mrs vault create` | Create a vault | a new name
-`mrs vault export` | Print every secret | a prefix
+`mrs vault export` | Print every secret | a prefix that fits one
 `mrs vault change-password` | Re-encrypt under a new password | the whole name
 `mrs vault rename <source> <target>` | Rename a vault | the whole name
 `mrs vault delete` | Delete a vault, after confirming | the whole name
@@ -38,14 +67,14 @@ arguments are joined, so `mrs search bank account` matches `bank account`.
 
 Flag | Commands | Supplies
 --- | --- | ---
-`-v`, `--vault` | all but `vault list`, `vault get-default` and `vault rename` | the vault's name
+`-v`, `--vault` | all but `vault list`, `vault default` and `vault rename` | the vault's name
 `-p`, `--password-file` | `add`, `edit`, `search`, `vault create`, `vault export`, `vault change-password` | the vault's current password
 `-n`, `--new-password-file` | `vault change-password` | the password to change it to
 `-i`, `--import-file` | `vault create` | unencrypted secrets to seed the vault with
 `-f`, `--full` | `search` | match values as well as keys
 `-y`, `--yes` | `edit`, `vault delete` | the answer to the confirmation
 `--force` | `add`, `edit`, `vault create`, `vault change-password`, `vault delete`, `vault rename` | permission to delete another process's lock file
-`--path` | `vault list`, `vault get-default` | paths instead of names
+`--path` | `vault list`, `vault default` | paths instead of names
 
 A short flag means the same thing on every command. `--force` and `--path` have
 no short form, because both are worth spelling out.
@@ -53,14 +82,16 @@ no short form, because both are worth spelling out.
 ## Naming a vault
 
 An exact name always wins, whatever longer names begin with it: with `work` and
-`work-archive`, `-v work` is `work`. Otherwise a prefix is treated according to
-what the command does to the vault:
+`work-archive`, `-v work` is `work`. Short of one, a prefix has to fit exactly
+one vault:
 
-Commands | A prefix that fits several vaults
---- | ---
-`search`, `vault export` | picks the first, and says which
-`add`, `edit` | is refused, listing them
-`vault change-password`, `vault rename`, `vault delete` | is refused, suggesting the closest
+```text
+$ mrs edit -v alph
+Error: "alph" begins the name of 2 vaults: alpha, alphabet. Use the whole name of the one you mean
+```
+
+`vault change-password`, `vault rename` and `vault delete` take no prefix at
+all, and name the closest vault when given one.
 
 Without `-v`:
 
@@ -97,7 +128,7 @@ Error: cannot ask "Delete vault old?": stdin is not a terminal. Use --yes to ans
 ## Output and exit codes
 
 stdout carries what a caller consumes: vault names from `vault list` and
-`vault get-default`, secrets from `vault export` and `search`. Prompts,
+`vault default`, secrets from `vault export` and `search`. Prompts,
 warnings, errors and reports go to stderr, so `mrs vault export > secrets` and
 `mrs search key | less` carry the secrets alone.
 
@@ -110,13 +141,12 @@ another secret key bar
 bank account number: 1234
 ```
 
-Exit codes follow `grep`:
-
 Code | Meaning
 --- | ---
 0 | it worked
-1 | `mrs search` ran and matched nothing
-2 | something went wrong
+1 | it failed
+2 | it was typed wrong: an unknown command or flag, or a missing or extra argument
+3 | `mrs search` ran and matched nothing
 
 ## Files
 

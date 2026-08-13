@@ -53,20 +53,10 @@ func Default() (Vault, error) {
 		"several vaults exist, so there is no default. Use --vault to name one, or set $MRS_DEFAULT_VAULT_NAME")
 }
 
-// ForReading returns the vault to read: the one that prefix names, or the first
-// whose name it begins, or the default vault when prefix is empty.
-func ForReading(prefix string) (Vault, error) {
-	if prefix == "" {
-		return orDefault()
-	}
-	return First(prefix)
-}
-
-// ForWriting returns the vault to write to. It differs from ForReading in
-// refusing a prefix that begins the name of more than one vault: reading the
-// wrong vault shows the user something they did not expect, while writing to it
-// leaves a secret where they will not look for it.
-func ForWriting(prefix string) (Vault, error) {
+// Named returns the vault that prefix names, or the default vault when prefix
+// is empty. It is the one way a command names a vault it does not destroy or
+// move; those use Exact.
+func Named(prefix string) (Vault, error) {
 	if prefix == "" {
 		return orDefault()
 	}
@@ -87,7 +77,9 @@ func orDefault() (Vault, error) {
 }
 
 // Unique returns the vault that prefix names, or the single vault whose name it
-// begins, and refuses a prefix that could have meant more than one.
+// begins, and refuses a prefix that could have meant more than one. Choosing
+// between them alphabetically would read one vault while the user meant
+// another, and write to one while they meant another.
 func Unique(prefix string) (Vault, error) {
 	v, matched, err := resolve(prefix)
 	if err != nil {
@@ -107,21 +99,6 @@ func names(vs []Vault) []string {
 		ns = append(ns, v.Name())
 	}
 	return ns
-}
-
-// First returns the vault named prefix, or the first vault whose name begins
-// with it, or an error. A prefix that begins the name of more than one vault
-// says which was chosen, because the choice is alphabetical and so is not the
-// one the user had in mind at least half of the time.
-func First(prefix string) (Vault, error) {
-	v, matched, err := resolve(prefix)
-	if err != nil {
-		return BadVault, err
-	}
-	if len(matched) > 1 && v.Name() != prefix {
-		warnf("%q begins the name of %d vaults, so vault %s was chosen", prefix, len(matched), v.Name())
-	}
-	return v, nil
 }
 
 // resolve returns the vault that prefix selects, along with every vault it

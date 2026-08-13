@@ -178,5 +178,5 @@ func TestALockFileIsNotMistakenForAVault(t *testing.T) {
 	}
 
 	l.Run("vault", "list").AssertOK().AssertStdoutEquals("work")
-	l.Run("vault", "get-default").AssertOK().AssertStdoutEquals("work")
+	l.Run("vault", "default").AssertOK().AssertStdoutEquals("work")
 }

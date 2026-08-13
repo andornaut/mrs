@@ -154,7 +154,7 @@ func TestAnUnusableHomeIsReportedByEveryCommand(t *testing.T) {
 	// problem rather than report an empty or missing vault.
 	for _, args := range [][]string{
 		{"vault", "list"},
-		{"vault", "get-default"},
+		{"vault", "default"},
 		{"vault", "create", "-v", "personal", "-p", pwFile},
 		{"vault", "export", "-v", "personal", "-p", pwFile},
 		{"search", "-v", "personal", "-p", pwFile, "anything"},
@@ -263,7 +263,7 @@ func TestTheDefaultVaultNameSelectsAmongSeveral(t *testing.T) {
 
 	// With no -v, the configured vault is the one that is used, not the first
 	// in the directory, which would be "home".
-	l.Run("vault", "get-default").AssertOK().AssertStdoutEquals("work")
+	l.Run("vault", "default").AssertOK().AssertStdoutEquals("work")
 	l.Run("search", "-p", workPw, "work").AssertOK().AssertStdout("work-value")
 
 	l.editorAppends("added key\nadded-value\n")
@@ -328,14 +328,14 @@ func TestTheDefaultVaultNameMustNameAVaultExactly(t *testing.T) {
 	// and looked at almost never, so it has to name a vault exactly.
 	for _, name := range []string{"pers", "personal2", "absent"} {
 		l.Setenv("MRS_DEFAULT_VAULT_NAME", name)
-		l.Run("vault", "get-default").
+		l.Run("vault", "default").
 			AssertFailed().
 			AssertStderr("not found").
 			AssertStderr("MRS_DEFAULT_VAULT_NAME must name a vault exactly")
 	}
 
 	l.Setenv("MRS_DEFAULT_VAULT_NAME", "personal")
-	l.Run("vault", "get-default").AssertOK().AssertStdoutEquals("personal")
+	l.Run("vault", "default").AssertOK().AssertStdoutEquals("personal")
 }
 
 func TestEachRunGetsItsOwnTemporaryDirectory(t *testing.T) {
@@ -435,9 +435,10 @@ func TestNothingButDataIsEverWrittenToStdout(t *testing.T) {
 	}
 }
 
-// mrs uses grep's exit codes, so that a script can tell a search that found
-// nothing from one that could not run.
-func TestExitCodesDistinguishNoMatchFromFailure(t *testing.T) {
+// 2 is kept for a wrong invocation and 3 for a search that matched nothing, so
+// that a script can tell a command it typed wrong, one that ran and failed, and
+// one that ran and found nothing apart.
+func TestExitCodesDistinguishUsageFromFailureFromNoMatch(t *testing.T) {
 	l := newLab(t)
 	pwFile := l.seedVault("work", "a password", "a key\na value\n")
 
@@ -448,11 +449,15 @@ func TestExitCodesDistinguishNoMatchFromFailure(t *testing.T) {
 	}{
 		{"a search that matched", []string{"search", "-v", "work", "-p", pwFile, "a key"}, 0},
 		{"a command that worked", []string{"vault", "list"}, 0},
-		{"a search that matched nothing", []string{"search", "-v", "work", "-p", pwFile, "zzz"}, 1},
-		{"a vault that is not there", []string{"search", "-v", "nope", "-p", pwFile, "a key"}, 2},
-		{"a password that is wrong", []string{"vault", "export", "-v", "work", "-p", l.PasswordFile("wrong.pw", "not the password")}, 2},
+		{"a vault that is not there", []string{"search", "-v", "nope", "-p", pwFile, "a key"}, 1},
+		{"a password that is wrong", []string{"vault", "export", "-v", "work", "-p", l.PasswordFile("wrong.pw", "not the password")}, 1},
+		{"a confirmation nobody can answer", []string{"vault", "delete", "-v", "work"}, 1},
 		{"a flag that is not there", []string{"vault", "list", "--bogus"}, 2},
 		{"a command that is not there", []string{"bogus"}, 2},
+		{"a subcommand that is not there", []string{"vault", "bogus"}, 2},
+		{"an argument a command does not take", []string{"vault", "list", "extra"}, 2},
+		{"a search with nothing to search for", []string{"search", "-v", "work", "-p", pwFile}, 2},
+		{"a search that matched nothing", []string{"search", "-v", "work", "-p", pwFile, "zzz"}, 3},
 	} {
 		t.Run(c.desc, func(t *testing.T) {
 			if r := l.Run(c.args...); r.ExitCode != c.want {
@@ -482,7 +487,7 @@ func TestOnlyDataIsWrittenToStdoutWhenACommandSucceeds(t *testing.T) {
 		{"change-password", []string{"vault", "change-password", "-v", "third", "-p", pwFile, "-n", pwFile}, ""},
 		{"delete", []string{"vault", "delete", "-v", "third", "--yes"}, ""},
 		{"list", []string{"vault", "list"}, "work\n"},
-		{"get-default", []string{"vault", "get-default"}, "work\n"},
+		{"get-default", []string{"vault", "default"}, "work\n"},
 		{"export", []string{"vault", "export", "-v", "work", "-p", pwFile}, "a key\na value\n"},
 	} {
 		t.Run(c.desc, func(t *testing.T) {
@@ -509,7 +514,7 @@ func TestSeveralVaultsWithNoDefaultAreNotGuessedBetween(t *testing.T) {
 		{"edit", "-p", pwFile},
 		{"search", "-p", pwFile, "a key"},
 		{"vault", "export", "-p", pwFile},
-		{"vault", "get-default"},
+		{"vault", "default"},
 	} {
 		l.Run(args...).
 			AssertFailed().

@@ -55,7 +55,7 @@ func TestListPathsPrintsAbsolutePaths(t *testing.T) {
 	// command that takes one.
 	for _, args := range [][]string{
 		{"vault", "list", "-p"},
-		{"vault", "get-default", "-p"},
+		{"vault", "default", "-p"},
 	} {
 		l.Run(args...).AssertFailed().AssertStderr("unknown shorthand flag")
 	}
@@ -160,34 +160,44 @@ func TestCreatePromptsForTheVaultName(t *testing.T) {
 		AssertStderr("Created vault personal")
 }
 
-func TestGetDefaultPrintsTheOnlyVault(t *testing.T) {
+func TestDefaultPrintsTheOnlyVault(t *testing.T) {
+	l := newLab(t)
+	l.createVault("personal", "a password")
+
+	l.Run("vault", "default").AssertOK().AssertStdoutEquals("personal")
+	l.Run("vault", "default", "--path").AssertOK().AssertStdoutEquals(l.VaultPath("personal"))
+}
+
+// The command was named get-default before gog renamed its own, and the alias
+// keeps it working where it is already written down.
+func TestGetDefaultStillWorksAsAnAlias(t *testing.T) {
 	l := newLab(t)
 	l.createVault("personal", "a password")
 
 	l.Run("vault", "get-default").AssertOK().AssertStdoutEquals("personal")
-	l.Run("vault", "get-default", "--path").AssertOK().AssertStdoutEquals(l.VaultPath("personal"))
+	l.Run("help", "vault").AssertOK().AssertNoOutput("get-default")
 }
 
-func TestGetDefaultIsEmptyWhenNoVaultsExist(t *testing.T) {
+func TestDefaultIsEmptyWhenNoVaultsExist(t *testing.T) {
 	l := newLab(t)
-	l.Run("vault", "get-default").AssertOK().AssertStdoutEquals("")
+	l.Run("vault", "default").AssertOK().AssertStdoutEquals("")
 }
 
-func TestGetDefaultHonoursTheConfiguredName(t *testing.T) {
+func TestDefaultHonoursTheConfiguredName(t *testing.T) {
 	l := newLab(t)
 	l.createVault("personal", "a password")
 	l.createVault("work", "a password")
 
 	l.Setenv("MRS_DEFAULT_VAULT_NAME", "work")
-	l.Run("vault", "get-default").AssertOK().AssertStdoutEquals("work")
+	l.Run("vault", "default").AssertOK().AssertStdoutEquals("work")
 }
 
-func TestGetDefaultFailsWhenTheConfiguredVaultIsMissing(t *testing.T) {
+func TestDefaultFailsWhenTheConfiguredVaultIsMissing(t *testing.T) {
 	l := newLab(t)
 	l.createVault("personal", "a password")
 
 	l.Setenv("MRS_DEFAULT_VAULT_NAME", "absent")
-	l.Run("vault", "get-default").
+	l.Run("vault", "default").
 		AssertFailed().
 		AssertStderr(`default vault "absent" not found`)
 }
@@ -472,63 +482,43 @@ func TestDeleteReportsAMissingVault(t *testing.T) {
 		AssertStderr("not found")
 }
 
-// A prefix that names no vault exactly picks the first in alphabetical order.
-// What keeps that safe is that the choice is never invisible: a prefix that
-// could have meant more than one vault says which it took, the vault written to
-// is named in the report, a prefix cannot reach a command that destroys or
-// re-keys a vault, and an exact name always wins.
-func TestAPrefixSelectsTheFirstMatchAndSaysWhich(t *testing.T) {
+// One rule for every command: an exact name wins, and short of one a prefix has
+// to fit exactly one vault. Choosing between candidates alphabetically would
+// read one vault while the user meant another, and write to one while they
+// meant another.
+func TestAnAmbiguousPrefixIsRefused(t *testing.T) {
 	l := newLab(t)
 	l.seedVault("alpha", "a password", "alpha key\nalpha value\n")
 	l.seedVault("alphabet", "a password", "alphabet key\nalphabet value\n")
 	pwFile := l.PasswordFile("alpha.pw", "a password")
+	l.editorAppends("added key\nadded value\n")
 
-	l.Run("search", "-v", "alph", "-p", pwFile, "key").
-		AssertOK().
-		AssertStderr(`"alph" begins the name of 2 vaults, so vault alpha was chosen`).
-		AssertStderr("in vault alpha\n").
-		AssertStdout("alpha value").
-		AssertNoOutput("alphabet value")
+	for _, args := range [][]string{
+		{"search", "-v", "alph", "-p", pwFile, "key"},
+		{"vault", "export", "-v", "alph", "-p", pwFile},
+		{"add", "-v", "alph", "-p", pwFile},
+		{"edit", "-v", "alph", "-p", pwFile},
+	} {
+		l.Run(args...).
+			AssertFailed().
+			AssertStderr(`"alph" begins the name of 2 vaults: alpha, alphabet`).
+			AssertStderr("Use the whole name").
+			AssertNoOutput("alpha value").
+			AssertNoOutput("alphabet value")
+	}
 
-	// export writes nothing but secrets, so without the warning its choice
-	// would be invisible: the same command with the same arguments returns a
-	// different vault's secrets once a longer name exists beside the one meant.
-	l.Run("vault", "export", "-v", "alph", "-p", pwFile).
-		AssertOK().
-		AssertStderr(`begins the name of 2 vaults`).
-		AssertStdoutExactly("alpha key\nalpha value\n")
+	// The commands that destroy or move a vault refuse a prefix outright, and
+	// say which vault they think was meant.
+	l.RunStdin("y\n", "vault", "delete", "-v", "alph").
+		AssertFailed().
+		AssertStderr(`Did you mean "alpha"?`)
 
-	// An exact name is not ambiguous, whatever else begins with it.
+	// An exact name is never ambiguous, whatever else begins with it, and nor
+	// is a prefix that reaches one vault.
 	l.Run("vault", "export", "-v", "alpha", "-p", pwFile).
 		AssertOK().
 		AssertNoOutput("begins the name of").
 		AssertStdoutExactly("alpha key\nalpha value\n")
-
-	// Nor is a prefix that reaches only one vault.
-	l.Run("vault", "export", "-v", "alphab", "-p", pwFile).
-		AssertOK().
-		AssertNoOutput("begins the name of").
-		AssertStdoutExactly("alphabet key\nalphabet value\n")
-
-	// A command that refuses a prefix outright says so once, rather than
-	// warning about a vault it is about to refuse to touch.
-	l.RunStdin("y\n", "vault", "delete", "-v", "alph").
-		AssertFailed().
-		AssertStderr(`Did you mean "alpha"?`).
-		AssertNoOutput("begins the name of")
-
-	// add and edit take a prefix too, but refuse an ambiguous one rather than
-	// choosing: reading the wrong vault shows the user something unexpected,
-	// while writing to it leaves a secret where they will not look for it.
-	l.editorAppends("added key\nadded value\n")
-	for _, c := range []string{"add", "edit"} {
-		l.Run(c, "-v", "alph", "-p", pwFile).
-			AssertFailed().
-			AssertStderr(`"alph" begins the name of 2 vaults: alpha, alphabet`).
-			AssertStderr("Use the whole name")
-	}
-
-	// A prefix that reaches one vault is not ambiguous, so it still writes.
 	l.Run("add", "-v", "alphab", "-p", pwFile).
 		AssertOK().
 		AssertStderr("added to vault alphabet\n")
@@ -595,7 +585,7 @@ func TestTheDefaultVaultNameIsNotShadowedEither(t *testing.T) {
 	l.seedVault("work-archive", "a password", "k\narchive-value\n")
 	l.Setenv("MRS_DEFAULT_VAULT_NAME", "work")
 
-	l.Run("vault", "get-default").AssertOK().AssertStdoutEquals("work")
+	l.Run("vault", "default").AssertOK().AssertStdoutEquals("work")
 	l.Run("search", "-p", workPw, "k").
 		AssertOK().
 		AssertStdout("work-value").
@@ -642,7 +632,7 @@ func TestHelpDocumentsEveryCommand(t *testing.T) {
 		root.AssertStdout(c)
 	}
 	vaultHelp := l.Run("help", "vault").AssertOK()
-	for _, c := range []string{"change-password", "create", "delete", "export", "get-default", "list", "rename"} {
+	for _, c := range []string{"change-password", "create", "default", "delete", "export", "list", "rename"} {
 		vaultHelp.AssertStdout(c)
 	}
 }
