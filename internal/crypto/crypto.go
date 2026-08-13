@@ -76,7 +76,7 @@ func Salt() (string, error) {
 
 func key(password []byte, salt string, iterations int) (*[32]byte, error) {
 	if len(salt) < minSaltLen {
-		return nil, fmt.Errorf("Salt must be at least %d in length, but was %d", minSaltLen, len(salt))
+		return nil, fmt.Errorf("salt must be at least %d characters, but was %d", minSaltLen, len(salt))
 	}
 	var arr [32]byte
 	k := pbkdf2.Key(password, []byte(salt), iterations, 32, sha256.New)

@@ -58,7 +58,7 @@ func init() {
 			}
 			defer crypto.Wipe(contents)
 
-			v, err := vault.Create(name, password, contents)
+			v, err := vault.Create(name, password, contents, opts.force)
 			if err != nil {
 				return err
 			}
@@ -253,7 +253,7 @@ func init() {
 	for _, c := range []*cobra.Command{changePassword, create, export} {
 		c.Flags().StringVarP(&opts.passwordFile, "password-file", "p", "", "path to a file that contains your password")
 	}
-	for _, c := range []*cobra.Command{changePassword, delete, rename} {
+	for _, c := range []*cobra.Command{changePassword, create, delete, rename} {
 		c.Flags().BoolVarP(&opts.force, "force", "f", false, "delete the vault's lock file first")
 	}
 

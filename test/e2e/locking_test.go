@@ -123,6 +123,29 @@ func TestForceBreaksAHeldLock(t *testing.T) {
 	}
 }
 
+func TestCreateIsRefusedWhileTheNameIsHeldAndCanBeForced(t *testing.T) {
+	l := newLab(t)
+	pwFile := l.seedVault("work", "a password", "a key\na value\n")
+	release := l.heldVault("work", pwFile)
+	defer release()
+
+	// Creating locks the name before it writes, so a name being written to by
+	// another process is refused rather than raced.
+	newPw := l.PasswordFile("new.pw", "another password")
+	l.Run("vault", "create", "-v", "work", "-p", newPw).
+		AssertFailed().
+		AssertOutput("locked by another process")
+
+	// And --force breaks it, as it does for every other locking command. The
+	// name is still taken, so this fails on the name rather than the lock.
+	l.Run("vault", "create", "--force", "-v", "work", "-p", newPw).
+		AssertFailed().
+		AssertOutput("already exists")
+
+	// A free name creates normally once the lock is out of the way.
+	l.Run("vault", "create", "--force", "-v", "other", "-p", newPw).AssertOK()
+}
+
 func TestAReleasedLockDoesNotBlockLaterWrites(t *testing.T) {
 	l := newLab(t)
 	pwFile := l.seedVault("work", "a password", "a key\na value\n")

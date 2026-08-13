@@ -164,7 +164,7 @@ func (v *UnlockedVault) Write(s string) error {
 
 	ciphertext, err := crypto.Encrypt(plaintext, v.password, v.Salt())
 	if err != nil {
-		return fmt.Errorf("failed to encrypt secrets. Vault %s is unchanged", v)
+		return fmt.Errorf("failed to encrypt secrets, so vault %s is unchanged", v)
 	}
 
 	if exists, existsErr := fs.IsExists(v.Path()); existsErr == nil && exists {

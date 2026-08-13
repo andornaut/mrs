@@ -96,7 +96,7 @@ func ChangePassword(name string, oldPassword, newPassword []byte) (UnlockedVault
 // Create creates a vault holding the given secrets, which may be empty. The
 // caller reads and validates any import file, so that a vault is never created
 // from contents that mrs cannot read back.
-func Create(name string, password, contents []byte) (UnlockedVault, error) {
+func Create(name string, password, contents []byte, force bool) (UnlockedVault, error) {
 	if err := validateName(name); err != nil {
 		return BadUnlockedVault, err
 	}
@@ -110,7 +110,7 @@ func Create(name string, password, contents []byte) (UnlockedVault, error) {
 	if err != nil {
 		return BadUnlockedVault, err
 	}
-	unlock, err := Vault(p).ExclusiveLock()
+	unlock, err := Vault(p).ExclusiveLockForce(force)
 	if err != nil {
 		return BadUnlockedVault, err
 	}
