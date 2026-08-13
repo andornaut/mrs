@@ -41,7 +41,7 @@ func TestWriteTempFile(t *testing.T) {
 	t.Setenv("MRS_TEMP", tmpRoot)
 
 	content := "secret data"
-	path, err := WriteTempFile(content)
+	path, err := WriteTempFile([]byte(content))
 	if err != nil {
 		t.Fatalf("WriteTempFile() error = %v", err)
 	}

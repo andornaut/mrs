@@ -207,12 +207,13 @@ func init() {
 			}
 			defer crypto.Wipe(password)
 
-			s, err := vault.Export(v, password)
+			secrets, err := vault.Export(v, password)
 			if err != nil {
 				return err
 			}
-			fmt.Print(s)
-			return nil
+			defer crypto.Wipe(secrets)
+			_, err = os.Stdout.Write(secrets)
+			return err
 		},
 	}
 

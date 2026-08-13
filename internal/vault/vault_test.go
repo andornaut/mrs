@@ -1,7 +1,6 @@
 package vault
 
 import (
-	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -27,7 +26,7 @@ func TestFindVaultsExcludesLockAndBackupFiles(t *testing.T) {
 	password := []byte("password")
 	u := Vault(validVault).Unlocked(password)
 	defer u.Wipe()
-	err = u.Write("test content")
+	err = u.Write([]byte("test content"))
 	if err != nil {
 		t.Fatalf("failed to create test vault: %v", err)
 	}
@@ -73,7 +72,7 @@ func TestFindVaultsSkipsStrayFiles(t *testing.T) {
 	password := []byte("password")
 	u := Vault(validVault).Unlocked(password)
 	defer u.Wipe()
-	if err = u.Write("test content"); err != nil {
+	if err = u.Write([]byte("test content")); err != nil {
 		t.Fatalf("failed to create test vault: %v", err)
 	}
 
@@ -94,7 +93,7 @@ func TestFindVaultsSkipsStrayFiles(t *testing.T) {
 	}
 }
 
-func TestNewReaderTrailingNewlinePasswordFallback(t *testing.T) {
+func TestDecryptTrailingNewlinePasswordFallback(t *testing.T) {
 	tmpDir := t.TempDir()
 	vaultPath := filepath.Join(tmpDir, "test.12345678901234567890123456789012")
 
@@ -102,20 +101,16 @@ func TestNewReaderTrailingNewlinePasswordFallback(t *testing.T) {
 	// password files: the newline is part of the encryption password.
 	legacyPassword := []byte("password1\n")
 	uLegacy := Vault(vaultPath).Unlocked(legacyPassword)
-	if err := uLegacy.Write("secret content"); err != nil {
+	if err := uLegacy.Write([]byte("secret content")); err != nil {
 		t.Fatalf("failed to create vault: %v", err)
 	}
 
 	// Unlocking with the trimmed password should succeed via the fallback
 	u := Vault(vaultPath).Unlocked([]byte("password1"))
 	defer u.Wipe()
-	r, err := u.NewReader()
+	b, err := u.Decrypt()
 	if err != nil {
-		t.Fatalf("NewReader() with trimmed password failed: %v", err)
-	}
-	b, err := io.ReadAll(r)
-	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("Decrypt() with trimmed password failed: %v", err)
 	}
 	defer crypto.Wipe(b)
 	if string(b) != "secret content" {
@@ -137,10 +132,10 @@ func TestDeleteRemovesCompanionFiles(t *testing.T) {
 	password := []byte("password")
 	u := Vault(vaultPath).Unlocked(password)
 	defer u.Wipe()
-	if err = u.Write("first"); err != nil {
+	if err = u.Write([]byte("first")); err != nil {
 		t.Fatalf("failed to create vault: %v", err)
 	}
-	if err = u.Write("second"); err != nil {
+	if err = u.Write([]byte("second")); err != nil {
 		t.Fatalf("failed to update vault: %v", err)
 	}
 	for _, name := range []string{"test.lock", "test.12345678901234567890123456789012.123.tmp"} {
@@ -186,7 +181,7 @@ func TestDeleteReportsBackupRemovalFailure(t *testing.T) {
 	password := []byte("password")
 	u := Vault(vaultPath).Unlocked(password)
 	defer u.Wipe()
-	if err = u.Write("secret"); err != nil {
+	if err = u.Write([]byte("secret")); err != nil {
 		t.Fatalf("failed to create vault: %v", err)
 	}
 
@@ -229,10 +224,10 @@ func TestRenameReportsBackupMoveFailure(t *testing.T) {
 	u := Vault(sourcePath).Unlocked(password)
 	defer u.Wipe()
 	// Two writes so that a real backup exists at the source path.
-	if err = u.Write("first"); err != nil {
+	if err = u.Write([]byte("first")); err != nil {
 		t.Fatalf("failed to create vault: %v", err)
 	}
-	if err = u.Write("second"); err != nil {
+	if err = u.Write([]byte("second")); err != nil {
 		t.Fatalf("failed to update vault: %v", err)
 	}
 
@@ -269,7 +264,7 @@ func TestWriteBackup(t *testing.T) {
 	defer u.Wipe()
 
 	// First write should not create a backup
-	err = u.Write("first content")
+	err = u.Write([]byte("first content"))
 	if err != nil {
 		t.Fatalf("first write failed: %v", err)
 	}
@@ -281,7 +276,7 @@ func TestWriteBackup(t *testing.T) {
 	}
 
 	// Second write should create a backup
-	err = u.Write("second content")
+	err = u.Write([]byte("second content"))
 	if err != nil {
 		t.Fatalf("second write failed: %v", err)
 	}
@@ -293,11 +288,10 @@ func TestWriteBackup(t *testing.T) {
 
 	// Verify backup content
 	vBak := Vault(bakPath).Unlocked(password)
-	r, err := vBak.NewReader()
+	b, err := vBak.Decrypt()
 	if err != nil {
 		t.Fatalf("failed to read backup: %v", err)
 	}
-	b, _ := io.ReadAll(r)
 	defer crypto.Wipe(b)
 	if string(b) != "first content" {
 		t.Errorf("backup content mismatch; expected %q, got %q", "first content", string(b))

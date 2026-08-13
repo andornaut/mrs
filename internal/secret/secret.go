@@ -1,11 +1,11 @@
 package secret
 
 import (
-	"bytes"
 	"fmt"
 	"os"
 	"regexp"
 
+	"github.com/andornaut/mrs/internal/crypto"
 	"github.com/andornaut/mrs/internal/prompt"
 	"github.com/andornaut/mrs/internal/vault"
 )
@@ -24,15 +24,20 @@ func Add(v vault.UnlockedVault) (int, error) {
 	if err != nil {
 		return 0, err
 	}
+	defer b.Wipe()
 
-	nb, err := takeDictation("\n")
+	nb, err := takeDictation([]byte("\n"))
 	if err != nil {
 		return 0, err
 	}
+	defer nb.Wipe()
 
-	b = b.Combined(nb)
-	warnDuplicateKeys(b)
-	if err := v.Write(b.String()); err != nil {
+	// Combined holds the same secrets as both, so wiping those two wipes it.
+	combined := b.Combined(nb)
+	warnDuplicateKeys(combined)
+	out := combined.Bytes()
+	defer crypto.Wipe(out)
+	if err := v.Write(out); err != nil {
 		return 0, err
 	}
 	return nb.Len(), nil
@@ -46,16 +51,20 @@ func Edit(assumeYes bool, v vault.UnlockedVault) (bool, error) {
 	if err != nil {
 		return false, err
 	}
+	defer b.Wipe()
 	before := b.Len()
 
-	b, err = takeDictation(b.String())
+	current := b.Bytes()
+	edited, err := takeDictation(current)
+	crypto.Wipe(current)
 	if err != nil {
 		return false, err
 	}
+	defer edited.Wipe()
 
 	// Emptying a vault discards every secret in it at once, so confirm it
 	// rather than treating it as an ordinary edit.
-	if before > 0 && b.Len() == 0 {
+	if before > 0 && edited.Len() == 0 {
 		msg := fmt.Sprintf("This will remove all %d %s from vault %s. Continue?",
 			before, Plural(before, "secret"), v.Name())
 		confirmed, err := prompt.Confirm(assumeYes, msg)
@@ -67,8 +76,10 @@ func Edit(assumeYes bool, v vault.UnlockedVault) (bool, error) {
 		}
 	}
 
-	warnDuplicateKeys(b)
-	if err := v.Write(b.String()); err != nil {
+	warnDuplicateKeys(edited)
+	out := edited.Bytes()
+	defer crypto.Wipe(out)
+	if err := v.Write(out); err != nil {
 		return false, err
 	}
 	return true, nil
@@ -78,10 +89,12 @@ func Edit(assumeYes bool, v vault.UnlockedVault) (bool, error) {
 // merge them, and a search returns each of them, so the user is told rather
 // than left to discover it.
 func warnDuplicateKeys(b *briefcase) {
+	// The keys counted here are the keys printed below, so holding one as a
+	// string adds no exposure that the warning itself does not.
 	counts := make(map[string]int, b.Len())
 	var duplicated []string
 	for _, s := range b.secrets {
-		k := s.Key()
+		k := string(s.Key())
 		counts[k]++
 		if counts[k] == 2 {
 			duplicated = append(duplicated, k)
@@ -96,20 +109,29 @@ func warnDuplicateKeys(b *briefcase) {
 // that reads a vault parses its contents first, so contents that fail here
 // would leave a vault that only export can read.
 func Validate(b []byte) error {
-	_, err := transcribe(bytes.NewReader(b))
-	return err
+	parsed, err := transcribe(b)
+	if err != nil {
+		return err
+	}
+	parsed.Wipe()
+	return nil
 }
 
-// Search returns secrets from a vault that match a regular expression
-func Search(v vault.UnlockedVault, r regexp.Regexp, includeValues bool) ([]string, error) {
+// Search returns the secrets from a vault that match a regular expression, in
+// the shape a vault is written in, along with how many matched. The caller is
+// responsible for wiping the returned slice.
+func Search(v vault.UnlockedVault, r regexp.Regexp, includeValues bool) ([]byte, int, error) {
 	b, err := retrieveBriefcase(v)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
+	defer b.Wipe()
+
+	matched := b.SearchKeys(r)
 	if includeValues {
-		b = b.SearchKeysAndValues(r)
-	} else {
-		b = b.SearchKeys(r)
+		matched = b.SearchKeysAndValues(r)
 	}
-	return b.StringSlice(), nil
+	// Bytes copies, which has to happen before the deferred wipe: a match holds
+	// the same memory as the secret it was found in.
+	return matched.Bytes(), matched.Len(), nil
 }

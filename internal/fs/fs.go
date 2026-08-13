@@ -48,8 +48,9 @@ func RemoveTempDir() error {
 }
 
 // WriteTempFile writes the given content to a newly created temp file.
-// The caller is responsible for removing the created file and/or directory.
-func WriteTempFile(content string) (string, error) {
+// The caller is responsible for removing the created file and/or directory,
+// and for wiping content.
+func WriteTempFile(content []byte) (string, error) {
 	tempDir, err := config.GetTempDir()
 	if err != nil {
 		return "", err
@@ -59,7 +60,7 @@ func WriteTempFile(content string) (string, error) {
 		return "", err
 	}
 	defer func() { _ = f.Close() }()
-	if _, err := f.WriteString(content); err != nil {
+	if _, err := f.Write(content); err != nil {
 		return "", err
 	}
 	return f.Name(), nil

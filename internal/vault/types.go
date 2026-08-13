@@ -1,10 +1,8 @@
 package vault
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -119,9 +117,11 @@ func (v UnlockedVault) IsBad() bool {
 	return v.Vault == BadVault
 }
 
-// NewReader returns an reader that reads vault content.
-// The caller is responsible for wiping the returned content if they convert it to a mutable buffer.
-func (v *UnlockedVault) NewReader() (io.Reader, error) {
+// Decrypt returns the vault's plaintext. The caller owns the returned slice and
+// is responsible for wiping it. It is returned rather than wrapped in a reader
+// so that no copy of the plaintext exists without an owner that can wipe it: a
+// bytes.Reader hides the buffer it reads from, and nothing could reach it.
+func (v *UnlockedVault) Decrypt() ([]byte, error) {
 	b, err := os.ReadFile(v.Path())
 	if err != nil {
 		return nil, err
@@ -153,14 +153,12 @@ func (v *UnlockedVault) NewReader() (io.Reader, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to decrypt vault %s", v)
 	}
-	return bytes.NewReader(decrypted), nil
+	return decrypted, nil
 }
 
-// Write writes s string to the vault
-func (v *UnlockedVault) Write(s string) error {
-	plaintext := []byte(s)
-	defer crypto.Wipe(plaintext)
-
+// Write encrypts plaintext into the vault. The caller owns plaintext and is
+// responsible for wiping it.
+func (v *UnlockedVault) Write(plaintext []byte) error {
 	ciphertext, err := crypto.Encrypt(plaintext, v.password, v.Salt())
 	if err != nil {
 		return fmt.Errorf("failed to encrypt secrets, so vault %s is unchanged", v)
@@ -194,16 +192,12 @@ func (v *UnlockedVault) Wipe() {
 }
 
 func (v *UnlockedVault) changePassword(p []byte) error {
-	r, err := v.NewReader()
-	if err != nil {
-		return err
-	}
-	b, err := io.ReadAll(r)
+	b, err := v.Decrypt()
 	if err != nil {
 		return err
 	}
 	defer crypto.Wipe(b)
 
 	v.password = p
-	return v.Write(string(b))
+	return v.Write(b)
 }

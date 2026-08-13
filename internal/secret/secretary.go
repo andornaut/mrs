@@ -1,11 +1,8 @@
 package secret
 
 import (
-	"bufio"
 	"bytes"
-	"errors"
 	"fmt"
-	"io"
 	"os"
 	"slices"
 	"strings"
@@ -30,17 +27,24 @@ var instructionLines = []string{
 var instructions = strings.Join(instructionLines, "\n") + "\n\n"
 
 func retrieveBriefcase(v vault.UnlockedVault) (*briefcase, error) {
-	r, err := v.NewReader()
+	plaintext, err := v.Decrypt()
 	if err != nil {
 		return nil, err
 	}
-	return transcribe(r)
+	// transcribe copies what it keeps, so the vault's own plaintext is wiped
+	// here rather than left for the briefcase's owner to remember.
+	defer crypto.Wipe(plaintext)
+	return transcribe(plaintext)
 }
 
-func takeDictation(content string) (*briefcase, error) {
+func takeDictation(content []byte) (*briefcase, error) {
 	showInstructions := !config.HideEditorInstructions()
 	if showInstructions {
-		content = instructions + content
+		buf := make([]byte, 0, len(instructions)+len(content))
+		buf = append(buf, instructions...)
+		buf = append(buf, content...)
+		defer crypto.Wipe(buf)
+		content = buf
 	}
 	p, err := fs.WriteTempFile(content)
 	if err != nil {
@@ -59,9 +63,13 @@ func takeDictation(content string) (*briefcase, error) {
 	}
 	defer crypto.Wipe(b)
 	if showInstructions {
-		b = stripInstructions(b)
+		// A copy of everything the editor was given, minus the instructions, so
+		// it is wiped alongside the original rather than left behind by it.
+		stripped := stripInstructions(b)
+		defer crypto.Wipe(stripped)
+		return transcribe(stripped)
 	}
-	return transcribe(bytes.NewReader(b))
+	return transcribe(b)
 }
 
 // stripInstructions removes the instructions that mrs prepended to an editor
@@ -73,13 +81,15 @@ func takeDictation(content string) (*briefcase, error) {
 func stripInstructions(b []byte) []byte {
 	var kept [][]byte
 	for _, line := range bytes.Split(b, []byte("\n")) {
-		s := strings.TrimSpace(string(line))
-		if isInstruction(s) {
+		// Compared as bytes: converting each line to a string to trim it would
+		// make an unwipeable copy of every line of the editor's buffer.
+		trimmed := bytes.TrimSpace(line)
+		if isInstruction(trimmed) {
 			continue
 		}
 		// A blank line before anything else is the gap mrs left below the
 		// instructions, so it goes with them.
-		if len(kept) == 0 && s == "" {
+		if len(kept) == 0 && len(trimmed) == 0 {
 			continue
 		}
 		kept = append(kept, line)
@@ -87,47 +97,56 @@ func stripInstructions(b []byte) []byte {
 	return bytes.Join(kept, []byte("\n"))
 }
 
-func isInstruction(line string) bool {
-	return slices.Contains(instructionLines, line)
+func isInstruction(line []byte) bool {
+	return slices.ContainsFunc(instructionLines, func(l string) bool {
+		return bytes.Equal(line, []byte(l))
+	})
 }
 
 // maxLineLen bounds the length of a single line of secrets. A value is often a
-// single long line - a certificate or a token pasted without line breaks - and
-// bufio.Scanner's 64KiB default rejects the whole vault, which locks the user
-// out of add, edit and search on a vault that import and export handle fine.
+// single long line - a certificate or a token pasted without line breaks - so
+// the limit is generous; what it guards against is a file that is not secrets
+// at all being read into memory a line at a time.
 const maxLineLen = 16 * 1024 * 1024
 
-func transcribe(r io.Reader) (*briefcase, error) {
+// transcribe parses plaintext into secrets, copying what it keeps so that the
+// caller can wipe what it was given. The briefcase owns its copies, and its
+// Wipe method is what clears them.
+func transcribe(plaintext []byte) (*briefcase, error) {
 	var (
-		entry   string
+		entry   []byte
 		secrets []secret
 	)
-	scanner := bufio.NewScanner(r)
-	scanner.Buffer(make([]byte, 0, bufio.MaxScanTokenSize), maxLineLen)
-	for scanner.Scan() {
+	for rest := plaintext; len(rest) > 0; {
+		var line []byte
+		if i := bytes.IndexByte(rest, '\n'); i >= 0 {
+			line, rest = rest[:i], rest[i+1:]
+		} else {
+			line, rest = rest, nil
+		}
+		// A line scanner drops the carriage return of a CRLF, and a vault
+		// edited on Windows has to round-trip like any other.
+		line = bytes.TrimSuffix(line, []byte("\r"))
+		if len(line) > maxLineLen {
+			return nil, fmt.Errorf("a line of secrets is longer than the %d MiB limit", maxLineLen/(1024*1024))
+		}
 		// A line is stored as it was typed. Only the test for a blank line -
 		// the separator between secrets - ignores whitespace, so that a value
 		// that is indented, or that ends in a space, survives a round trip.
-		line := scanner.Text()
-		if strings.TrimSpace(line) == "" {
-			if entry != "" {
+		if len(bytes.TrimSpace(line)) == 0 {
+			if len(entry) > 0 {
 				secrets = append(secrets, secret(entry))
-				entry = ""
+				entry = nil
 			}
 			continue
 		}
-		// The line terminator is stripped by the scanner, so re-add one here
-		entry += line + "\n"
+		entry = append(entry, line...)
+		// The line terminator is stripped above, so re-add one here.
+		entry = append(entry, '\n')
 	}
-	if err := scanner.Err(); err != nil {
-		if errors.Is(err, bufio.ErrTooLong) {
-			return nil, fmt.Errorf("a line of secrets is longer than the %d MiB limit", maxLineLen/(1024*1024))
-		}
-		return nil, err
-	}
-	if entry != "" {
-		// Entries are appended when the scanner encounters a blank line, so
-		// handle the case where there are none.
+	if len(entry) > 0 {
+		// Entries are appended when a blank line is reached, so handle the case
+		// where there are none.
 		secrets = append(secrets, secret(entry))
 	}
 	return newBriefcase(secrets), nil

@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/andornaut/mrs/cmd/vaultcmd"
+	"github.com/andornaut/mrs/internal/crypto"
 	"github.com/andornaut/mrs/internal/prompt"
 	"github.com/andornaut/mrs/internal/secret"
 	"github.com/andornaut/mrs/internal/vault"
@@ -210,20 +211,20 @@ func (o *rootOptions) runSearch(args []string) error {
 	uv := v.Unlocked(password)
 	defer uv.Wipe()
 
-	secrets, err := secret.Search(uv, *r, o.includeValues)
+	secrets, n, err := secret.Search(uv, *r, o.includeValues)
 	if err != nil {
 		return err
 	}
+	defer crypto.Wipe(secrets)
 	// The report goes to stderr and the secrets to stdout, so that
 	// `mrs search aws > keys` and `mrs search aws | less` carry the secrets
 	// alone, as `vault export` already does.
-	n := len(secrets)
 	if n == 0 {
 		fmt.Fprintf(os.Stderr, "No secrets matched %q in vault %s\n", query, uv)
 		noMatch = true
 		return nil
 	}
 	fmt.Fprintf(os.Stderr, "%d %s matched %q in vault %s\n\n", n, secret.Plural(n, "secret"), query, uv)
-	fmt.Print(strings.Join(secrets, "\n"))
-	return nil
+	_, err = os.Stdout.Write(secrets)
+	return err
 }

@@ -3,7 +3,6 @@ package vault
 import (
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path"
 	"path/filepath"
@@ -214,7 +213,7 @@ func Create(name string, password, contents []byte, force bool) (UnlockedVault, 
 		return BadUnlockedVault, err
 	}
 	u := Vault(p).Unlocked(password)
-	if err = u.Write(string(contents)); err != nil {
+	if err = u.Write(contents); err != nil {
 		return BadUnlockedVault, err
 	}
 	return u, nil
@@ -240,20 +239,12 @@ func Delete(v Vault) error {
 }
 
 // Export returns a vault's secrets. The caller resolves the vault, so that
-// export reports a name it cannot find the way every other command does.
-func Export(v Vault, password []byte) (string, error) {
+// export reports a name it cannot find the way every other command does, and
+// is responsible for wiping the returned slice.
+func Export(v Vault, password []byte) ([]byte, error) {
 	u := v.Unlocked(password)
 	defer u.Wipe()
-	r, err := u.NewReader()
-	if err != nil {
-		return "", err
-	}
-	b, err := io.ReadAll(r)
-	if err != nil {
-		return "", err
-	}
-	defer crypto.Wipe(b)
-	return string(b), nil
+	return u.Decrypt()
 }
 
 // Rename renames a vault

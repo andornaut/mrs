@@ -2,8 +2,9 @@ package secret
 
 import (
 	"regexp"
-	"strings"
 	"testing"
+
+	"github.com/andornaut/mrs/internal/crypto"
 )
 
 func TestTranscribe(t *testing.T) {
@@ -20,8 +21,7 @@ Key2
 Key3
 Value3
 `
-	r := strings.NewReader(input)
-	b, err := transcribe(r)
+	b, err := transcribe([]byte(input))
 	if err != nil {
 		t.Fatalf("transcribe failed: %v", err)
 	}
@@ -32,22 +32,22 @@ Value3
 
 	expectedKeys := []string{"Key1", "Key2", "Key3"}
 	for i, key := range expectedKeys {
-		if b.secrets[i].Key() != key {
+		if string(b.secrets[i].Key()) != key {
 			t.Errorf("expected key %d to be %q, got %q", i, key, b.secrets[i].Key())
 		}
 	}
-	if got := b.secrets[1].String(); got != "Key2\n#Value2\n" {
+	if got := string(b.secrets[1]); got != "Key2\n#Value2\n" {
 		t.Errorf("expected a value beginning with # to be kept, got %q", got)
 	}
 }
 
 func TestTranscribePreservesWhitespaceWithinSecrets(t *testing.T) {
 	input := "Key1\n  indented\ntrailing   \n\nKey2\nValue2\n"
-	b, err := transcribe(strings.NewReader(input))
+	b, err := transcribe([]byte(input))
 	if err != nil {
 		t.Fatalf("transcribe failed: %v", err)
 	}
-	if got, expected := b.secrets[0].String(), "Key1\n  indented\ntrailing   \n"; got != expected {
+	if got, expected := string(b.secrets[0]), "Key1\n  indented\ntrailing   \n"; got != expected {
 		t.Errorf("expected %q, got %q", expected, got)
 	}
 }
@@ -160,7 +160,7 @@ val`)})
 		t.Errorf("Combined expected 2 secrets, got %d", combined.Len())
 	}
 
-	if combined.secrets[0].Key() != "A" || combined.secrets[1].Key() != "B" {
+	if string(combined.secrets[0].Key()) != "A" || string(combined.secrets[1].Key()) != "B" {
 		t.Errorf("Combined secrets out of order or incorrect")
 	}
 }
@@ -169,12 +169,47 @@ func TestSecretKey(t *testing.T) {
 	s := secret(`My Key
 My Value
 More Value`)
-	if s.Key() != "My Key" {
+	if string(s.Key()) != "My Key" {
 		t.Errorf("Key() expected %q, got %q", "My Key", s.Key())
 	}
 
 	s2 := secret("SingleLineKey")
-	if s2.Key() != "SingleLineKey" {
+	if string(s2.Key()) != "SingleLineKey" {
 		t.Errorf("Key() expected %q, got %q", "SingleLineKey", s2.Key())
+	}
+}
+
+// The rules that make wiping mean anything: a briefcase owns copies of what it
+// was parsed from, wiping it clears them, and what it hands back is a copy that
+// the wipe does not reach.
+func TestABriefcaseOwnsAndWipesItsSecrets(t *testing.T) {
+	plaintext := []byte("Key1\nValue1\n\nKey2\nValue2\n")
+	b, err := transcribe(plaintext)
+	if err != nil {
+		t.Fatalf("transcribe failed: %v", err)
+	}
+
+	// Wiping what it was parsed from leaves the briefcase intact, so a caller
+	// can clear the vault's plaintext as soon as it has been read.
+	crypto.Wipe(plaintext)
+	if got := string(b.secrets[0]); got != "Key1\nValue1\n" {
+		t.Errorf("expected the briefcase to hold its own copy, got %q", got)
+	}
+
+	// What it hands back outlives the wipe, which is what lets Search return
+	// matches and then clear everything it read.
+	out := b.Bytes()
+	if got := string(out); got != "Key1\nValue1\n\nKey2\nValue2\n" {
+		t.Fatalf("Bytes() = %q", got)
+	}
+	held := b.secrets[0]
+	b.Wipe()
+	if string(out) != "Key1\nValue1\n\nKey2\nValue2\n" {
+		t.Errorf("expected Bytes() to be a copy, got %q", out)
+	}
+	for _, c := range held {
+		if c != 0 {
+			t.Fatalf("expected every secret to be zeroed, got %q", held)
+		}
 	}
 }
