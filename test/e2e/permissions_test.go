@@ -107,7 +107,7 @@ func TestAReadOnlyVaultDirectoryFailsTheSaveAndKeepsTheVault(t *testing.T) {
 	l.editorWrites("a key\nreplacement\n")
 	l.Run("edit", "-v", "personal", "-p", pwFile).
 		AssertFailed().
-		AssertOutput("permission denied")
+		AssertStderr("permission denied")
 
 	after, err := os.ReadFile(path)
 	if err != nil {
@@ -141,6 +141,6 @@ func TestAnUnreadableVaultIsReported(t *testing.T) {
 	// failed to decrypt, which would send the user looking for their password.
 	l.Run("vault", "export", "-v", "personal", "-p", pwFile).
 		AssertFailed().
-		AssertOutput("permission denied").
+		AssertStderr("permission denied").
 		AssertNoOutput("the-secret-value")
 }

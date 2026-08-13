@@ -82,7 +82,7 @@ func TestAVaultFileWithNoSaltIsReportedAndIgnored(t *testing.T) {
 
 	l.Run("vault", "export", "-v", "personal", "-p", pwFile).
 		AssertFailed().
-		AssertOutput("not found")
+		AssertStderr("not found")
 
 	// The file itself is left alone, so it can still be recovered with an
 	// older release.

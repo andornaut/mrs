@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync/atomic"
 	"testing"
 )
 
@@ -108,7 +109,7 @@ func TestATamperedVaultIsRefused(t *testing.T) {
 
 	l.Run("vault", "export", "-v", "personal", "-p", pwFile).
 		AssertFailed().
-		AssertOutput("failed to decrypt").
+		AssertStderr("failed to decrypt").
 		AssertNoOutput("the-secret-value")
 
 	// Restoring the byte restores the vault, so the file was not otherwise
@@ -143,7 +144,7 @@ func TestADamagedVaultIsRefusedRatherThanGuessedAt(t *testing.T) {
 		// back part of a secret, or something that looks like one.
 		l.Run("vault", "export", "-v", "personal", "-p", pwFile).
 			AssertFailed().
-			AssertOutput("failed to decrypt").
+			AssertStderr("failed to decrypt").
 			AssertNoOutput("the-secret-value")
 
 		if err := os.WriteFile(path, before, 0600); err != nil {
@@ -156,7 +157,7 @@ func TestADamagedVaultIsRefusedRatherThanGuessedAt(t *testing.T) {
 	tamper(t, path, damage["truncated"])
 	l.Run("search", "-v", "personal", "-p", pwFile, "a key").
 		AssertFailed().
-		AssertOutput("failed to decrypt").
+		AssertStderr("failed to decrypt").
 		AssertNoOutput("the-secret-value")
 }
 
@@ -177,7 +178,7 @@ func TestATamperedBackupIsRefused(t *testing.T) {
 	copyFile(t, backup, l.VaultPath("personal"))
 	l.Run("vault", "export", "-v", "personal", "-p", pwFile).
 		AssertFailed().
-		AssertOutput("failed to decrypt").
+		AssertStderr("failed to decrypt").
 		AssertNoOutput("first-value")
 }
 
@@ -211,11 +212,16 @@ func TestAReaderNeverSeesAPartiallyWrittenVault(t *testing.T) {
 
 	// A writer takes the vault's exclusive lock; a reader takes no lock at
 	// all, and relies on the write being a rename over the old file. Whether
-	// that holds is only visible when the two actually overlap.
+	// that holds is only visible when the two actually overlap, so the reader
+	// decides when to stop: the writer keeps saving until enough reads have
+	// landed, rather than the reader hoping to fit inside a fixed number of
+	// writes.
+	const wantReads = 5
+	var reads atomic.Int64
 	writes := make(chan error, 1)
 	go func() {
 		var err error
-		for i := 0; i < 8 && err == nil; i++ {
+		for reads.Load() < wantReads && err == nil {
 			cmd := exec.Command(mrsBin, "edit", "-v", "personal", "-p", pwFile)
 			cmd.Env, cmd.Dir = env, dir
 			err = cmd.Run()
@@ -223,25 +229,16 @@ func TestAReaderNeverSeesAPartiallyWrittenVault(t *testing.T) {
 		writes <- err
 	}()
 
-	reads := 0
-	for {
-		select {
-		case err := <-writes:
-			if err != nil {
-				t.Fatalf("a write failed while reading: %s", err)
-			}
-			if reads == 0 {
-				t.Fatal("expected at least one read to overlap the writes")
-			}
-			return
-		default:
-		}
+	for reads.Load() < wantReads {
 		// Never a partial file, never a decryption failure, never an empty
 		// vault: a reader sees the version before the save or the one after.
 		l.Run("vault", "export", "-v", "personal", "-p", pwFile).
 			AssertOK().
 			AssertStdoutExactly("a key\nthe-secret-value\n")
-		reads++
+		reads.Add(1)
+	}
+	if err := <-writes; err != nil {
+		t.Fatalf("a write failed while reading: %s", err)
 	}
 }
 

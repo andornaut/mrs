@@ -49,7 +49,7 @@ func TestASecondWriterIsRefusedWhileAVaultIsOpen(t *testing.T) {
 	} {
 		l.Run(args...).
 			AssertFailed().
-			AssertOutput("locked by another process")
+			AssertStderr("locked by another process")
 	}
 }
 
@@ -63,11 +63,11 @@ func TestDeleteAndRenameAreRefusedWhileAVaultIsOpen(t *testing.T) {
 	// cannot get past the lock.
 	l.RunStdin("y\n", "vault", "delete", "-v", "work").
 		AssertFailed().
-		AssertOutput("locked by another process")
+		AssertStderr("locked by another process")
 
 	l.Run("vault", "rename", "work", "archive").
 		AssertFailed().
-		AssertOutput("locked by another process")
+		AssertStderr("locked by another process")
 
 	// The vault is still there under its own name.
 	l.Run("vault", "list").AssertOK().AssertStdoutEquals("work")
@@ -134,13 +134,13 @@ func TestCreateIsRefusedWhileTheNameIsHeldAndCanBeForced(t *testing.T) {
 	newPw := l.PasswordFile("new.pw", "another password")
 	l.Run("vault", "create", "-v", "work", "-p", newPw).
 		AssertFailed().
-		AssertOutput("locked by another process")
+		AssertStderr("locked by another process")
 
 	// And --force breaks it, as it does for every other locking command. The
 	// name is still taken, so this fails on the name rather than the lock.
 	l.Run("vault", "create", "--force", "-v", "work", "-p", newPw).
 		AssertFailed().
-		AssertOutput("already exists")
+		AssertStderr("already exists")
 
 	// A free name creates normally once the lock is out of the way.
 	l.Run("vault", "create", "--force", "-v", "other", "-p", newPw).AssertOK()

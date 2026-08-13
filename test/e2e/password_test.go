@@ -48,7 +48,7 @@ func TestExportRejectsAWrongPassword(t *testing.T) {
 
 	l.Run("vault", "export", "-v", "work", "-p", wrong).
 		AssertFailed().
-		AssertOutput("failed to decrypt").
+		AssertStderr("failed to decrypt").
 		AssertNoOutput("the-secret-value")
 }
 
@@ -58,7 +58,7 @@ func TestExportReportsAMissingVault(t *testing.T) {
 
 	l.Run("vault", "export", "-v", "nosuch", "-p", pwFile).
 		AssertFailed().
-		AssertOutput("not found")
+		AssertStderr("not found")
 }
 
 func TestExportLeavesTheVaultUntouched(t *testing.T) {
@@ -109,7 +109,7 @@ func TestImportReportsAMissingFile(t *testing.T) {
 
 	l.Run("vault", "create", "-v", "work", "-p", pwFile, "-i", l.UserHome+"/nosuch.txt").
 		AssertFailed().
-		AssertOutput("import file")
+		AssertStderr("import file")
 
 	// A create that failed must not leave a half-made vault behind, and must
 	// not stand in the way of creating that vault properly afterwards.
@@ -128,7 +128,7 @@ func TestImportRefusesSecretsThatCannotBeReadBack(t *testing.T) {
 
 	l.Run("vault", "create", "-v", "big", "-p", pwFile, "-i", huge).
 		AssertFailed().
-		AssertOutput("longer than the 16 MiB limit")
+		AssertStderr("longer than the 16 MiB limit")
 
 	l.Run("vault", "list").AssertOK().AssertStdoutEquals("")
 }
@@ -164,7 +164,7 @@ func TestChangePasswordSwapsTheOldPasswordForTheNew(t *testing.T) {
 		AssertStdout("the-secret-value")
 	l.Run("vault", "export", "-v", "work", "-p", oldPw).
 		AssertFailed().
-		AssertOutput("failed to decrypt")
+		AssertStderr("failed to decrypt")
 }
 
 func TestChangePasswordRejectsAWrongCurrentPassword(t *testing.T) {
@@ -175,7 +175,7 @@ func TestChangePasswordRejectsAWrongCurrentPassword(t *testing.T) {
 
 	l.Run("vault", "change-password", "-v", "work", "-p", wrong, "-n", newPw).
 		AssertFailed().
-		AssertOutput("failed to decrypt")
+		AssertStderr("failed to decrypt")
 
 	// A change that did not happen leaves the old password working.
 	l.Run("vault", "export", "-v", "work", "-p", pwFile).
@@ -190,7 +190,7 @@ func TestChangePasswordRejectsAWeakNewPassword(t *testing.T) {
 
 	l.Run("vault", "change-password", "-v", "work", "-p", pwFile, "-n", short).
 		AssertFailed().
-		AssertOutput("at least 8 characters")
+		AssertStderr("at least 8 characters")
 
 	l.Run("vault", "export", "-v", "work", "-p", pwFile).
 		AssertOK().
@@ -220,7 +220,7 @@ func TestChangePasswordReportsAMissingNewPasswordFile(t *testing.T) {
 
 	l.Run("vault", "change-password", "-v", "work", "-p", pwFile, "-n", l.UserHome+"/nosuch.pw").
 		AssertFailed().
-		AssertOutput("password file")
+		AssertStderr("password file")
 
 	l.Run("vault", "export", "-v", "work", "-p", pwFile).AssertOK()
 }
@@ -233,7 +233,7 @@ func TestChangePasswordReportsAMissingVault(t *testing.T) {
 	// right reason even without a terminal.
 	l.Run("vault", "change-password", "-v", "nosuch", "-p", pwFile).
 		AssertFailed().
-		AssertOutput("not found")
+		AssertStderr("not found")
 }
 
 func TestChangePasswordLeavesNoLockHeld(t *testing.T) {

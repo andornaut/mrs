@@ -63,7 +63,7 @@ func TestAMissingEditorIsReportedClearly(t *testing.T) {
 
 	l.Run("edit", "-v", "personal", "-p", pwFile).
 		AssertFailed().
-		AssertOutput("no-such-editor-exists")
+		AssertStderr("no-such-editor-exists")
 }
 
 func TestAFailingEditorLeavesTheVaultUnchanged(t *testing.T) {
@@ -88,7 +88,7 @@ func TestALongVaultNameIsRejectedClearly(t *testing.T) {
 
 	l.Run("vault", "create", "-v", strings.Repeat("a", 201), "-p", pwFile).
 		AssertFailed().
-		AssertOutput("at most 200 characters")
+		AssertStderr("at most 200 characters")
 
 	// A name that fits is still accepted.
 	l.Run("vault", "create", "-v", strings.Repeat("a", 200), "-p", pwFile).AssertOK()

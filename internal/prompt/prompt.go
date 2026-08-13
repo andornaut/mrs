@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -14,13 +15,25 @@ import (
 	"github.com/andornaut/mrs/internal/config"
 )
 
+// Prompts are written here rather than to stdout, so that they cannot be
+// mistaken for output: `mrs vault export > secrets` and `mrs search key | less`
+// both redirect stdout, and a prompt written there would land in the file or
+// the pipe instead of in front of the user. It is a variable so that a test can
+// capture what was written and to where; only tests reassign it.
+var promptOut io.Writer = os.Stderr
+
+// isTerminal reports whether a file descriptor is a terminal. A variable for
+// the same reason: without it, the branch that writes the password prompt is
+// unreachable from a test, because a test's stdin is never a terminal.
+var isTerminal = term.IsTerminal
+
 // Bool prompts for input and returns true if the trimmed input was "y"
 func Bool(msg string, defaultTrue bool) bool {
 	d := "n"
 	if defaultTrue {
 		d = "y"
 	}
-	fmt.Fprintf(os.Stderr, "%s (y/n) [%s]: ", msg, d)
+	_, _ = fmt.Fprintf(promptOut, "%s (y/n) [%s]: ", msg, d)
 	answer, err := scanTrimmedLine()
 	if err != nil {
 		return defaultTrue
@@ -60,13 +73,13 @@ func Password(msg string) ([]byte, error) {
 	// Switching off echo needs a terminal. Asking for one that is not there
 	// makes the terminal driver report EINVAL, which reaches the user as
 	// "inappropriate ioctl for device" and names neither the cause nor a remedy.
-	if !term.IsTerminal(fd) {
+	if !isTerminal(fd) {
 		return nil, fmt.Errorf("cannot prompt for \"%s\": %w", msg, ErrNoTerminal)
 	}
-	fmt.Fprint(os.Stderr, msg+": ")
+	_, _ = fmt.Fprint(promptOut, msg+": ")
 	b, err := term.ReadPassword(fd)
 	// Since user input is not echoed, we must add a newline manually
-	fmt.Fprint(os.Stderr, "\n")
+	_, _ = fmt.Fprint(promptOut, "\n")
 	if err != nil {
 		return nil, fmt.Errorf("input error: %w", err)
 	}
@@ -75,11 +88,7 @@ func Password(msg string) ([]byte, error) {
 
 // TrimmedLine prompts for input and returns the first line of input as a trimmed string
 func TrimmedLine(msg string) (string, error) {
-	// Prompts go to stderr so that they cannot be mistaken for output: `mrs
-	// vault export > secrets` and `mrs search key | less` both redirect stdout,
-	// and a prompt written there would land in the file or the pipe instead of
-	// in front of the user.
-	fmt.Fprint(os.Stderr, msg+": ")
+	_, _ = fmt.Fprint(promptOut, msg+": ")
 	return scanTrimmedLine()
 }
 

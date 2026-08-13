@@ -392,15 +392,6 @@ func (r *result) AssertStderr(want string) *result {
 	return r
 }
 
-// AssertOutput asserts that the given substring appears on stdout or stderr.
-func (r *result) AssertOutput(want string) *result {
-	r.t.Helper()
-	if !strings.Contains(r.Stdout, want) && !strings.Contains(r.Stderr, want) {
-		r.t.Fatalf("expected output to contain %q\n%s", want, r.describe())
-	}
-	return r
-}
-
 // AssertNoOutput asserts that the given substring appears nowhere in the
 // output, which is how we check that secrets do not leak.
 func (r *result) AssertNoOutput(unwanted string) *result {

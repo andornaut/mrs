@@ -112,7 +112,7 @@ func TestSearchFullHasAShortFlag(t *testing.T) {
 	// --force on every command that does take one.
 	l.Run("search", "-v", "work", "-p", pwFile, "-f", "sekrit").
 		AssertFailed().
-		AssertOutput("unknown shorthand flag")
+		AssertStderr("unknown shorthand flag")
 }
 
 func TestSearchPrintsEveryMatchSeparatedByABlankLine(t *testing.T) {
@@ -230,7 +230,7 @@ func TestSearchRejectsAnInvalidRegularExpression(t *testing.T) {
 
 	l.Run("search", "-v", "work", "-p", pwFile, "[").
 		AssertFailed().
-		AssertOutput("invalid regular expression")
+		AssertStderr("invalid regular expression")
 }
 
 func TestSearchRequiresAPattern(t *testing.T) {
@@ -240,7 +240,7 @@ func TestSearchRequiresAPattern(t *testing.T) {
 	// Without this, a bare `mrs search` would print the whole vault.
 	l.Run("search", "-v", "work", "-p", pwFile).
 		AssertFailed().
-		AssertOutput("requires at least 1 arg")
+		AssertStderr("requires at least 1 arg")
 }
 
 func TestSearchRejectsAWrongPassword(t *testing.T) {
@@ -250,7 +250,7 @@ func TestSearchRejectsAWrongPassword(t *testing.T) {
 
 	l.Run("search", "-v", "work", "-p", wrong, "github").
 		AssertFailed().
-		AssertOutput("failed to decrypt").
+		AssertStderr("failed to decrypt").
 		AssertNoOutput("abc123")
 }
 
@@ -260,7 +260,7 @@ func TestSearchReportsAMissingVault(t *testing.T) {
 
 	l.Run("search", "-v", "nosuch", "-p", pwFile, "github").
 		AssertFailed().
-		AssertOutput("not found")
+		AssertStderr("not found")
 }
 
 func TestSearchAcceptsAVaultNamePrefix(t *testing.T) {
@@ -320,7 +320,7 @@ func TestSearchReportsAMissingPasswordFile(t *testing.T) {
 
 	l.Run("search", "-v", "work", "-p", l.UserHome+"/nosuch.pw", "github").
 		AssertFailed().
-		AssertOutput("password file")
+		AssertStderr("password file")
 }
 
 func TestSearchMatchesALongLine(t *testing.T) {

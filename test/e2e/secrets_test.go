@@ -320,8 +320,8 @@ func TestAddReportsAMissingVault(t *testing.T) {
 	l := newLab(t)
 	pwFile := l.PasswordFile("pw", "a password")
 
-	l.Run("add", "-v", "absent", "-p", pwFile).AssertFailed().AssertOutput("not found")
-	l.Run("edit", "-v", "absent", "-p", pwFile).AssertFailed().AssertOutput("not found")
+	l.Run("add", "-v", "absent", "-p", pwFile).AssertFailed().AssertStderr("not found")
+	l.Run("edit", "-v", "absent", "-p", pwFile).AssertFailed().AssertStderr("not found")
 }
 
 func TestAddRejectsAWrongPassword(t *testing.T) {
@@ -332,10 +332,10 @@ func TestAddRejectsAWrongPassword(t *testing.T) {
 
 	l.Run("add", "-v", "personal", "-p", wrong).
 		AssertFailed().
-		AssertOutput("failed to decrypt")
+		AssertStderr("failed to decrypt")
 	l.Run("edit", "-v", "personal", "-p", wrong).
 		AssertFailed().
-		AssertOutput("failed to decrypt")
+		AssertStderr("failed to decrypt")
 
 	// A wrong password must never overwrite the secrets it could not read.
 	correct := l.PasswordFile("personal.pw", "a password")

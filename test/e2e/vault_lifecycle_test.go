@@ -57,7 +57,7 @@ func TestListPathsPrintsAbsolutePaths(t *testing.T) {
 		{"vault", "list", "-p"},
 		{"vault", "get-default", "-p"},
 	} {
-		l.Run(args...).AssertFailed().AssertOutput("unknown shorthand flag")
+		l.Run(args...).AssertFailed().AssertStderr("unknown shorthand flag")
 	}
 }
 
@@ -67,7 +67,7 @@ func TestCreateRejectsADuplicateName(t *testing.T) {
 
 	l.Run("vault", "create", "-v", "personal", "-p", pwFile).
 		AssertFailed().
-		AssertOutput("already exists")
+		AssertStderr("already exists")
 
 	if names := l.Vaults(); len(names) != 2 { // the vault and its lock file
 		t.Fatalf("expected the failed create to leave no extra files, found %v", names)
@@ -106,7 +106,7 @@ func TestCreateRejectsAShortPassword(t *testing.T) {
 
 	l.Run("vault", "create", "-v", "personal", "-p", pwFile).
 		AssertFailed().
-		AssertOutput("at least 8 characters")
+		AssertStderr("at least 8 characters")
 
 	if names := l.Vaults(); len(names) != 0 {
 		t.Fatalf("expected no vault to be created, found %v", names)
@@ -118,7 +118,7 @@ func TestCreateReportsAMissingPasswordFile(t *testing.T) {
 
 	l.Run("vault", "create", "-v", "personal", "-p", filepath.Join(l.UserHome, "absent")).
 		AssertFailed().
-		AssertOutput("could not read from password file")
+		AssertStderr("could not read from password file")
 }
 
 func TestCreatePromptsForTheVaultName(t *testing.T) {
@@ -159,7 +159,7 @@ func TestGetDefaultFailsWhenTheConfiguredVaultIsMissing(t *testing.T) {
 	l.Setenv("MRS_DEFAULT_VAULT_NAME", "absent")
 	l.Run("vault", "get-default").
 		AssertFailed().
-		AssertOutput(`default vault "absent" not found`)
+		AssertStderr(`default vault "absent" not found`)
 }
 
 func TestListIgnoresStrayFiles(t *testing.T) {
@@ -237,7 +237,7 @@ func TestRenameRejectsAnExistingTargetName(t *testing.T) {
 
 	l.Run("vault", "rename", "personal", "work").
 		AssertFailed().
-		AssertOutput("already exists")
+		AssertStderr("already exists")
 	l.Run("vault", "list").AssertOK().AssertStdoutEquals("personal\nwork")
 }
 
@@ -247,7 +247,7 @@ func TestRenameRejectsAnInvalidTargetName(t *testing.T) {
 
 	l.Run("vault", "rename", "personal", "../escape").
 		AssertFailed().
-		AssertOutput("invalid vault name")
+		AssertStderr("invalid vault name")
 	l.Run("vault", "list").AssertOK().AssertStdoutEquals("personal")
 }
 
@@ -265,7 +265,7 @@ func TestRenameRequiresAnExactSourceName(t *testing.T) {
 
 	l.Run("vault", "rename", "pers", "renamed").
 		AssertFailed().
-		AssertOutput(`Did you mean "personal"`)
+		AssertStderr(`Did you mean "personal"`)
 	l.Run("vault", "list").AssertOK().AssertStdoutEquals("personal")
 }
 
@@ -274,7 +274,7 @@ func TestRenameReportsAMissingVault(t *testing.T) {
 
 	l.Run("vault", "rename", "absent", "renamed").
 		AssertFailed().
-		AssertOutput("not found")
+		AssertStderr("not found")
 }
 
 func TestRenameMovesTheBackupFile(t *testing.T) {
@@ -360,7 +360,7 @@ func TestDeleteRequiresAnExactName(t *testing.T) {
 	// to confirm deleting something that is not a vault.
 	l.RunStdin("y\n", "vault", "delete", "-v", "pers").
 		AssertFailed().
-		AssertOutput(`Did you mean "personal"`).
+		AssertStderr(`Did you mean "personal"`).
 		AssertNoOutput("(y/n)")
 	l.Run("vault", "list").AssertOK().AssertStdoutEquals("personal")
 }
@@ -397,7 +397,7 @@ func TestReadingTakesAPrefixAndChangingTakesTheWholeName(t *testing.T) {
 	} {
 		l.RunStdin("y\n", args...).
 			AssertFailed().
-			AssertOutput(`Did you mean "personal"`)
+			AssertStderr(`Did you mean "personal"`)
 	}
 
 	// Nothing was changed by any of them.
@@ -441,7 +441,7 @@ func TestDeleteReportsAMissingVault(t *testing.T) {
 
 	l.RunStdin("y\n", "vault", "delete", "-v", "absent").
 		AssertFailed().
-		AssertOutput("not found")
+		AssertStderr("not found")
 }
 
 // A prefix that names no vault exactly picks the first in alphabetical order,
@@ -562,7 +562,7 @@ func TestCreateRejectsANonASCIIName(t *testing.T) {
 
 	l.Run("vault", "create", "-v", "café", "-p", pwFile).
 		AssertFailed().
-		AssertOutput("invalid vault name")
+		AssertStderr("invalid vault name")
 }
 
 func TestUnusableHomeIsReported(t *testing.T) {
@@ -572,7 +572,7 @@ func TestUnusableHomeIsReported(t *testing.T) {
 	notADir := l.WriteFile("not-a-dir", "")
 	l.Setenv("MRS_HOME", notADir)
 
-	l.Run("vault", "list").AssertFailed().AssertOutput("not a directory")
+	l.Run("vault", "list").AssertFailed().AssertStderr("not a directory")
 }
 
 func TestHelpDocumentsEveryCommand(t *testing.T) {
@@ -590,8 +590,8 @@ func TestHelpDocumentsEveryCommand(t *testing.T) {
 
 func TestUnknownCommandFails(t *testing.T) {
 	l := newLab(t)
-	l.Run("nonsense").AssertFailed().AssertOutput("unknown command")
-	l.Run("vault", "nonsense").AssertFailed().AssertOutput("unknown command")
+	l.Run("nonsense").AssertFailed().AssertStderr("unknown command")
+	l.Run("vault", "nonsense").AssertFailed().AssertStderr("unknown command")
 }
 
 func TestVersionIsReported(t *testing.T) {
@@ -604,6 +604,6 @@ func TestVersionIsReported(t *testing.T) {
 
 	// Not -v. Cobra gives --version that shorthand unless the flag is already
 	// registered, and -v is --vault on every command under mrs.
-	l.Run("-v").AssertFailed().AssertOutput("unknown shorthand flag")
+	l.Run("-v").AssertFailed().AssertStderr("unknown shorthand flag")
 	l.Run("help").AssertOK().AssertNoOutput("-v, --version")
 }

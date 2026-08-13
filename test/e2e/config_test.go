@@ -159,7 +159,7 @@ func TestAnUnusableHomeIsReportedByEveryCommand(t *testing.T) {
 		{"vault", "export", "-v", "personal", "-p", pwFile},
 		{"search", "-v", "personal", "-p", pwFile, "anything"},
 	} {
-		l.Run(args...).AssertFailed().AssertOutput("not a directory")
+		l.Run(args...).AssertFailed().AssertStderr("not a directory")
 	}
 }
 
@@ -246,7 +246,7 @@ func TestAnUnusableTempIsReported(t *testing.T) {
 	// fall back to somewhere less private.
 	l.Run("edit", "-v", "personal", "-p", pwFile).
 		AssertFailed().
-		AssertOutput("not a directory").
+		AssertStderr("not a directory").
 		AssertNoOutput("the-secret-value")
 
 	// A command that never needs a temporary file is unaffected.
@@ -287,7 +287,7 @@ func TestTheVaultSubcommandsRequireANamedVault(t *testing.T) {
 		{"vault", "change-password", "-p", pwFile},
 		{"vault", "delete"},
 	} {
-		l.Run(args...).AssertFailed().AssertOutput("--vault")
+		l.Run(args...).AssertFailed().AssertStderr("--vault")
 	}
 
 	// Answering the prompt works, as does naming it on the command line.
@@ -326,7 +326,7 @@ func TestTheDefaultVaultNameMustNameAVaultExactly(t *testing.T) {
 	l.Run("vault", "get-default").AssertOK().AssertStdoutEquals("personal")
 
 	l.Setenv("MRS_DEFAULT_VAULT_NAME", "absent")
-	l.Run("vault", "get-default").AssertFailed().AssertOutput("not found")
+	l.Run("vault", "get-default").AssertFailed().AssertStderr("not found")
 }
 
 func TestEachRunGetsItsOwnTemporaryDirectory(t *testing.T) {
@@ -345,4 +345,70 @@ func TestEachRunGetsItsOwnTemporaryDirectory(t *testing.T) {
 	assertNotExists(t, first.Path)
 	assertNotExists(t, second.Path)
 	assertNoPlaintextUnder(t, l.Temp, "a value")
+}
+
+func TestAPromptNeverReachesStdout(t *testing.T) {
+	l := newLab(t)
+	pwFile := l.seedVault("work", "a password", "a key\nthe-secret-value\n")
+
+	// `mrs vault export > secrets` with no -v asks which vault. The question
+	// has to reach the user's terminal, not the file they are capturing, or
+	// they see nothing and the file is corrupted by a line that is not a
+	// secret. add, edit and search resolve the default instead of asking.
+	r := l.RunStdin("work\n", "vault", "export", "-p", pwFile).AssertOK()
+	r.AssertStderr("Vault name: ")
+	r.AssertStdoutExactly("a key\nthe-secret-value\n")
+
+	// And the confirmation before a destructive change.
+	r = l.RunStdin("n\n", "vault", "delete", "-v", "work").AssertOK()
+	r.AssertStderr("Delete vault work? (y/n) [n]: ")
+	if strings.Contains(r.Stdout, "(y/n)") {
+		t.Fatalf("expected the confirmation off stdout, got %q", r.Stdout)
+	}
+}
+
+// TestNothingButDataIsEverWrittenToStdout is the general form of the rule the
+// tests above check case by case: whatever goes wrong, stdout stays empty, so
+// a caller redirecting it captures secrets or nothing at all.
+func TestNothingButDataIsEverWrittenToStdout(t *testing.T) {
+	l := newLab(t)
+	pwFile := l.seedVault("work", "a password", "a key\nthe-secret-value\n")
+	wrong := l.PasswordFile("wrong.pw", "not the password")
+	absent := filepath.Join(l.UserHome, "absent")
+
+	failures := map[string][]string{
+		"unknown command":       {"bogus"},
+		"unknown subcommand":    {"vault", "bogus"},
+		"unknown flag":          {"vault", "list", "--bogus"},
+		"missing vault":         {"vault", "export", "-v", "nope", "-p", pwFile},
+		"wrong password":        {"vault", "export", "-v", "work", "-p", wrong},
+		"missing password file": {"vault", "export", "-v", "work", "-p", absent},
+		"no vault named":        {"vault", "export", "-p", pwFile},
+		"no password to read":   {"vault", "export", "-v", "work"},
+		"search without a term": {"search", "-v", "work", "-p", pwFile},
+		"invalid pattern":       {"search", "-v", "work", "-p", pwFile, "["},
+		"search found nothing":  {"search", "-v", "work", "-p", pwFile, "zzz"},
+		"duplicate vault":       {"vault", "create", "-v", "work", "-p", pwFile},
+		"invalid vault name":    {"vault", "create", "-v", "bad name", "-p", pwFile},
+		"weak password":         {"vault", "create", "-v", "new", "-p", l.PasswordFile("short.pw", "short")},
+		"rename missing source": {"vault", "rename", "nope", "other"},
+		"rename too few args":   {"vault", "rename", "onlyone"},
+		"delete missing vault":  {"vault", "delete", "-v", "nope"},
+		"prefix cannot delete":  {"vault", "delete", "-v", "wor"},
+		"prefix cannot re-key":  {"vault", "change-password", "-v", "wor", "-p", pwFile},
+	}
+	for desc, args := range failures {
+		t.Run(desc, func(t *testing.T) {
+			r := l.Run(args...).AssertFailed()
+			if r.Stdout != "" {
+				t.Errorf("expected nothing on stdout, got %q", r.Stdout)
+			}
+			if r.Stderr == "" {
+				t.Errorf("expected the failure to be explained on stderr, got nothing")
+			}
+			if strings.Contains(r.Stdout, "the-secret-value") {
+				t.Errorf("expected no secret in the output, got %q", r.Stdout)
+			}
+		})
+	}
 }
