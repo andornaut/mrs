@@ -436,17 +436,35 @@ func TestDeleteReportsAMissingVault(t *testing.T) {
 		AssertOutput("not found")
 }
 
-func TestAPrefixSelectsTheFirstMatch(t *testing.T) {
+// A prefix that names no vault exactly picks the first in alphabetical order,
+// without comment. What keeps that safe is that the vault it chose is named in
+// the output, so the choice is never invisible; a prefix can no longer reach a
+// command that destroys or re-keys a vault, and an exact name always wins.
+func TestAPrefixSelectsTheFirstMatchAndSaysWhich(t *testing.T) {
 	l := newLab(t)
 	l.seedVault("alpha", "a password", "alpha key\nalpha value\n")
 	l.seedVault("alphabet", "a password", "alphabet key\nalphabet value\n")
-
-	// A prefix that names no vault exactly picks the first in sorted order.
 	pwFile := l.PasswordFile("alpha.pw", "a password")
+
 	l.Run("search", "-v", "alph", "-p", pwFile, "key").
 		AssertOK().
+		AssertStdout("in vault alpha\n").
 		AssertStdout("alpha value").
 		AssertNoOutput("alphabet value")
+
+	l.Run("vault", "export", "-v", "alph", "-p", pwFile).
+		AssertOK().
+		AssertStdoutExactly("alpha key\nalpha value\n")
+
+	// add and edit still take a prefix, and still write, so their reports have
+	// to name the vault they wrote to.
+	l.editorAppends("added key\nadded value\n")
+	l.Run("add", "-v", "alph", "-p", pwFile).
+		AssertOK().
+		AssertStdout("added to vault alpha\n")
+	l.Run("edit", "-v", "alph", "-p", pwFile).
+		AssertOK().
+		AssertStdout("Saved changes to vault alpha\n")
 }
 
 // A vault is found by a glob on its name, so a shorter name is matched
