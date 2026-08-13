@@ -368,6 +368,54 @@ func TestDeleteConfirmsWithTheVaultsOwnName(t *testing.T) {
 	l.Run("vault", "list").AssertOK().AssertStdoutEquals("personal")
 }
 
+// Reading a vault takes a name prefix; changing one takes the whole name, so
+// that a prefix cannot reach a vault the user did not name.
+func TestReadingTakesAPrefixAndChangingTakesTheWholeName(t *testing.T) {
+	l := newLab(t)
+	pwFile := l.seedVault("personal", "a password", "a key\na value\n")
+
+	// Reads.
+	l.Run("search", "-v", "pers", "-p", pwFile, "a key").AssertOK().AssertStdout("a value")
+	l.Run("vault", "export", "-v", "pers", "-p", pwFile).
+		AssertOK().
+		AssertStdoutExactly("a key\na value\n")
+
+	// Changes.
+	newPw := l.PasswordFile("new.pw", "a different password")
+	for _, args := range [][]string{
+		{"vault", "change-password", "-v", "pers", "-p", pwFile, "-n", newPw},
+		{"vault", "rename", "pers", "renamed"},
+		{"vault", "delete", "-v", "pers"},
+	} {
+		l.RunStdin("y\n", args...).
+			AssertFailed().
+			AssertOutput(`Did you mean "personal"`)
+	}
+
+	// Nothing was changed by any of them.
+	l.Run("vault", "list").AssertOK().AssertStdoutEquals("personal")
+	l.Run("vault", "export", "-v", "personal", "-p", pwFile).
+		AssertOK().
+		AssertStdoutExactly("a key\na value\n")
+}
+
+func TestTheVaultFlagSaysWhichNameItTakes(t *testing.T) {
+	l := newLab(t)
+
+	// The flag cannot show the difference, so the help text has to.
+	for _, c := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"search"}, "or the start of one"},
+		{[]string{"vault", "export"}, "or the start of one"},
+		{[]string{"vault", "change-password"}, "full name of a vault"},
+		{[]string{"vault", "delete"}, "full name of a vault"},
+	} {
+		l.Run(append(c.args, "--help")...).AssertOK().AssertStdout(c.want)
+	}
+}
+
 func TestRenameChecksTheSourceNameBeforeLocking(t *testing.T) {
 	l := newLab(t)
 	pwFile := l.createVault("personal", "a password")

@@ -77,7 +77,8 @@ func init() {
 			if err != nil {
 				return err
 			}
-			v, err := vault.First(name)
+			// Re-keying a vault changes it, so it takes the whole name.
+			v, err := vault.Exact(name)
 			if err != nil {
 				return err
 			}
@@ -241,8 +242,13 @@ func init() {
 		},
 	}
 
-	for _, c := range []*cobra.Command{changePassword, create, delete, export} {
-		c.Flags().StringVarP(&opts.namePrefix, "vault", "v", "", "name of a vault")
+	// Reading a vault takes a name prefix; changing one takes the whole name,
+	// so that a prefix cannot reach a vault the user did not name. The help
+	// text says which, because the flag alone cannot.
+	create.Flags().StringVarP(&opts.namePrefix, "vault", "v", "", "name for the new vault")
+	export.Flags().StringVarP(&opts.namePrefix, "vault", "v", "", "name of a vault, or the start of one")
+	for _, c := range []*cobra.Command{changePassword, delete} {
+		c.Flags().StringVarP(&opts.namePrefix, "vault", "v", "", "full name of a vault")
 	}
 	for _, c := range []*cobra.Command{changePassword, create, export} {
 		c.Flags().StringVarP(&opts.passwordFile, "password-file", "p", "", "path to a file that contains your password")

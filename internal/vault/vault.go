@@ -75,9 +75,10 @@ func named(vs []Vault, name string) (Vault, bool) {
 	return BadVault, false
 }
 
-// ChangePassword changes a vault's password
-func ChangePassword(prefix string, oldPassword, newPassword []byte) (UnlockedVault, error) {
-	v, err := First(prefix)
+// ChangePassword changes a vault's password. It re-keys the vault, so it takes
+// the whole name rather than a prefix that could reach a neighbouring one.
+func ChangePassword(name string, oldPassword, newPassword []byte) (UnlockedVault, error) {
+	v, err := Exact(name)
 	if err != nil {
 		return BadUnlockedVault, err
 	}
@@ -164,9 +165,10 @@ func Delete(name string) error {
 	return nil
 }
 
-// Export writes a vault's secrets to stdout
-func Export(name string, password []byte) (string, error) {
-	v, err := Exact(name)
+// Export writes a vault's secrets to stdout. Reading a vault does not change
+// it, so a name prefix is enough, as it is for search.
+func Export(prefix string, password []byte) (string, error) {
+	v, err := First(prefix)
 	if err != nil {
 		return "", err
 	}

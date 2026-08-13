@@ -25,6 +25,25 @@ you typed it, including indentation, trailing spaces, and lines that begin with
 a `#`. Secrets are sorted by key when they are saved. Two secrets may share a
 key, and `mrs` prints a warning when they do.
 
+## Naming a vault
+
+`-v`, `--vault` names the vault to work on. Commands that only read a vault
+accept the start of its name, so `mrs search -v pers` finds `personal`.
+Commands that change a vault want the whole name, so that a prefix cannot
+reach a vault you did not mean:
+
+Takes a prefix | Wants the whole name
+--- | ---
+`add`, `edit`, `search`, `vault export` | `vault change-password`, `vault rename`, `vault delete`
+
+A prefix that matches more than one vault selects the first in alphabetical
+order, except that a vault whose name matches exactly is always preferred:
+with `work` and `work-archive`, `-v work` is `work`.
+
+Without `-v`, `add`, `edit` and `search` use `$MRS_DEFAULT_VAULT_NAME`, or the
+only vault if there is just one. The `mrs vault` commands ask which vault
+instead.
+
 ## Passwords
 
 `mrs` prompts for a password on the terminal, with echo turned off. When stdin

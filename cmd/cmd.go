@@ -144,7 +144,7 @@ func init() {
 
 	for _, c := range []*cobra.Command{add, edit, search} {
 		flags := c.Flags()
-		flags.StringVarP(&opts.namePrefix, "vault", "v", "", "name of a vault")
+		flags.StringVarP(&opts.namePrefix, "vault", "v", "", "name of a vault, or the start of one")
 		flags.StringVarP(&opts.passwordFile, "password-file", "p", "", "path to a file that contains your password")
 	}
 	add.Flags().BoolVarP(&opts.force, "force", "f", false, "delete the vault's lock file before adding")
