@@ -18,28 +18,96 @@ func All() ([]Vault, error) {
 	return findVaults("")
 }
 
-// Default returns the default vault.
-// If a default vault name is not configured, then return the first vault found or BadVault.
-// If a default vault name is configured, but cannot be found, then return an error.
+// Default returns the vault to use when none is named: the one that
+// $MRS_DEFAULT_VAULT_NAME names, or the only vault there is. It returns
+// BadVault without an error when there are no vaults at all, because a vault
+// directory that is still empty is not a misconfiguration.
 func Default() (Vault, error) {
-	// If DefaultVaultName is "", then findVaults() will return all vaults.
-	vs, err := findVaults(config.DefaultVaultName)
+	if config.DefaultVaultName != "" {
+		// Exactly, unlike --vault. A name written into a shell profile is read
+		// on every run and looked at almost never, so a typo that reaches a
+		// neighbouring vault would go on doing so unnoticed.
+		vs, err := findVaults(config.DefaultVaultName)
+		if err != nil {
+			return BadVault, err
+		}
+		if v, ok := named(vs, config.DefaultVaultName); ok {
+			return v, nil
+		}
+		return BadVault, fmt.Errorf(
+			"default vault %q not found. $MRS_DEFAULT_VAULT_NAME must name a vault exactly",
+			config.DefaultVaultName)
+	}
+	vs, err := All()
 	if err != nil {
 		return BadVault, err
 	}
-
-	if vs == nil {
-		if config.DefaultVaultName != "" {
-			return BadVault, fmt.Errorf("default vault %q not found", config.DefaultVaultName)
-		}
-		// If a default vault name is not configured, then we should not return an error, because
-		// the default vault's existence is optional.
+	switch len(vs) {
+	case 0:
 		return BadVault, nil
+	case 1:
+		return vs[0], nil
 	}
-	if v, ok := named(vs, config.DefaultVaultName); ok {
-		return v, nil
+	// Which of several vaults a secret belongs in is not a guess worth making
+	// on the user's behalf, so it is asked for rather than assumed.
+	return BadVault, errors.New(
+		"several vaults exist, so there is no default. Use --vault to name one, or set $MRS_DEFAULT_VAULT_NAME")
+}
+
+// ForReading returns the vault to read: the one that prefix names, or the first
+// whose name it begins, or the default vault when prefix is empty.
+func ForReading(prefix string) (Vault, error) {
+	if prefix == "" {
+		return orDefault()
 	}
-	return vs[0], nil
+	return First(prefix)
+}
+
+// ForWriting returns the vault to write to. It differs from ForReading in
+// refusing a prefix that begins the name of more than one vault: reading the
+// wrong vault shows the user something they did not expect, while writing to it
+// leaves a secret where they will not look for it.
+func ForWriting(prefix string) (Vault, error) {
+	if prefix == "" {
+		return orDefault()
+	}
+	return Unique(prefix)
+}
+
+func orDefault() (Vault, error) {
+	v, err := Default()
+	if err != nil {
+		return BadVault, err
+	}
+	if v == BadVault {
+		// Default returns BadVault without an error only when there are no
+		// vaults, so there is no name the user could give that would help.
+		return BadVault, errors.New("no vaults found. Run \"mrs vault create\" to create one")
+	}
+	return v, nil
+}
+
+// Unique returns the vault that prefix names, or the single vault whose name it
+// begins, and refuses a prefix that could have meant more than one.
+func Unique(prefix string) (Vault, error) {
+	v, matched, err := resolve(prefix)
+	if err != nil {
+		return BadVault, err
+	}
+	if len(matched) > 1 && v.Name() != prefix {
+		return BadVault, fmt.Errorf("%q begins the name of %d vaults: %s. Use the whole name of the one you mean",
+			prefix, len(matched), strings.Join(names(matched), ", "))
+	}
+	return v, nil
+}
+
+// names returns the vaults' names, in the order they were matched.
+func names(vs []Vault) []string {
+	ns := make([]string, 0, len(vs))
+	for _, v := range vs {
+		ns = append(ns, v.Name())
+	}
+	return ns
 }
 
 // First returns the vault named prefix, or the first vault whose name begins
@@ -180,13 +248,9 @@ func Delete(name string) error {
 	return nil
 }
 
-// Export writes a vault's secrets to stdout. Reading a vault does not change
-// it, so a name prefix is enough, as it is for search.
-func Export(prefix string, password []byte) (string, error) {
-	v, err := First(prefix)
-	if err != nil {
-		return "", err
-	}
+// Export returns a vault's secrets. The caller resolves the vault, so that
+// export reports a name it cannot find the way every other command does.
+func Export(v Vault, password []byte) (string, error) {
 	u := v.Unlocked(password)
 	defer u.Wipe()
 	r, err := u.NewReader()

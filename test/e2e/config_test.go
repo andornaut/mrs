@@ -267,7 +267,7 @@ func TestTheDefaultVaultNameSelectsAmongSeveral(t *testing.T) {
 	l.Run("search", "-p", workPw, "work").AssertOK().AssertStdout("work-value")
 
 	l.editorAppends("added key\nadded-value\n")
-	l.Run("add", "-p", workPw).AssertOK().AssertStdout("added to vault work")
+	l.Run("add", "-p", workPw).AssertOK().AssertStderr("added to vault work")
 	if got := l.export("home", l.PasswordFile("home2.pw", "a password")); strings.Contains(got, "added-value") {
 		t.Fatal("expected the configured vault to be used, not the first in the directory")
 	}
@@ -278,12 +278,10 @@ func TestTheVaultSubcommandsRequireANamedVault(t *testing.T) {
 	pwFile := l.seedVault("work", "a password", "work key\nwork-value\n")
 	l.Setenv("MRS_DEFAULT_VAULT_NAME", "work")
 
-	// Naming a vault is required for everything under `mrs vault`, whether by
-	// --vault or by answering the prompt. The configured default applies to
-	// the everyday add, edit and search, which resolve a vault rather than
-	// asking for one.
+	// A vault that is about to be changed is named, whether by --vault or by
+	// answering the prompt: the configured default is a convenience for the
+	// commands that read, and is not enough to re-key or delete by.
 	for _, args := range [][]string{
-		{"vault", "export", "-p", pwFile},
 		{"vault", "change-password", "-p", pwFile},
 		{"vault", "delete"},
 	} {
@@ -291,7 +289,12 @@ func TestTheVaultSubcommandsRequireANamedVault(t *testing.T) {
 	}
 
 	// Answering the prompt works, as does naming it on the command line.
-	l.RunStdin("work\n", "vault", "export", "-p", pwFile).AssertOK().AssertStdout("work-value")
+	l.RunStdin("work\n", "vault", "change-password", "-p", pwFile, "-n", pwFile).
+		AssertOK().
+		AssertStderr("Changed password of vault work")
+
+	// export only reads, so it resolves the default the way search does.
+	l.Run("vault", "export", "-p", pwFile).AssertOK().AssertStdout("work-value")
 	l.Run("vault", "export", "-v", "work", "-p", pwFile).AssertOK().AssertStdout("work-value")
 }
 
@@ -302,7 +305,7 @@ func TestTheOnlyVaultIsUsedWhenNoneIsNamed(t *testing.T) {
 	// With one vault and nothing configured, there is nothing to disambiguate,
 	// so add, edit and search use it rather than asking which.
 	l.Run("search", "-p", pwFile, "a key").AssertOK().AssertStdout("solo-value")
-	l.Run("edit", "-p", pwFile).AssertOK().AssertStdout("vault solo")
+	l.Run("edit", "-p", pwFile).AssertOK().AssertStderr("vault solo")
 }
 
 func TestAnExplicitVaultOverridesTheDefaultVaultName(t *testing.T) {
@@ -320,13 +323,19 @@ func TestTheDefaultVaultNameMustNameAVaultExactly(t *testing.T) {
 	l := newLab(t)
 	l.seedVault("personal", "a password", "a key\na value\n")
 
-	// A prefix is accepted on the command line, but a configured name that
-	// matches nothing is a misconfiguration worth reporting.
-	l.Setenv("MRS_DEFAULT_VAULT_NAME", "pers")
-	l.Run("vault", "get-default").AssertOK().AssertStdoutEquals("personal")
+	// A prefix is accepted on the command line, where it is typed and read in
+	// the same moment. A name written into a shell profile is read on every run
+	// and looked at almost never, so it has to name a vault exactly.
+	for _, name := range []string{"pers", "personal2", "absent"} {
+		l.Setenv("MRS_DEFAULT_VAULT_NAME", name)
+		l.Run("vault", "get-default").
+			AssertFailed().
+			AssertStderr("not found").
+			AssertStderr("MRS_DEFAULT_VAULT_NAME must name a vault exactly")
+	}
 
-	l.Setenv("MRS_DEFAULT_VAULT_NAME", "absent")
-	l.Run("vault", "get-default").AssertFailed().AssertStderr("not found")
+	l.Setenv("MRS_DEFAULT_VAULT_NAME", "personal")
+	l.Run("vault", "get-default").AssertOK().AssertStdoutEquals("personal")
 }
 
 func TestEachRunGetsItsOwnTemporaryDirectory(t *testing.T) {
@@ -351,27 +360,31 @@ func TestAPromptNeverReachesStdout(t *testing.T) {
 	l := newLab(t)
 	pwFile := l.seedVault("work", "a password", "a key\nthe-secret-value\n")
 
-	// `mrs vault export > secrets` with no -v asks which vault. The question
-	// has to reach the user's terminal, not the file they are capturing, or
-	// they see nothing and the file is corrupted by a line that is not a
-	// secret. add, edit and search resolve the default instead of asking.
-	r := l.RunStdin("work\n", "vault", "export", "-p", pwFile).AssertOK()
+	// `mrs vault create > log` asks which vault to create. The question has to
+	// reach the user's terminal, not the file they are capturing.
+	r := l.RunStdin("second\n", "vault", "create", "-p", pwFile).AssertOK()
 	r.AssertStderr("Vault name: ")
-	r.AssertStdoutExactly("a key\nthe-secret-value\n")
+	r.AssertStdoutExactly("")
+
+	// And a vault's secrets reach stdout with nothing else mixed in.
+	l.Run("vault", "export", "-v", "work", "-p", pwFile).
+		AssertOK().
+		AssertStdoutExactly("a key\nthe-secret-value\n")
 
 	// A prompt answered from a pipe is not echoed, so mrs supplies the newline
 	// that pressing Enter would have written. Without it, whatever it prints
 	// next continues the prompt's line, as in "Vault name: Error: ...".
-	r = l.Run("vault", "export", "-p", pwFile).AssertFailed()
+	r = l.Run("vault", "create", "-p", pwFile).AssertFailed()
 	if strings.Contains(r.Stderr, "Vault name: Error") {
 		t.Errorf("expected the error on its own line, got %q", r.Stderr)
 	}
 	r.AssertStderr("Use --vault to name one")
 
-	// And the confirmation before a destructive change.
-	r = l.RunStdin("n\n", "vault", "delete", "-v", "work").AssertOK()
-	r.AssertStderr("Delete vault work? (y/n) [n]: ")
-	if strings.Contains(r.Stdout, "(y/n)") {
+	// And the question before a destructive change, which without a terminal
+	// is reported rather than asked.
+	r = l.Run("vault", "delete", "-v", "work").AssertFailed()
+	r.AssertStderr("Delete vault work?")
+	if strings.Contains(r.Stdout, "Delete vault") {
 		t.Fatalf("expected the confirmation off stdout, got %q", r.Stdout)
 	}
 }
@@ -392,7 +405,7 @@ func TestNothingButDataIsEverWrittenToStdout(t *testing.T) {
 		"missing vault":         {"vault", "export", "-v", "nope", "-p", pwFile},
 		"wrong password":        {"vault", "export", "-v", "work", "-p", wrong},
 		"missing password file": {"vault", "export", "-v", "work", "-p", absent},
-		"no vault named":        {"vault", "export", "-p", pwFile},
+		"no answer to confirm":  {"vault", "delete", "-v", "work"},
 		"no password to read":   {"vault", "export", "-v", "work"},
 		"search without a term": {"search", "-v", "work", "-p", pwFile},
 		"invalid pattern":       {"search", "-v", "work", "-p", pwFile, "["},
@@ -420,4 +433,92 @@ func TestNothingButDataIsEverWrittenToStdout(t *testing.T) {
 			}
 		})
 	}
+}
+
+// mrs uses grep's exit codes, so that a script can tell a search that found
+// nothing from one that could not run.
+func TestExitCodesDistinguishNoMatchFromFailure(t *testing.T) {
+	l := newLab(t)
+	pwFile := l.seedVault("work", "a password", "a key\na value\n")
+
+	for _, c := range []struct {
+		desc string
+		args []string
+		want int
+	}{
+		{"a search that matched", []string{"search", "-v", "work", "-p", pwFile, "a key"}, 0},
+		{"a command that worked", []string{"vault", "list"}, 0},
+		{"a search that matched nothing", []string{"search", "-v", "work", "-p", pwFile, "zzz"}, 1},
+		{"a vault that is not there", []string{"search", "-v", "nope", "-p", pwFile, "a key"}, 2},
+		{"a password that is wrong", []string{"vault", "export", "-v", "work", "-p", l.PasswordFile("wrong.pw", "not the password")}, 2},
+		{"a flag that is not there", []string{"vault", "list", "--bogus"}, 2},
+		{"a command that is not there", []string{"bogus"}, 2},
+	} {
+		t.Run(c.desc, func(t *testing.T) {
+			if r := l.Run(c.args...); r.ExitCode != c.want {
+				t.Errorf("expected exit %d, got %d\n%s", c.want, r.ExitCode, r.describe())
+			}
+		})
+	}
+}
+
+// The rule stated on the success path: stdout carries the vault names, paths
+// and secrets a caller consumes, and every report of what happened goes to
+// stderr, so that redirecting stdout captures data alone.
+func TestOnlyDataIsWrittenToStdoutWhenACommandSucceeds(t *testing.T) {
+	l := newLab(t)
+	pwFile := l.seedVault("work", "a password", "a key\na value\n")
+	l.editorAppends("added key\nadded value\n")
+
+	for _, c := range []struct {
+		desc string
+		args []string
+		want string
+	}{
+		{"create", []string{"vault", "create", "-v", "second", "-p", pwFile}, ""},
+		{"add", []string{"add", "-v", "second", "-p", pwFile}, ""},
+		{"edit", []string{"edit", "-v", "second", "-p", pwFile}, ""},
+		{"rename", []string{"vault", "rename", "second", "third"}, ""},
+		{"change-password", []string{"vault", "change-password", "-v", "third", "-p", pwFile, "-n", pwFile}, ""},
+		{"delete", []string{"vault", "delete", "-v", "third", "--yes"}, ""},
+		{"list", []string{"vault", "list"}, "work\n"},
+		{"get-default", []string{"vault", "get-default"}, "work\n"},
+		{"export", []string{"vault", "export", "-v", "work", "-p", pwFile}, "a key\na value\n"},
+	} {
+		t.Run(c.desc, func(t *testing.T) {
+			r := l.Run(c.args...).AssertOK()
+			if r.Stdout != c.want {
+				t.Errorf("expected stdout %q, got %q\n%s", c.want, r.Stdout, r.describe())
+			}
+			if c.want == "" && r.Stderr == "" {
+				t.Errorf("expected the outcome to be reported on stderr, got nothing")
+			}
+		})
+	}
+}
+
+// Which of several vaults a secret belongs in is not a guess worth making on
+// the user's behalf, so the commands that resolve a default ask to be told.
+func TestSeveralVaultsWithNoDefaultAreNotGuessedBetween(t *testing.T) {
+	l := newLab(t)
+	pwFile := l.seedVault("work", "a password", "a key\na value\n")
+	l.seedVault("home", "a password", "a key\na value\n")
+
+	for _, args := range [][]string{
+		{"add", "-p", pwFile},
+		{"edit", "-p", pwFile},
+		{"search", "-p", pwFile, "a key"},
+		{"vault", "export", "-p", pwFile},
+		{"vault", "get-default"},
+	} {
+		l.Run(args...).
+			AssertFailed().
+			AssertStderr("several vaults exist").
+			AssertStderr("MRS_DEFAULT_VAULT_NAME")
+	}
+
+	// Naming one, or configuring one, answers it.
+	l.Run("vault", "export", "-v", "work", "-p", pwFile).AssertOK().AssertStdout("a value")
+	l.Setenv("MRS_DEFAULT_VAULT_NAME", "work")
+	l.Run("vault", "export", "-p", pwFile).AssertOK().AssertStdout("a value")
 }

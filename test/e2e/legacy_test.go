@@ -147,7 +147,7 @@ func TestAnOldVaultKeepsItsSaltWhenRenamed(t *testing.T) {
 		AssertOK().
 		AssertStdout("old-value")
 
-	l.RunStdin("y\n", "vault", "delete", "-v", "archive").AssertOK()
+	l.Run("vault", "delete", "-v", "archive", "--yes").AssertOK()
 	l.Run("vault", "list").AssertOK().AssertStdoutEquals("")
 	// Nothing that still holds the secrets may be left behind. Lock files are
 	// left in place by every command and hold nothing, so they do not count.

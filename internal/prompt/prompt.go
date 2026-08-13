@@ -27,21 +27,26 @@ var promptOut io.Writer = os.Stderr
 // unreachable from a test, because a test's stdin is never a terminal.
 var isTerminal = term.IsTerminal
 
-// Bool prompts for input and returns true if the trimmed input was "y"
-func Bool(msg string, defaultTrue bool) bool {
-	d := "n"
-	if defaultTrue {
-		d = "y"
+// Confirm asks msg and reports whether the answer was "y". assumeYes answers it
+// without asking, for a caller whose --yes flag was given.
+//
+// Without a terminal there is nobody to ask, so this reports ErrNoTerminal
+// rather than taking the safe answer: a caller that takes it would exit
+// successfully having done nothing, which reads as "done" to the script that
+// ran it. Only an answer of "y" is yes, so a stray line cannot destroy a vault.
+func Confirm(assumeYes bool, msg string) (bool, error) {
+	if assumeYes {
+		return true, nil
 	}
-	_, _ = fmt.Fprintf(promptOut, "%s (y/n) [%s]: ", msg, d)
+	if !isTerminal(int(os.Stdin.Fd())) {
+		return false, fmt.Errorf("cannot ask %q: %w. Use --yes to answer it", msg, ErrNoTerminal)
+	}
+	_, _ = fmt.Fprintf(promptOut, "%s (y/n) [n]: ", msg)
 	answer, err := scanTrimmedLine()
 	if err != nil {
-		return defaultTrue
+		return false, nil
 	}
-	if answer == "" {
-		return defaultTrue
-	}
-	return answer == "y"
+	return answer == "y", nil
 }
 
 // Editor opens the file at p using a text editor

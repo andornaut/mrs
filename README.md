@@ -27,32 +27,46 @@ key, and `mrs` prints a warning when they do.
 
 ## Naming a vault
 
-`-v`, `--vault` names the vault to work on. Commands that only read a vault
-accept the start of its name, so `mrs search -v pers` finds `personal`.
-Commands that change a vault want the whole name, so that a prefix cannot
-reach a vault you did not mean:
+`-v`, `--vault` names the vault to work on. A vault whose name matches exactly
+is always chosen, whatever longer names begin with it: with `work` and
+`work-archive`, `-v work` is `work`. Short of an exact match, how much of a
+name is enough depends on what the command does to the vault:
 
-Takes a prefix | Wants the whole name
---- | ---
-`add`, `edit`, `search`, `vault export` | `vault change-password`, `vault rename`, `vault delete`
+Command | Accepts | A prefix that fits several vaults
+--- | --- | ---
+`search`, `vault export` | the start of a name | picks the first, and says which
+`add`, `edit` | the start of a name | is refused, listing them
+`vault change-password`, `vault rename`, `vault delete` | the whole name | is refused, suggesting the closest
 
-A prefix that matches more than one vault selects the first in alphabetical
-order and says which it took, so that the choice is never invisible. A vault
-whose name matches exactly is always preferred and is never ambiguous: with
-`work` and `work-archive`, `-v work` is `work`.
+Reading the wrong vault shows you something you did not expect; writing to it
+leaves a secret where you will not look for it, and renaming, re-keying or
+deleting the wrong one cannot be undone from the command that did it.
 
 ```text
 $ mrs vault export -v alph -p pw
 Warning: "alph" begins the name of 2 vaults, so vault alpha was chosen
+
+$ mrs edit -v alph
+Error: "alph" begins the name of 2 vaults: alpha, alphabet. Use the whole name of the one you mean
 ```
 
-Without `-v`, `add`, `edit` and `search` use `$MRS_DEFAULT_VAULT_NAME`, or the
-only vault if there is just one. The `mrs vault` commands ask which vault
-instead. Before there are any vaults to name, they say so:
+Without `-v`, the commands that read or write secrets (`add`, `edit`, `search`
+and `vault export`) use `$MRS_DEFAULT_VAULT_NAME`, or the only vault if there
+is just one. Unlike `-v`, the configured name has to match a vault exactly: it
+is read on every run and looked at almost never, so a typo that reached a
+neighbouring vault would go on doing so unnoticed.
+
+`vault create`, `vault change-password`, `vault delete` and `vault rename`
+change which vaults exist or what opens them, so they ask which vault rather
+than assuming one. With no vaults, or with several and nothing configured,
+there is no default to fall back to and `mrs` says so rather than guessing:
 
 ```text
 $ mrs add
 Error: no vaults found. Run "mrs vault create" to create one
+
+$ mrs add
+Error: several vaults exist, so there is no default. Use --vault to name one, or set $MRS_DEFAULT_VAULT_NAME
 ```
 
 ## Passwords
@@ -67,16 +81,36 @@ Flag | Command | Supplies
 `-n`, `--new-password-file` | `vault change-password` | the password to change it to
 `-i`, `--import-file` | `vault create` | unencrypted secrets to seed the vault with
 
-A short flag means the same thing everywhere: `-p` is always the password file
-and `-f` is always `--force`, which deletes a vault's lock file before writing.
-`--path`, on `vault list` and `vault get-default`, has no short form for that
-reason, and `search` spells its full-contents flag `-a`, `--full`.
+A short flag means the same thing everywhere: `-p` is always the password file,
+`-v` is always the vault and `-y` is always `--yes`. A flag that only some
+commands have, and that is worth reading twice before typing, is spelled out in
+full: `--force`, which deletes another process's lock file, and `--path`, on
+`vault list` and `vault get-default`.
 
 A trailing newline is trimmed, so `echo 'a password' > pw` works. Any other
 whitespace is part of the password.
 
-Prompts are written to stderr, so that `mrs vault export > secrets` and
-`mrs search key | less` redirect only the secrets.
+## Confirmations
+
+Emptying a vault with `mrs edit`, and `mrs vault delete`, ask before they go
+ahead. `-y`, `--yes` answers in advance.
+
+Without a terminal there is nobody to ask, so `mrs` refuses rather than taking
+the safe answer: a command that exits successfully having done nothing reads as
+"done" to the script that ran it.
+
+```text
+$ mrs vault delete -v old < /dev/null
+Error: cannot ask "Delete vault old?": stdin is not a terminal. Use --yes to answer it
+```
+
+## Output and exit codes
+
+stdout carries what a caller consumes: the vault names of `vault list` and
+`vault get-default`, and the secrets of `vault export` and `search`. Prompts,
+warnings, errors and reports of what happened go to stderr, so that
+`mrs vault export > secrets` and `mrs search key | less` carry the secrets
+alone.
 
 ```text
 $ mrs vault export
@@ -98,10 +132,14 @@ bank account number: 1234
 bank account password: an insecure password
 ```
 
-`search` writes the matching secrets to stdout and everything else to stderr,
-so `mrs search aws > keys` and `mrs search aws | less` carry the secrets alone.
-It exits 0 when something matched and 1 when nothing did, as `grep` does, so a
-script can tell the difference:
+Exit codes follow `grep`, so that a search which found nothing can be told from
+one that could not run:
+
+Code | Meaning
+--- | ---
+0 | it worked
+1 | `mrs search` ran and matched nothing
+2 | something went wrong
 
 ```text
 $ mrs search aws -p pw >/dev/null && echo found || echo none
@@ -166,7 +204,7 @@ You can use environment variables to customize some settings.
 Environment variable | Description
 --- | ---
 EDITOR | The editor to use to add or edit secrets (default: nano). May include arguments, such as `vim -n` or `code -w`. Quote a path that contains spaces.
-MRS_DEFAULT_VAULT_NAME | The vault to use when `--vault` is not specified (default: the first vault found)
+MRS_DEFAULT_VAULT_NAME | The vault that `add`, `edit`, `search` and `vault export` use when `--vault` is not given. Must name a vault exactly (default: the only vault, if there is just one)
 MRS_HIDE_EDITOR_INSTRUCTIONS | If set to any value, then instructions comments will not be included when adding or editing secrets
 MRS_HOME | The directory where `mrs` stores encrypted vault files (default: `${HOME}/.local/share/mrs`)
 MRS_TEMP | The directory where `mrs` temporarily stores decrypted files (default `$XDG_RUNTIME_DIR`)

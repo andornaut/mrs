@@ -65,12 +65,15 @@ func TestPasswordPromptIsNotWrittenToStdout(t *testing.T) {
 
 func TestEveryPromptIsWrittenAwayFromStdout(t *testing.T) {
 	buf := capturePrompt(t)
+	pretendTerminal(t)
 	withStdin(t, "a name\n")
 
 	if _, err := TrimmedLine("Vault name"); err != nil {
 		t.Fatalf("TrimmedLine() error: %s", err)
 	}
-	Bool("Delete vault personal?", false)
+	if _, err := Confirm(false, "Delete vault personal?"); err != nil {
+		t.Fatalf("Confirm() error: %s", err)
+	}
 
 	for _, want := range []string{"Vault name: ", "Delete vault personal? (y/n) [n]: "} {
 		if !strings.Contains(buf.String(), want) {
@@ -250,26 +253,58 @@ func TestGivenOrPromptNameReturnsWhatWasGiven(t *testing.T) {
 	}
 }
 
-func TestBoolDefaultsWhenNothingIsAnswered(t *testing.T) {
+func TestOnlyYesConfirms(t *testing.T) {
 	tests := []struct {
-		input       string
-		defaultTrue bool
-		want        bool
+		input string
+		want  bool
 	}{
-		{"y\n", false, true},
-		{"n\n", true, false},
-		{"\n", false, false},    // a bare newline accepts the default
-		{"\n", true, true},      // and the default may be either way
-		{"", false, false},      // so does end-of-input, as a script gives
-		{"", true, true},        // which must not turn destructive
-		{"yes\n", false, false}, // only an exact "y" is yes
-		{"Y\n", false, false},
+		{"y\n", true},
+		{"n\n", false},
+		{"\n", false},    // a bare newline is not an answer
+		{"", false},      // nor is end-of-input, which Ctrl-D gives
+		{"yes\n", false}, // only an exact "y" is yes
+		{"Y\n", false},
+		{" y \n", true}, // the answer is trimmed
 	}
 	for _, tt := range tests {
+		input, want := tt.input, tt.want
 		capturePrompt(t)
-		withStdin(t, tt.input)
-		if got := Bool("Continue?", tt.defaultTrue); got != tt.want {
-			t.Errorf("Bool(%q, default=%v) = %v, want %v", tt.input, tt.defaultTrue, got, tt.want)
+		pretendTerminal(t)
+		withStdin(t, input)
+		got, err := Confirm(false, "Continue?")
+		if err != nil {
+			t.Fatalf("Confirm(%q) error: %s", input, err)
 		}
+		if got != want {
+			t.Errorf("Confirm(%q) = %v, want %v", input, got, want)
+		}
+	}
+}
+
+func TestAConfirmationNeedsATerminalOrAFlag(t *testing.T) {
+	buf := capturePrompt(t)
+	withStdin(t, "y\n")
+
+	// Nobody is there to answer, so the question is not asked. Taking the safe
+	// answer instead would exit successfully having done nothing, which reads
+	// as "done" to the script that ran it.
+	_, err := Confirm(false, "Delete vault personal?")
+	if !errors.Is(err, ErrNoTerminal) {
+		t.Fatalf("expected ErrNoTerminal, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "--yes") {
+		t.Errorf("expected the error to name --yes, got %q", err)
+	}
+	if buf.Len() != 0 {
+		t.Errorf("expected no question to be asked, got %q", buf.String())
+	}
+
+	// And with the flag, it is answered without being asked.
+	got, err := Confirm(true, "Delete vault personal?")
+	if err != nil || !got {
+		t.Fatalf("Confirm(true, ...) = %v, %v; want true, nil", got, err)
+	}
+	if buf.Len() != 0 {
+		t.Errorf("expected no question to be asked, got %q", buf.String())
 	}
 }

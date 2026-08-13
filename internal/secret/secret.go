@@ -10,6 +10,14 @@ import (
 	"github.com/andornaut/mrs/internal/vault"
 )
 
+// Plural returns word, pluralised for n.
+func Plural(n int, word string) string {
+	if n == 1 {
+		return word
+	}
+	return word + "s"
+}
+
 // Add prompts the user to add secrets to a vault
 func Add(v vault.UnlockedVault) (int, error) {
 	b, err := retrieveBriefcase(v)
@@ -30,10 +38,10 @@ func Add(v vault.UnlockedVault) (int, error) {
 	return nb.Len(), nil
 }
 
-// Edit prompts the user to edit secrets in a vault.
-// It reports whether the changes were saved, which is false when the user
-// declines to empty the vault.
-func Edit(v vault.UnlockedVault) (bool, error) {
+// Edit prompts the user to edit secrets in a vault. assumeYes accepts emptying
+// it without asking. It reports whether the changes were saved, which is false
+// when the user declines to empty the vault.
+func Edit(assumeYes bool, v vault.UnlockedVault) (bool, error) {
 	b, err := retrieveBriefcase(v)
 	if err != nil {
 		return false, err
@@ -48,8 +56,13 @@ func Edit(v vault.UnlockedVault) (bool, error) {
 	// Emptying a vault discards every secret in it at once, so confirm it
 	// rather than treating it as an ordinary edit.
 	if before > 0 && b.Len() == 0 {
-		msg := fmt.Sprintf("This will remove all %d secret(s) from vault %s. Continue?", before, v.Name())
-		if !prompt.Bool(msg, false) {
+		msg := fmt.Sprintf("This will remove all %d %s from vault %s. Continue?",
+			before, Plural(before, "secret"), v.Name())
+		confirmed, err := prompt.Confirm(assumeYes, msg)
+		if err != nil {
+			return false, err
+		}
+		if !confirmed {
 			return false, nil
 		}
 	}

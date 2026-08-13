@@ -48,6 +48,7 @@ func noArgs(c *cobra.Command, args []string) error {
 }
 
 type vaultOptions struct {
+	assumeYes       bool
 	force           bool
 	importFile      string
 	isPath          bool
@@ -83,7 +84,7 @@ func init() {
 				return err
 			}
 			defer v.Wipe()
-			fmt.Printf("Created vault %s\n", v)
+			fmt.Fprintf(os.Stderr, "Created vault %s\n", v)
 			return nil
 		},
 	}
@@ -125,7 +126,7 @@ func init() {
 				return err
 			}
 			defer uv.Wipe()
-			fmt.Printf("Changed password of vault %s\n", uv)
+			fmt.Fprintf(os.Stderr, "Changed password of vault %s\n", uv)
 			return nil
 		},
 	}
@@ -153,15 +154,19 @@ func init() {
 			}
 			defer unlock()
 
-			if !prompt.Bool(fmt.Sprintf("Delete vault %s?", v.Name()), false) {
+			confirmed, err := prompt.Confirm(opts.assumeYes, fmt.Sprintf("Delete vault %s?", v.Name()))
+			if err != nil {
+				return err
+			}
+			if !confirmed {
 				// Declining the confirmation is a normal outcome, not a failure.
-				fmt.Println("Cancelled")
+				fmt.Fprintln(os.Stderr, "Cancelled")
 				return nil
 			}
 			if err := vault.Delete(name); err != nil {
 				return err
 			}
-			fmt.Printf("Deleted vault %s\n", name)
+			fmt.Fprintf(os.Stderr, "Deleted vault %s\n", name)
 			return nil
 		},
 	}
@@ -171,7 +176,9 @@ func init() {
 		Short: "Export secrets from a vault",
 		Args:  noArgs,
 		RunE: func(c *cobra.Command, args []string) error {
-			name, err := prompt.GivenOrPromptName(opts.namePrefix)
+			// Reading, so it takes a prefix and falls back to the default vault,
+			// as search does. The two differ only in what they print.
+			v, err := vault.ForReading(opts.namePrefix)
 			if err != nil {
 				return err
 			}
@@ -182,7 +189,7 @@ func init() {
 			}
 			defer crypto.Wipe(password)
 
-			s, err := vault.Export(name, password)
+			s, err := vault.Export(v, password)
 			if err != nil {
 				return err
 			}
@@ -194,7 +201,7 @@ func init() {
 	getDefault := &cobra.Command{
 		Use:   "get-default",
 		Short: "Print the default vault",
-		Long:  "Print either the first vault or the one defined by $MRS_DEFAULT_VAULT_NAME",
+		Long:  "Print the vault that $MRS_DEFAULT_VAULT_NAME names, or the only vault there is",
 		Args:  noArgs,
 		RunE: func(c *cobra.Command, args []string) error {
 			v, err := vault.Default()
@@ -261,7 +268,7 @@ func init() {
 			if err := vault.Rename(sourceName, targetName); err != nil {
 				return err
 			}
-			fmt.Printf("Renamed vault %s to %s\n", sourceName, targetName)
+			fmt.Fprintf(os.Stderr, "Renamed vault %s to %s\n", sourceName, targetName)
 			return nil
 		},
 	}
@@ -277,9 +284,13 @@ func init() {
 	for _, c := range []*cobra.Command{changePassword, create, export} {
 		c.Flags().StringVarP(&opts.passwordFile, "password-file", "p", "", "path to a file that contains your password")
 	}
+	// --force has no short form, because it is not the flag a hurried -f is
+	// reaching for: it breaks another process's lock rather than overwriting
+	// anything, and is worth spelling out.
 	for _, c := range []*cobra.Command{changePassword, create, delete, rename} {
-		c.Flags().BoolVarP(&opts.force, "force", "f", false, "delete the vault's lock file first")
+		c.Flags().BoolVar(&opts.force, "force", false, "delete the vault's lock file first")
 	}
+	delete.Flags().BoolVarP(&opts.assumeYes, "yes", "y", false, "answer yes to the confirmation")
 
 	changePassword.Flags().StringVarP(&opts.newPasswordFile, "new-password-file", "n", "", "path to a file that contains your new password")
 	create.Flags().StringVarP(&opts.importFile, "import-file", "i", "", "path to a file that contains unencrypted secrets")

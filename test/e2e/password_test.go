@@ -157,7 +157,7 @@ func TestChangePasswordSwapsTheOldPasswordForTheNew(t *testing.T) {
 
 	l.Run("vault", "change-password", "-v", "work", "-p", oldPw, "-n", newPw).
 		AssertOK().
-		AssertStdout("Changed password of vault work")
+		AssertStderr("Changed password of vault work")
 
 	l.Run("vault", "export", "-v", "work", "-p", newPw).
 		AssertOK().

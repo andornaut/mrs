@@ -39,7 +39,9 @@ func run() int {
 	go func() {
 		<-c
 		cleanup()
-		os.Exit(1)
+		// 2, not 1: 1 means a search that matched nothing, and a run that was
+		// interrupted did not finish looking.
+		os.Exit(2)
 	}()
 
 	cmd.Cmd.Version = version

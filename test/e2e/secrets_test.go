@@ -17,7 +17,7 @@ func TestAddWritesSecretsToAnEmptyVault(t *testing.T) {
 
 	l.Run("add", "-v", "personal", "-p", pwFile).
 		AssertOK().
-		AssertStdout("2 secrets added to vault personal")
+		AssertStderr("2 secrets added to vault personal")
 
 	// Secrets are sorted by key, case-insensitively.
 	l.Run("vault", "export", "-v", "personal", "-p", pwFile).
@@ -32,7 +32,7 @@ func TestAddKeepsTheExistingSecrets(t *testing.T) {
 
 	l.Run("add", "-v", "personal", "-p", pwFile).
 		AssertOK().
-		AssertStdout("1 secret added")
+		AssertStderr("1 secret added")
 
 	got := l.export("personal", pwFile)
 	for _, want := range []string{"existing value", "new value"} {
@@ -63,7 +63,7 @@ func TestAddReportsWhenNothingWasAdded(t *testing.T) {
 
 	l.Run("add", "-v", "personal", "-p", pwFile).
 		AssertOK().
-		AssertStdout("No secrets added to vault personal")
+		AssertStderr("No secrets added to vault personal")
 }
 
 func TestEditShowsTheEditorTheExistingSecrets(t *testing.T) {
@@ -73,7 +73,7 @@ func TestEditShowsTheEditorTheExistingSecrets(t *testing.T) {
 
 	l.Run("edit", "-v", "personal", "-p", pwFile).
 		AssertOK().
-		AssertStdout("Saved changes to vault personal")
+		AssertStderr("Saved changes to vault personal")
 
 	if got := input(); !strings.Contains(got, "a value") {
 		t.Fatalf("expected edit to show the existing secrets, got %q", got)
@@ -98,9 +98,9 @@ func TestEditToEmptyIsConfirmedFirst(t *testing.T) {
 	pwFile := l.seedVault("personal", "a password", "a key\na value\n\nb key\nb value\n")
 	l.Setenv("FAKE_EDITOR_MODE", "clear")
 
-	l.RunStdin("y\n", "edit", "-v", "personal", "-p", pwFile).
+	l.Run("edit", "-v", "personal", "-p", pwFile, "--yes").
 		AssertOK().
-		AssertStderr("remove all 2 secret(s) from vault personal")
+		AssertStderr("Saved changes to vault personal")
 
 	l.Run("vault", "export", "-v", "personal", "-p", pwFile).AssertOK().AssertStdoutEquals("")
 	// The backup written before the save is the user's way back.
@@ -114,12 +114,13 @@ func TestEditToEmptyIsRefusedByDefault(t *testing.T) {
 	pwFile := l.seedVault("personal", "a password", "a key\na value\n")
 	l.Setenv("FAKE_EDITOR_MODE", "clear")
 
-	// Declining keeps the secrets, and so does reaching end-of-input without
-	// answering, which is what an unattended script does.
-	for _, stdin := range []string{"n\n", ""} {
+	// A pipe cannot answer the question, so mrs refuses rather than saving or
+	// silently succeeding, and says both what it was asking and how to answer.
+	for _, stdin := range []string{"y\n", "n\n", ""} {
 		l.RunStdin(stdin, "edit", "-v", "personal", "-p", pwFile).
-			AssertOK().
-			AssertStdout("Cancelled").
+			AssertFailed().
+			AssertStderr("remove all 1 secret from vault personal").
+			AssertStderr("Use --yes").
 			AssertNoOutput("Saved changes")
 
 		if got := l.export("personal", pwFile); !strings.Contains(got, "a value") {
@@ -136,7 +137,7 @@ func TestAnEditThatRemovesSomeSecretsIsNotConfirmed(t *testing.T) {
 	// Only emptying a vault is confirmed; an ordinary edit is not interrupted.
 	l.Run("edit", "-v", "personal", "-p", pwFile).
 		AssertOK().
-		AssertStdout("Saved changes")
+		AssertStderr("Saved changes")
 
 	l.Run("vault", "export", "-v", "personal", "-p", pwFile).
 		AssertOK().
@@ -295,7 +296,7 @@ func TestSecretsAreSeparatedByBlankLines(t *testing.T) {
 
 	l.Run("add", "-v", "personal", "-p", pwFile).
 		AssertOK().
-		AssertStdout("2 secrets added")
+		AssertStderr("2 secrets added")
 
 	l.Run("vault", "export", "-v", "personal", "-p", pwFile).
 		AssertOK().
@@ -309,7 +310,7 @@ func TestWindowsLineEndingsAreAccepted(t *testing.T) {
 
 	l.Run("add", "-v", "personal", "-p", pwFile).
 		AssertOK().
-		AssertStdout("2 secrets added")
+		AssertStderr("2 secrets added")
 
 	l.Run("vault", "export", "-v", "personal", "-p", pwFile).
 		AssertOK().

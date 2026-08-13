@@ -108,8 +108,7 @@ func TestSearchFullHasAShortFlag(t *testing.T) {
 		AssertOK().
 		AssertStderr("1 secret matched")
 
-	// Not -f: search takes no lock, so --force means nothing to it, and -f is
-	// --force on every command that does take one.
+	// Not -f. No command has one: --force is always spelled out.
 	l.Run("search", "-v", "work", "-p", pwFile, "-f", "sekrit").
 		AssertFailed().
 		AssertStderr("unknown shorthand flag")
@@ -215,12 +214,12 @@ func TestSearchCountsAreSingularOrPlural(t *testing.T) {
 	l.editorWrites("one key\none value\n")
 	l.Run("add", "-v", "work", "-p", pwFile).
 		AssertOK().
-		AssertStdout("1 secret added").
+		AssertStderr("1 secret added").
 		AssertNoOutput("secret(s)")
 	l.editorWrites("two key\ntwo value\n\nthree key\nthree value\n")
 	l.Run("add", "-v", "work", "-p", pwFile).
 		AssertOK().
-		AssertStdout("2 secrets added").
+		AssertStderr("2 secrets added").
 		AssertNoOutput("secret(s)")
 }
 

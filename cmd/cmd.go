@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"regexp"
@@ -31,17 +30,23 @@ var Cmd = &cobra.Command{
 // command ever runs.
 var noMatch bool
 
+// Exit codes, as grep uses them: a search that found nothing is not an error,
+// and a script has to be able to tell the two apart.
+const (
+	exitOK      = 0
+	exitNoMatch = 1
+	exitError   = 2
+)
+
 // Execute runs mrs and returns the exit code the process should use.
 func Execute() int {
 	if err := Cmd.Execute(); err != nil {
-		return 1
+		return exitError
 	}
-	// Exit non-zero for a search that found nothing, as grep does, so that a
-	// script can tell it from one that found something.
 	if noMatch {
-		return 1
+		return exitNoMatch
 	}
-	return 0
+	return exitOK
 }
 
 // noArgs refuses positional arguments for add and edit. cobra.NoArgs reports
@@ -55,15 +60,8 @@ func noArgs(c *cobra.Command, args []string) error {
 	return nil
 }
 
-// plural returns word, pluralised for n.
-func plural(n int, word string) string {
-	if n == 1 {
-		return word
-	}
-	return word + "s"
-}
-
 type rootOptions struct {
+	assumeYes     bool
 	force         bool
 	includeValues bool
 	namePrefix    string
@@ -79,7 +77,7 @@ func init() {
 		Long:  "Use an editor ($EDITOR) to add secrets to a vault",
 		Args:  noArgs,
 		RunE: func(c *cobra.Command, args []string) error {
-			v, err := opts.getVault()
+			v, err := vault.ForWriting(opts.namePrefix)
 			if err != nil {
 				return err
 			}
@@ -101,9 +99,9 @@ func init() {
 				return err
 			}
 			if n == 0 {
-				fmt.Printf("No secrets added to vault %s\n", uv.Name())
+				fmt.Fprintf(os.Stderr, "No secrets added to vault %s\n", uv.Name())
 			} else {
-				fmt.Printf("%d %s added to vault %s\n", n, plural(n, "secret"), uv)
+				fmt.Fprintf(os.Stderr, "%d %s added to vault %s\n", n, secret.Plural(n, "secret"), uv)
 			}
 			return nil
 		},
@@ -115,7 +113,7 @@ func init() {
 		Long:  "Use an editor ($EDITOR) to edit the secrets in a vault",
 		Args:  noArgs,
 		RunE: func(c *cobra.Command, args []string) error {
-			v, err := opts.getVault()
+			v, err := vault.ForWriting(opts.namePrefix)
 			if err != nil {
 				return err
 			}
@@ -132,15 +130,15 @@ func init() {
 			uv := v.Unlocked(password)
 			defer uv.Wipe()
 
-			saved, err := secret.Edit(uv)
+			saved, err := secret.Edit(opts.assumeYes, uv)
 			if err != nil {
 				return err
 			}
 			if !saved {
-				fmt.Println("Cancelled")
+				fmt.Fprintln(os.Stderr, "Cancelled")
 				return nil
 			}
-			fmt.Printf("Saved changes to vault %s\n", uv)
+			fmt.Fprintf(os.Stderr, "Saved changes to vault %s\n", uv)
 			return nil
 		},
 	}
@@ -163,14 +161,21 @@ func init() {
 	}
 
 	for _, c := range []*cobra.Command{add, edit, search} {
-		flags := c.Flags()
-		flags.StringVarP(&opts.namePrefix, "vault", "v", "", "name of a vault, or the start of one")
-		flags.StringVarP(&opts.passwordFile, "password-file", "p", "", "path to a file that contains your password")
+		c.Flags().StringVarP(&opts.passwordFile, "password-file", "p", "", "path to a file that contains your password")
 	}
-	add.Flags().BoolVarP(&opts.force, "force", "f", false, "delete the vault's lock file first")
-	edit.Flags().BoolVarP(&opts.force, "force", "f", false, "delete the vault's lock file first")
-	// -a, not -f: search takes no lock, so --force means nothing to it, and -f
-	// is --force on every command that does take one.
+	// Both take a prefix, but add and edit write, so they refuse one that fits
+	// more than one vault rather than choosing. The help text says which,
+	// because the flag alone cannot.
+	search.Flags().StringVarP(&opts.namePrefix, "vault", "v", "", "name of a vault, or the start of one")
+	for _, c := range []*cobra.Command{add, edit} {
+		c.Flags().StringVarP(&opts.namePrefix, "vault", "v", "", "name of a vault, or the start of exactly one")
+	}
+	// --force has no short form, because it is not the flag a hurried -f is
+	// reaching for: it breaks another process's lock rather than overwriting
+	// anything, and is worth spelling out.
+	add.Flags().BoolVar(&opts.force, "force", false, "delete the vault's lock file first")
+	edit.Flags().BoolVar(&opts.force, "force", false, "delete the vault's lock file first")
+	edit.Flags().BoolVarP(&opts.assumeYes, "yes", "y", false, "answer yes to the confirmation before emptying the vault")
 	search.Flags().BoolVarP(&opts.includeValues, "full", "a", false, "search the full contents, instead of the first line of each secret")
 	// Registered here so that cobra does not add it with a "-v" shorthand of
 	// its own, which would make -v mean --version on `mrs` and --vault on
@@ -193,7 +198,7 @@ func (o *rootOptions) runSearch(args []string) error {
 	if err != nil {
 		return fmt.Errorf("invalid regular expression %q: %w", query, err)
 	}
-	v, err := o.getVault()
+	v, err := vault.ForReading(o.namePrefix)
 	if err != nil {
 		return err
 	}
@@ -218,23 +223,7 @@ func (o *rootOptions) runSearch(args []string) error {
 		noMatch = true
 		return nil
 	}
-	fmt.Fprintf(os.Stderr, "%d %s matched %q in vault %s\n\n", n, plural(n, "secret"), query, uv)
+	fmt.Fprintf(os.Stderr, "%d %s matched %q in vault %s\n\n", n, secret.Plural(n, "secret"), query, uv)
 	fmt.Print(strings.Join(secrets, "\n"))
 	return nil
-}
-
-func (o *rootOptions) getVault() (vault.Vault, error) {
-	if o.namePrefix == "" {
-		v, err := vault.Default()
-		if err != nil {
-			return v, err
-		}
-		if v == vault.BadVault {
-			// Default() returns BadVault without an error only when there are
-			// no vaults at all, so asking which one to use has no answer.
-			return vault.BadVault, errors.New("no vaults found. Run \"mrs vault create\" to create one")
-		}
-		return v, nil
-	}
-	return vault.First(o.namePrefix)
 }
