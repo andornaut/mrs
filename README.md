@@ -1,110 +1,93 @@
-# Mr. Secretary (mrs) - Organise and secure your secrets
+# Mr. Secretary (mrs)
 
-`mrs` is a secrets manager for Linux and macOS.
+A command line secrets manager for Linux and macOS. Secrets are organised into
+encrypted vaults: one file each, edited in `$EDITOR`, searched with regular
+expressions.
 
-## Features
+## Secrets
 
-- Organise your secrets into one or more encrypted "vaults"
-- Edit your secrets using the editor of your choice
-- Search through your secrets using regular expressions
-- Import and export your secrets
-- Encrypt your secrets with [256-bit AES-GCM](https://tools.ietf.org/html/rfc5288)
+- A vault holds secrets separated by blank lines.
+- The first line of a secret is its key; the rest is its value.
+- Every line is kept as typed: indentation, trailing spaces, and lines that
+  begin with a `#`.
+- Secrets are sorted by key, ignoring case, when saved. Two may share a key, and
+  `mrs` warns when they do.
+- `mrs add` and `mrs edit` open `$EDITOR` on three instruction lines, which are
+  removed on save wherever they end up in the buffer.
 
-## Vaults
+## Commands
 
-Each vault is an encrypted text file that contains 0 or more secrets.
-
-A secret is a newline delimited paragraph, where the first line is the search
-key and the subsequent lines are the secret value. When searching with
-`mrs search` only the key is searched, but you can include a `-f`, `--full`
-flag to search through the full secret contents.
-
-When you `mrs add` or `mrs edit`, a few instruction lines are shown at the top
-of the editor and removed when you save. Every other line is kept exactly as
-you typed it, including indentation, trailing spaces, and lines that begin with
-a `#`. Secrets are sorted by key when they are saved. Two secrets may share a
-key, and `mrs` prints a warning when they do.
-
-## Naming a vault
-
-`-v`, `--vault` names the vault to work on. A vault whose name matches exactly
-is always chosen, whatever longer names begin with it: with `work` and
-`work-archive`, `-v work` is `work`. Short of an exact match, how much of a
-name is enough depends on what the command does to the vault:
-
-Command | Accepts | A prefix that fits several vaults
+Command | Does | Vault name
 --- | --- | ---
-`search`, `vault export` | the start of a name | picks the first, and says which
-`add`, `edit` | the start of a name | is refused, listing them
-`vault change-password`, `vault rename`, `vault delete` | the whole name | is refused, suggesting the closest
+`mrs add` | Add secrets in an editor | a prefix that fits one
+`mrs edit` | Edit secrets in an editor | a prefix that fits one
+`mrs search <regular expression>...` | Print matching secrets | a prefix
+`mrs vault list` | Print vault names | -
+`mrs vault get-default` | Print the default vault | -
+`mrs vault create` | Create a vault | a new name
+`mrs vault export` | Print every secret | a prefix
+`mrs vault change-password` | Re-encrypt under a new password | the whole name
+`mrs vault rename <source> <target>` | Rename a vault | the whole name
+`mrs vault delete` | Delete a vault, after confirming | the whole name
 
-Reading the wrong vault shows you something you did not expect; writing to it
-leaves a secret where you will not look for it, and renaming, re-keying or
-deleting the wrong one cannot be undone from the command that did it.
+`search` matches keys only, unless `--full`. Matching is case insensitive, and
+arguments are joined, so `mrs search bank account` matches `bank account`.
+`mrs --version` prints the version, and `-h`, `--help` works on every command.
 
-```text
-$ mrs vault export -v alph -p pw
-Warning: "alph" begins the name of 2 vaults, so vault alpha was chosen
+## Flags
 
-$ mrs edit -v alph
-Error: "alph" begins the name of 2 vaults: alpha, alphabet. Use the whole name of the one you mean
-```
-
-Without `-v`, the commands that read or write secrets (`add`, `edit`, `search`
-and `vault export`) use `$MRS_DEFAULT_VAULT_NAME`, or the only vault if there
-is just one. Unlike `-v`, the configured name has to match a vault exactly: it
-is read on every run and looked at almost never, so a typo that reached a
-neighbouring vault would go on doing so unnoticed.
-
-`vault create`, `vault change-password`, `vault delete` and `vault rename`
-change which vaults exist or what opens them, so they ask which vault rather
-than assuming one. With no vaults, or with several and nothing configured,
-there is no default to fall back to and `mrs` says so rather than guessing:
-
-```text
-$ mrs add
-Error: no vaults found. Run "mrs vault create" to create one
-
-$ mrs add
-Error: several vaults exist, so there is no default. Use --vault to name one, or set $MRS_DEFAULT_VAULT_NAME
-```
-
-## Passwords
-
-`mrs` prompts for a password on the terminal, with echo turned off. When stdin
-is not a terminal, as in a script or a cron job, there is nothing to prompt
-from, so supply the password in a file instead:
-
-Flag | Command | Supplies
+Flag | Commands | Supplies
 --- | --- | ---
+`-v`, `--vault` | all but `vault list`, `vault get-default` and `vault rename` | the vault's name
 `-p`, `--password-file` | `add`, `edit`, `search`, `vault create`, `vault export`, `vault change-password` | the vault's current password
 `-n`, `--new-password-file` | `vault change-password` | the password to change it to
 `-i`, `--import-file` | `vault create` | unencrypted secrets to seed the vault with
+`-f`, `--full` | `search` | match values as well as keys
+`-y`, `--yes` | `edit`, `vault delete` | the answer to the confirmation
+`--force` | `add`, `edit`, `vault create`, `vault change-password`, `vault delete`, `vault rename` | permission to delete another process's lock file
+`--path` | `vault list`, `vault get-default` | paths instead of names
 
-A short flag means the same thing everywhere: `-p` is always the password file,
-`-v` is always the vault, `-y` is always `--yes` and `-f` is always `--full`. A
-flag that only some commands have, and that is worth reading twice before
-typing, is spelled out in full: `--force`, which deletes another process's lock
-file, and `--path`, on `vault list` and `vault get-default`.
+A short flag means the same thing on every command. `--force` and `--path` have
+no short form, because both are worth spelling out.
 
-A trailing newline is trimmed, so `echo 'a password' > pw` works. Any other
-whitespace is part of the password.
+## Naming a vault
 
-Every save first copies the vault to `<name>.<salt>.bak`, so that a write which
-goes wrong has something to go back to. After `mrs vault change-password` that
-backup is still the version the previous password opens, until the next save
-overwrites it. It is written mode 0600 beside a vault the same user already
-owns, so it is no more exposed than the vault itself, but delete it if the
-password you changed away from is one you no longer trust.
+An exact name always wins, whatever longer names begin with it: with `work` and
+`work-archive`, `-v work` is `work`. Otherwise a prefix is treated according to
+what the command does to the vault:
+
+Commands | A prefix that fits several vaults
+--- | ---
+`search`, `vault export` | picks the first, and says which
+`add`, `edit` | is refused, listing them
+`vault change-password`, `vault rename`, `vault delete` | is refused, suggesting the closest
+
+Without `-v`:
+
+- `add`, `edit`, `search` and `vault export` use `$MRS_DEFAULT_VAULT_NAME`, or
+  the only vault if there is just one. Unlike `-v`, the configured name has to
+  match exactly.
+- No vaults, or several with nothing configured, is an error rather than a
+  guess.
+- The other `mrs vault` commands ask which vault.
+
+Names may hold ASCII letters, digits, `_` and `-`, up to 200 characters.
+
+## Passwords
+
+- Prompted on the terminal with echo off, and at least 8 characters long.
+- Without a terminal there is nothing to prompt from, so pass
+  `--password-file`. A trailing newline is trimmed, so `echo 'pw' > pw` works;
+  other whitespace is part of the password.
+- Every save first copies the vault to `<name>.<salt>.bak`. After
+  `vault change-password` that backup still opens with the old password until
+  the next save, so delete it if that password is no longer trusted.
 
 ## Confirmations
 
-Emptying a vault with `mrs edit`, and `mrs vault delete`, ask before they go
-ahead. `-y`, `--yes` answers in advance.
-
-Without a terminal there is nobody to ask, so `mrs` refuses rather than taking
-the safe answer: a command that exits successfully having done nothing reads as
-"done" to the script that ran it.
+`mrs edit` that would empty a vault, and `mrs vault delete`, ask first.
+`-y`, `--yes` answers in advance. Without a terminal and without `--yes`, `mrs`
+fails rather than assume an answer:
 
 ```text
 $ mrs vault delete -v old < /dev/null
@@ -113,34 +96,21 @@ Error: cannot ask "Delete vault old?": stdin is not a terminal. Use --yes to ans
 
 ## Output and exit codes
 
-stdout carries what a caller consumes: the vault names of `vault list` and
-`vault get-default`, and the secrets of `vault export` and `search`. Prompts,
-warnings, errors and reports of what happened go to stderr, so that
-`mrs vault export > secrets` and `mrs search key | less` carry the secrets
-alone.
+stdout carries what a caller consumes: vault names from `vault list` and
+`vault get-default`, secrets from `vault export` and `search`. Prompts,
+warnings, errors and reports go to stderr, so `mrs vault export > secrets` and
+`mrs search key | less` carry the secrets alone.
 
 ```text
-$ mrs vault export
-Vault password:
-a secret key foo
-username: user
-password: a password
-
-another secret key bar
-bank account number: 1234
-bank account password: an insecure password
-
 $ mrs search bar
 Vault password:
 1 secret matched "bar" in vault example
 
 another secret key bar
 bank account number: 1234
-bank account password: an insecure password
 ```
 
-Exit codes follow `grep`, so that a search which found nothing can be told from
-one that could not run:
+Exit codes follow `grep`:
 
 Code | Meaning
 --- | ---
@@ -148,88 +118,48 @@ Code | Meaning
 1 | `mrs search` ran and matched nothing
 2 | something went wrong
 
-```text
-$ mrs search aws -p pw >/dev/null && echo found || echo none
-```
+## Files
 
-## Usage
+Path | Holds
+--- | ---
+`$MRS_HOME/vaults/<name>.<salt>` | the vault, mode 0600
+`$MRS_HOME/vaults/<name>.<salt>.bak` | the version before the last save
+`$MRS_HOME/vaults/<name>.lock` | the write lock, empty
+`$MRS_TEMP/mrs/<run>/` | decrypted secrets while an editor is open, mode 0700
 
-```text
-$ mrs help
-Mr. Secretary - Organise and secure your secrets
-
-Usage:
-  mrs [command]
-
-Examples:
- mrs vault create
- mrs edit
- mrs search secret stuff
-
-Available Commands:
-  add         Add secrets to a vault
-  completion  Generate the autocompletion script for the specified shell
-  edit        Edit secrets in a vault
-  help        Help about any command
-  search      Search for secrets in a vault
-  vault       Manage vaults
-
-Flags:
-  -h, --help      help for mrs
-      --version   version for mrs
-
-Use "mrs [command] --help" for more information about a command.
-```
-
-```text
-$ mrs help vault
-Manage vaults
-
-Usage:
-  mrs vault
-  mrs vault [command]
-
-Available Commands:
-  change-password Change a vault's password
-  create          Create a vault
-  delete          Delete a vault
-  export          Export secrets from a vault
-  get-default     Print the default vault
-  list            List all vaults
-  rename          Rename a vault
-
-Flags:
-  -h, --help   help for vault
-
-Use "mrs vault [command] --help" for more information about a command.
-```
+The vault directory is mode 0700. `mrs` narrows permissions it finds wider than
+that and never widens them. The temporary directory is removed when `mrs` exits,
+including on SIGHUP, SIGINT, SIGQUIT and SIGTERM.
 
 ## Configuration
 
-You can use environment variables to customize some settings.
-
 Environment variable | Description
 --- | ---
-EDITOR | The editor to use to add or edit secrets (default: nano). May include arguments, such as `vim -n` or `code -w`. Quote a path that contains spaces.
-MRS_DEFAULT_VAULT_NAME | The vault that `add`, `edit`, `search` and `vault export` use when `--vault` is not given. Must name a vault exactly (default: the only vault, if there is just one)
-MRS_HIDE_EDITOR_INSTRUCTIONS | If set to any value, then instructions comments will not be included when adding or editing secrets
-MRS_HOME | The directory where `mrs` stores encrypted vault files (default: `${HOME}/.local/share/mrs`)
-MRS_TEMP | The directory where `mrs` temporarily stores decrypted files (default `$XDG_RUNTIME_DIR`)
+`EDITOR` | The editor `add` and `edit` open (default: `nano`). May carry arguments, such as `vim -n`. Quote a path that contains spaces.
+`MRS_DEFAULT_VAULT_NAME` | The vault to use when `--vault` is not given. Must name one exactly (default: the only vault, if there is just one).
+`MRS_HIDE_EDITOR_INSTRUCTIONS` | If set to any value, omit the instruction lines from editor sessions.
+`MRS_HOME` | Where vaults are stored (default: `$XDG_DATA_HOME/mrs`, else `$HOME/.local/share/mrs`).
+`MRS_TEMP` | Where decrypted secrets are written while an editor is open (default: `$XDG_RUNTIME_DIR`, else the system temporary directory).
+
+## Encryption
+
+- [256-bit AES-GCM](https://tools.ietf.org/html/rfc5288).
+- PBKDF2-SHA256, 600,000 iterations, over a 32 character salt that is unique per
+  vault and carried in its filename.
+- Vaults written with the earlier 4,096 iterations are still read, and are
+  re-encrypted at 600,000 on the next save.
 
 ## Developing
 
 See the [Makefile](./Makefile).
 
-### Releasing
+To release, push a semantic version tag from `main`:
 
-This project uses [GoReleaser](https://goreleaser.com/) to automate the release process. To release a new version:
+```bash
+git tag -a v1.0.0 -m "Release v1.0.0"
+git push origin v1.0.0
+```
 
-1. Ensure you are on the `main` branch and have pulled the latest changes.
-2. Create and push a new semantic version tag:
-
-   ```bash
-   git tag -a v1.0.0 -m "Release v1.0.0"
-   git push origin v1.0.0
-   ```
-
-3. The GitHub Actions [release workflow](.github/workflows/release.yml) will automatically trigger, build the binaries, and create a new GitHub Release with the artifacts.
+The [release workflow](.github/workflows/release.yml) runs the tests, then
+builds and publishes the binaries with [GoReleaser](https://goreleaser.com/).
+Every push to `main` republishes the rolling `dev` release the same way.
