@@ -152,7 +152,7 @@ func init() {
 			"with any amount of whitespace between the words.",
 		Args: func(c *cobra.Command, args []string) error {
 			if len(args) == 0 {
-				return fmt.Errorf("nothing to search for. Give a regular expression, as in \"%s aws\"", c.CommandPath())
+				return fmt.Errorf("%s requires a regular expression, as in \"%s aws\"", c.CommandPath(), c.CommandPath())
 			}
 			return nil
 		},
@@ -182,6 +182,9 @@ func init() {
 	// its own, which would make -v mean --version on `mrs` and --vault on
 	// every command under it.
 	Cmd.Flags().Bool("version", false, "version for mrs")
+	// The generated completion command is noise in the listing of a program
+	// with this few commands, and still works when it is not listed.
+	Cmd.CompletionOptions.HiddenDefaultCmd = true
 	Cmd.AddCommand(add, edit, search, vaultcmd.Cmd)
 }
 

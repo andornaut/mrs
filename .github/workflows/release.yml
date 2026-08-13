@@ -1,8 +1,11 @@
 name: Release
 
+# Every branch, not just main and pull requests: work lands on main directly as
+# often as it arrives through one, so a check that only runs on main is a check
+# that runs after the fact.
 on:
   push:
-    branches: [main]
+    branches: ["**"]
     tags: ["v*"]
   pull_request:
     branches: [main]
@@ -12,8 +15,11 @@ on:
 permissions:
   contents: read
 
+# Keyed on the branch rather than the ref, so the push event and the pull
+# request event for one branch share a group instead of running the same checks
+# twice.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
 jobs:
@@ -132,9 +138,9 @@ jobs:
       # A release follows its tag, and updating one below does not move the tag
       # GitHub already has, so `dev` has to be repointed here or the release's
       # commit link and source archives would describe an older build than the
-      # assets beside them. Unmasked on purpose: a rejected tag push — tag
-      # protection, credentials the checkout did not persist — has to fail the
-      # job rather than quietly publish binaries stamped with the wrong commit.
+      # assets beside them. Unmasked on purpose: a rejected tag push (tag
+      # protection, or credentials the checkout did not persist) has to fail
+      # the job rather than quietly publish binaries with the wrong commit.
       - name: Move the dev tag to this commit
         run: |
           git tag --force dev

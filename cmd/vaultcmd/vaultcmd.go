@@ -263,7 +263,7 @@ func init() {
 		Short: "Rename a vault",
 		Args: func(c *cobra.Command, args []string) error {
 			if len(args) != 2 {
-				return fmt.Errorf("%s needs a source name and a target name, but got %d", c.CommandPath(), len(args))
+				return fmt.Errorf("%s requires a source name and a target name", c.CommandPath())
 			}
 			return nil
 		},

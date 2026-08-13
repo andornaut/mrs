@@ -7,8 +7,8 @@ import (
 	"testing"
 )
 
-// Capability 1: the vault lifecycle — create, list, get-default, rename and
-// delete — driven entirely through the CLI against a real vault directory.
+// Capability 1: the vault lifecycle (create, list, get-default, rename and
+// delete), driven entirely through the CLI against a real vault directory.
 
 func TestCreateVaultWritesAnEncryptedFile(t *testing.T) {
 	l := newLab(t)
@@ -710,4 +710,13 @@ func TestVersionIsReported(t *testing.T) {
 	// registered, and -v is --vault on every command under mrs.
 	l.Run("-v").AssertFailed().AssertStderr("unknown shorthand flag")
 	l.Run("help").AssertOK().AssertNoOutput("-v, --version")
+}
+
+// The generated completion command works but is not listed: it is noise beside
+// this few commands, and gog hides its own for the same reason.
+func TestCompletionIsAvailableButNotListed(t *testing.T) {
+	l := newLab(t)
+
+	l.Run("help").AssertOK().AssertNoOutput("completion")
+	l.Run("completion", "bash").AssertOK().AssertStdout("bash completion")
 }

@@ -238,10 +238,11 @@ func TestSearchRequiresAPattern(t *testing.T) {
 	pwFile := l.seedVault("work", "a password", searchVault)
 
 	// Without this, a bare `mrs search` would print the whole vault. The
-	// message says what is missing, rather than counting arguments.
+	// message names the command and what it wanted, rather than counting
+	// arguments, as every other argument error does.
 	l.Run("search", "-v", "work", "-p", pwFile).
 		AssertFailed().
-		AssertStderr("nothing to search for")
+		AssertStderr("mrs search requires a regular expression")
 }
 
 func TestSearchRejectsAWrongPassword(t *testing.T) {
