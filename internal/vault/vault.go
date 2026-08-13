@@ -30,7 +30,7 @@ func Default() (Vault, error) {
 
 	if vs == nil {
 		if config.DefaultVaultName != "" {
-			return BadVault, fmt.Errorf("default vault \"%s\" not found", config.DefaultVaultName)
+			return BadVault, fmt.Errorf("default vault %q not found", config.DefaultVaultName)
 		}
 		// If a default vault name is not configured, then we should not return an error, because
 		// the default vault's existence is optional.
@@ -43,22 +43,37 @@ func Default() (Vault, error) {
 }
 
 // First returns the vault named prefix, or the first vault whose name begins
-// with it, or an error.
+// with it, or an error. A prefix that begins the name of more than one vault
+// says which was chosen, because the choice is alphabetical and so is not the
+// one the user had in mind at least half of the time.
 func First(prefix string) (Vault, error) {
-	if prefix == "" {
-		return BadVault, fmt.Errorf("vault name cannot be empty")
-	}
-	vs, err := findVaults(prefix)
+	v, matched, err := resolve(prefix)
 	if err != nil {
 		return BadVault, err
 	}
+	if len(matched) > 1 && v.Name() != prefix {
+		warnf("%q begins the name of %d vaults, so vault %s was chosen", prefix, len(matched), v.Name())
+	}
+	return v, nil
+}
+
+// resolve returns the vault that prefix selects, along with every vault it
+// matched, so that a caller can tell an exact name from an ambiguous prefix.
+func resolve(prefix string) (Vault, []Vault, error) {
+	if prefix == "" {
+		return BadVault, nil, fmt.Errorf("vault name cannot be empty")
+	}
+	vs, err := findVaults(prefix)
+	if err != nil {
+		return BadVault, nil, err
+	}
 	if vs == nil {
-		return BadVault, fmt.Errorf("vault \"%s\" not found. run `mrs vault create` to create one", prefix)
+		return BadVault, nil, fmt.Errorf("vault %q not found. Run \"mrs vault create\" to create one", prefix)
 	}
 	if v, ok := named(vs, prefix); ok {
-		return v, nil
+		return v, vs, nil
 	}
-	return vs[0], nil
+	return vs[0], vs, nil
 }
 
 // named returns the vault whose name is exactly name. A vault is matched by a
@@ -83,7 +98,7 @@ func ChangePassword(name string, oldPassword, newPassword []byte) (UnlockedVault
 		return BadUnlockedVault, err
 	}
 	if err = validatePassword(newPassword); err != nil {
-		return BadUnlockedVault, fmt.Errorf("invalid new password: %s", err)
+		return BadUnlockedVault, fmt.Errorf("invalid new password: %w", err)
 	}
 	u := v.Unlocked(oldPassword)
 	err = u.changePassword(newPassword)
@@ -124,7 +139,7 @@ func Create(name string, password, contents []byte, force bool) (UnlockedVault, 
 		return BadUnlockedVault, err
 	}
 	if exists {
-		return BadUnlockedVault, fmt.Errorf("a vault named \"%s\" already exists", name)
+		return BadUnlockedVault, fmt.Errorf("a vault named %q already exists", name)
 	}
 
 	salt, err := crypto.Salt()
@@ -189,7 +204,7 @@ func Export(prefix string, password []byte) (string, error) {
 // Rename renames a vault
 func Rename(sourceName, targetName string) error {
 	if sourceName == targetName {
-		return fmt.Errorf("the source and target vault names cannot both be \"%s\"", sourceName)
+		return fmt.Errorf("the source and target vault names cannot both be %q", sourceName)
 	}
 	if err := validateName(targetName); err != nil {
 		return err
@@ -206,7 +221,7 @@ func Rename(sourceName, targetName string) error {
 		return err
 	}
 	if exists {
-		return fmt.Errorf("a vault named \"%s\" already exists", targetName)
+		return fmt.Errorf("a vault named %q already exists", targetName)
 	}
 	// The target keeps the source's salt, because renaming does not decrypt.
 	targetPath, err := toPathWithSalt(targetName, sourceVault.Salt())
@@ -272,12 +287,15 @@ func existsByName(name string) (bool, error) {
 // match. Commands that destroy or move a vault resolve with this rather than
 // First, so that a prefix cannot reach a neighbouring vault.
 func Exact(name string) (Vault, error) {
-	v, err := First(name)
+	// Resolved without First, so that an ambiguous prefix is reported once, as
+	// the error below, rather than also as a warning about a vault that is
+	// about to be refused.
+	v, _, err := resolve(name)
 	if err != nil {
 		return "", err
 	}
 	if name != v.Name() {
-		return "", fmt.Errorf("vault named \"%s\" not found. Did you mean \"%s\"?", name, v.Name())
+		return "", fmt.Errorf("vault %q not found. Did you mean %q?", name, v.Name())
 	}
 	return v, nil
 }
@@ -318,7 +336,7 @@ func findVaults(prefix string) ([]Vault, error) {
 		// quietly.
 		if err := validateFilename(base); err != nil {
 			if !strings.HasPrefix(base, ".") {
-				warnf("ignoring \"%s\", because a vault file is named <name>.<salt>", p)
+				warnf("ignoring %q, because a vault file is named <name>.<salt>", p)
 			}
 			continue
 		}

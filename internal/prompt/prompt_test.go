@@ -79,6 +79,31 @@ func TestEveryPromptIsWrittenAwayFromStdout(t *testing.T) {
 	}
 }
 
+func TestALinePromptEndsItsLineWhenInputIsNotEchoed(t *testing.T) {
+	buf := capturePrompt(t)
+	withStdin(t, "\n")
+
+	// A pipe echoes nothing, so mrs writes the newline that pressing Enter
+	// would have. Without it, the next thing written continues this line.
+	if _, err := TrimmedLine("Vault name"); err != nil {
+		t.Fatalf("TrimmedLine() error: %s", err)
+	}
+	if got := buf.String(); got != "Vault name: \n" {
+		t.Errorf("expected the prompt to end its line, got %q", got)
+	}
+
+	// A terminal echoes it already, so mrs must not write a second one.
+	buf = capturePrompt(t)
+	pretendTerminal(t)
+	withStdin(t, "\n")
+	if _, err := TrimmedLine("Vault name"); err != nil {
+		t.Fatalf("TrimmedLine() error: %s", err)
+	}
+	if got := buf.String(); got != "Vault name: " {
+		t.Errorf("expected no added newline on a terminal, got %q", got)
+	}
+}
+
 func TestPasswordNeedsATerminal(t *testing.T) {
 	capturePrompt(t)
 	withStdin(t, "")

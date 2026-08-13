@@ -37,12 +37,23 @@ Takes a prefix | Wants the whole name
 `add`, `edit`, `search`, `vault export` | `vault change-password`, `vault rename`, `vault delete`
 
 A prefix that matches more than one vault selects the first in alphabetical
-order, except that a vault whose name matches exactly is always preferred:
-with `work` and `work-archive`, `-v work` is `work`.
+order and says which it took, so that the choice is never invisible. A vault
+whose name matches exactly is always preferred and is never ambiguous: with
+`work` and `work-archive`, `-v work` is `work`.
+
+```text
+$ mrs vault export -v alph -p pw
+Warning: "alph" begins the name of 2 vaults, so vault alpha was chosen
+```
 
 Without `-v`, `add`, `edit` and `search` use `$MRS_DEFAULT_VAULT_NAME`, or the
 only vault if there is just one. The `mrs vault` commands ask which vault
-instead.
+instead. Before there are any vaults to name, they say so:
+
+```text
+$ mrs add
+Error: no vaults found. Run "mrs vault create" to create one
+```
 
 ## Passwords
 
@@ -112,22 +123,25 @@ Examples:
 
 Available Commands:
   add         Add secrets to a vault
+  completion  Generate the autocompletion script for the specified shell
   edit        Edit secrets in a vault
   help        Help about any command
   search      Search for secrets in a vault
   vault       Manage vaults
 
 Flags:
-  -h, --help   help for mrs
+  -h, --help      help for mrs
+      --version   version for mrs
 
 Use "mrs [command] --help" for more information about a command.
 ```
 
-```test
+```text
 $ mrs help vault
 Manage vaults
 
 Usage:
+  mrs vault
   mrs vault [command]
 
 Available Commands:

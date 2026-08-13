@@ -75,7 +75,7 @@ func warnDuplicateKeys(b *briefcase) {
 		}
 	}
 	for _, k := range duplicated {
-		fmt.Fprintf(os.Stderr, "Warning: %d secrets share the key \"%s\"\n", counts[k], k)
+		fmt.Fprintf(os.Stderr, "Warning: %d secrets share the key %q\n", counts[k], k)
 	}
 }
 

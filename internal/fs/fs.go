@@ -23,7 +23,7 @@ func IsExists(p string) (bool, error) {
 	} else if os.IsNotExist(err) {
 		return false, nil
 	}
-	return false, fmt.Errorf("could not determine whether path %s exists", p)
+	return false, fmt.Errorf("could not determine whether path %q exists", p)
 }
 
 // IsNotExists returns true if the given path does not exist or it is not accessible

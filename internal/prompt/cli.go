@@ -18,7 +18,7 @@ func PromptName() (string, error) {
 		// Reached by a user who answered the prompt with a bare newline, and
 		// by any caller with nothing on stdin to answer it. Neither learns
 		// anything from being told a name cannot be empty.
-		return "", errors.New("no vault name given. use --vault to name one")
+		return "", errors.New("no vault name given. Use --vault to name one")
 	}
 	return name, nil
 }
@@ -81,7 +81,7 @@ func givenOrPromptConfirmed(passwordFile, msg, flag string) ([]byte, error) {
 // password and cannot supply the one it is being changed to.
 func withFlagHint(err error, flag string) error {
 	if errors.Is(err, ErrNoTerminal) {
-		return fmt.Errorf("%w. use %s to supply the password", err, flag)
+		return fmt.Errorf("%w. Use %s to supply the password", err, flag)
 	}
 	return err
 }
@@ -89,7 +89,7 @@ func withFlagHint(err error, flag string) error {
 func readPasswordFile(passwordFile string) ([]byte, error) {
 	password, err := os.ReadFile(passwordFile)
 	if err != nil {
-		return nil, fmt.Errorf("could not read from password file %s: %s", passwordFile, err)
+		return nil, fmt.Errorf("could not read from password file %q: %w", passwordFile, err)
 	}
 	// Trim trailing newlines, which editors and `echo` append, to match what
 	// the interactive password prompt returns.

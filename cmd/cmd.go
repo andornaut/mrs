@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"regexp"
@@ -43,6 +44,17 @@ func Execute() int {
 	return 0
 }
 
+// noArgs refuses positional arguments for add and edit. cobra.NoArgs reports
+// them as an unknown command, which misdescribes `mrs add "my key"`: that is a
+// user expecting to name a secret, and the answer is where secrets are typed.
+func noArgs(c *cobra.Command, args []string) error {
+	if len(args) > 0 {
+		return fmt.Errorf("%s takes no arguments, but got %q. Secrets are typed in your editor, not on the command line",
+			c.CommandPath(), args[0])
+	}
+	return nil
+}
+
 // plural returns word, pluralised for n.
 func plural(n int, word string) string {
 	if n == 1 {
@@ -64,7 +76,8 @@ func init() {
 	add := &cobra.Command{
 		Use:   "add",
 		Short: "Add secrets to a vault",
-		Args:  cobra.NoArgs,
+		Long:  "Use an editor ($EDITOR) to add secrets to a vault",
+		Args:  noArgs,
 		RunE: func(c *cobra.Command, args []string) error {
 			v, err := opts.getVault()
 			if err != nil {
@@ -99,8 +112,8 @@ func init() {
 	edit := &cobra.Command{
 		Use:   "edit",
 		Short: "Edit secrets in a vault",
-		Long:  "Use an editor ($EDITOR) to edit your secrets",
-		Args:  cobra.NoArgs,
+		Long:  "Use an editor ($EDITOR) to edit the secrets in a vault",
+		Args:  noArgs,
 		RunE: func(c *cobra.Command, args []string) error {
 			v, err := opts.getVault()
 			if err != nil {
@@ -133,9 +146,17 @@ func init() {
 	}
 
 	search := &cobra.Command{
-		Use:   "search [regular expression]",
+		Use:   "search <regular expression>...",
 		Short: "Search for secrets in a vault",
-		Args:  cobra.MinimumNArgs(1),
+		Long: "Search a vault for secrets whose key matches a regular expression.\n" +
+			"Several arguments are joined, so \"mrs search aws key\" matches \"aws key\"\n" +
+			"with any amount of whitespace between the words.",
+		Args: func(c *cobra.Command, args []string) error {
+			if len(args) == 0 {
+				return fmt.Errorf("nothing to search for. Give a regular expression, as in \"%s aws\"", c.CommandPath())
+			}
+			return nil
+		},
 		RunE: func(c *cobra.Command, args []string) error {
 			return opts.runSearch(args)
 		},
@@ -146,8 +167,8 @@ func init() {
 		flags.StringVarP(&opts.namePrefix, "vault", "v", "", "name of a vault, or the start of one")
 		flags.StringVarP(&opts.passwordFile, "password-file", "p", "", "path to a file that contains your password")
 	}
-	add.Flags().BoolVarP(&opts.force, "force", "f", false, "delete the vault's lock file before adding")
-	edit.Flags().BoolVarP(&opts.force, "force", "f", false, "delete the vault's lock file before editing")
+	add.Flags().BoolVarP(&opts.force, "force", "f", false, "delete the vault's lock file first")
+	edit.Flags().BoolVarP(&opts.force, "force", "f", false, "delete the vault's lock file first")
 	// -a, not -f: search takes no lock, so --force means nothing to it, and -f
 	// is --force on every command that does take one.
 	search.Flags().BoolVarP(&opts.includeValues, "full", "a", false, "search the full contents, instead of the first line of each secret")
@@ -170,7 +191,7 @@ func (o *rootOptions) runSearch(args []string) error {
 	query := strings.Join(args, " ")
 	r, err := regexp.Compile(rs)
 	if err != nil {
-		return fmt.Errorf("invalid regular expression \"%s\": %s", query, err)
+		return fmt.Errorf("invalid regular expression %q: %w", query, err)
 	}
 	v, err := o.getVault()
 	if err != nil {
@@ -193,11 +214,11 @@ func (o *rootOptions) runSearch(args []string) error {
 	// alone, as `vault export` already does.
 	n := len(secrets)
 	if n == 0 {
-		fmt.Fprintf(os.Stderr, "No secrets matched \"%s\" in vault %s\n", query, uv)
+		fmt.Fprintf(os.Stderr, "No secrets matched %q in vault %s\n", query, uv)
 		noMatch = true
 		return nil
 	}
-	fmt.Fprintf(os.Stderr, "%d %s matched \"%s\" in vault %s\n\n", n, plural(n, "secret"), query, uv)
+	fmt.Fprintf(os.Stderr, "%d %s matched %q in vault %s\n\n", n, plural(n, "secret"), query, uv)
 	fmt.Print(strings.Join(secrets, "\n"))
 	return nil
 }
@@ -208,14 +229,12 @@ func (o *rootOptions) getVault() (vault.Vault, error) {
 		if err != nil {
 			return v, err
 		}
-		if v != vault.BadVault {
-			return v, nil
+		if v == vault.BadVault {
+			// Default() returns BadVault without an error only when there are
+			// no vaults at all, so asking which one to use has no answer.
+			return vault.BadVault, errors.New("no vaults found. Run \"mrs vault create\" to create one")
 		}
-		name, err := prompt.PromptName()
-		if err != nil {
-			return vault.BadVault, err
-		}
-		o.namePrefix = name
+		return v, nil
 	}
 	return vault.First(o.namePrefix)
 }

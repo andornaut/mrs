@@ -74,7 +74,7 @@ func Password(msg string) ([]byte, error) {
 	// makes the terminal driver report EINVAL, which reaches the user as
 	// "inappropriate ioctl for device" and names neither the cause nor a remedy.
 	if !isTerminal(fd) {
-		return nil, fmt.Errorf("cannot prompt for \"%s\": %w", msg, ErrNoTerminal)
+		return nil, fmt.Errorf("cannot prompt for %q: %w", msg, ErrNoTerminal)
 	}
 	_, _ = fmt.Fprint(promptOut, msg+": ")
 	b, err := term.ReadPassword(fd)
@@ -89,7 +89,14 @@ func Password(msg string) ([]byte, error) {
 // TrimmedLine prompts for input and returns the first line of input as a trimmed string
 func TrimmedLine(msg string) (string, error) {
 	_, _ = fmt.Fprint(promptOut, msg+": ")
-	return scanTrimmedLine()
+	answer, err := scanTrimmedLine()
+	if !isTerminal(int(os.Stdin.Fd())) {
+		// Input from a pipe is not echoed, so supply the newline that pressing
+		// Enter would have written. Without it, whatever mrs prints next
+		// continues the prompt's line: "Vault name: Error: no vault name given".
+		_, _ = fmt.Fprint(promptOut, "\n")
+	}
+	return answer, err
 }
 
 func scanTrimmedLine() (string, error) {

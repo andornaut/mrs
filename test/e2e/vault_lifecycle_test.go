@@ -444,10 +444,11 @@ func TestDeleteReportsAMissingVault(t *testing.T) {
 		AssertStderr("not found")
 }
 
-// A prefix that names no vault exactly picks the first in alphabetical order,
-// without comment. What keeps that safe is that the vault it chose is named in
-// the output, so the choice is never invisible; a prefix can no longer reach a
-// command that destroys or re-keys a vault, and an exact name always wins.
+// A prefix that names no vault exactly picks the first in alphabetical order.
+// What keeps that safe is that the choice is never invisible: a prefix that
+// could have meant more than one vault says which it took, the vault written to
+// is named in the report, a prefix cannot reach a command that destroys or
+// re-keys a vault, and an exact name always wins.
 func TestAPrefixSelectsTheFirstMatchAndSaysWhich(t *testing.T) {
 	l := newLab(t)
 	l.seedVault("alpha", "a password", "alpha key\nalpha value\n")
@@ -456,13 +457,37 @@ func TestAPrefixSelectsTheFirstMatchAndSaysWhich(t *testing.T) {
 
 	l.Run("search", "-v", "alph", "-p", pwFile, "key").
 		AssertOK().
+		AssertStderr(`"alph" begins the name of 2 vaults, so vault alpha was chosen`).
 		AssertStderr("in vault alpha\n").
 		AssertStdout("alpha value").
 		AssertNoOutput("alphabet value")
 
+	// export writes nothing but secrets, so without the warning its choice
+	// would be invisible: the same command with the same arguments returns a
+	// different vault's secrets once a longer name exists beside the one meant.
 	l.Run("vault", "export", "-v", "alph", "-p", pwFile).
 		AssertOK().
+		AssertStderr(`begins the name of 2 vaults`).
 		AssertStdoutExactly("alpha key\nalpha value\n")
+
+	// An exact name is not ambiguous, whatever else begins with it.
+	l.Run("vault", "export", "-v", "alpha", "-p", pwFile).
+		AssertOK().
+		AssertNoOutput("begins the name of").
+		AssertStdoutExactly("alpha key\nalpha value\n")
+
+	// Nor is a prefix that reaches only one vault.
+	l.Run("vault", "export", "-v", "alphab", "-p", pwFile).
+		AssertOK().
+		AssertNoOutput("begins the name of").
+		AssertStdoutExactly("alphabet key\nalphabet value\n")
+
+	// A command that refuses a prefix outright says so once, rather than
+	// warning about a vault it is about to refuse to touch.
+	l.RunStdin("y\n", "vault", "delete", "-v", "alph").
+		AssertFailed().
+		AssertStderr(`Did you mean "alpha"?`).
+		AssertNoOutput("begins the name of")
 
 	// add and edit still take a prefix, and still write, so their reports have
 	// to name the vault they wrote to.
@@ -592,6 +617,50 @@ func TestUnknownCommandFails(t *testing.T) {
 	l := newLab(t)
 	l.Run("nonsense").AssertFailed().AssertStderr("unknown command")
 	l.Run("vault", "nonsense").AssertFailed().AssertStderr("unknown command")
+}
+
+// A command that has no subcommands cannot have been given one, so an argument
+// it does not take is reported as what it is. `mrs add "my key"` is a user
+// expecting to name a secret, and "unknown command" answers a question they did
+// not ask.
+func TestACommandThatTakesNoArgumentsSaysSo(t *testing.T) {
+	l := newLab(t)
+	pwFile := l.seedVault("personal", "a password", "a key\na value\n")
+
+	for _, args := range [][]string{
+		{"add", "-p", pwFile, "my key"},
+		{"edit", "-p", pwFile, "my key"},
+		{"vault", "export", "-p", pwFile, "personal"},
+		{"vault", "list", "personal"},
+	} {
+		l.Run(args...).
+			AssertFailed().
+			AssertStderr("takes no arguments").
+			AssertNoOutput("unknown command")
+	}
+
+	// But a mistyped subcommand of `mrs vault` still is an unknown command.
+	l.Run("vault", "lst").AssertFailed().AssertStderr("unknown command")
+}
+
+// Without a vault there is nothing to name, so asking which one to use has no
+// answer a user could give. The first thing a new user runs is likely to be one
+// of these, so it has to point at the command that gets them started.
+func TestTheFirstRunSaysThereAreNoVaults(t *testing.T) {
+	l := newLab(t)
+	pwFile := l.PasswordFile("pw", "a password")
+
+	for _, args := range [][]string{
+		{"add", "-p", pwFile},
+		{"edit", "-p", pwFile},
+		{"search", "-p", pwFile, "anything"},
+	} {
+		l.Run(args...).
+			AssertFailed().
+			AssertStderr("no vaults found").
+			AssertStderr("mrs vault create").
+			AssertNoOutput("Vault name:")
+	}
 }
 
 func TestVersionIsReported(t *testing.T) {

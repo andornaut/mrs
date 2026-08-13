@@ -1,6 +1,7 @@
 package vaultcmd
 
 import (
+	"errors"
 	"fmt"
 	"os"
 
@@ -14,7 +15,7 @@ import (
 
 // Cmd implements ./mrs vault
 var Cmd = &cobra.Command{
-	Use:   "vault [command]",
+	Use:   "vault",
 	Short: "Manage vaults",
 	// Without Args and RunE, an unrecognised subcommand prints help and exits 0,
 	// which hides a typo such as `mrs vault lst` from a script. Args alone is
@@ -24,7 +25,26 @@ var Cmd = &cobra.Command{
 	RunE: func(c *cobra.Command, args []string) error {
 		return c.Help()
 	},
-	SilenceUsage: true,
+	// `mrs vault` takes no flags of its own beyond --help, so the usage line
+	// reads as the two things it can be: the group, or a command within it.
+	DisableFlagsInUseLine: true,
+	SilenceUsage:          true,
+}
+
+// noArgs refuses positional arguments. cobra.NoArgs reports them as an unknown
+// command, which is right for `mrs vault lst` but not for a command that has no
+// subcommands: `mrs vault export personal` names a vault, not a command.
+func noArgs(c *cobra.Command, args []string) error {
+	if len(args) == 0 {
+		return nil
+	}
+	msg := fmt.Sprintf("%s takes no arguments, but got %q", c.CommandPath(), args[0])
+	// A vault is named by a flag, so an argument is most often a name in the
+	// wrong place. list and get-default take no vault, so they say nothing.
+	if c.Flags().Lookup("vault") != nil {
+		msg += ". Use --vault to name a vault"
+	}
+	return errors.New(msg)
 }
 
 type vaultOptions struct {
@@ -42,7 +62,7 @@ func init() {
 	create := &cobra.Command{
 		Use:   "create",
 		Short: "Create a vault",
-		Args:  cobra.NoArgs,
+		Args:  noArgs,
 		RunE: func(c *cobra.Command, args []string) error {
 			name, err := prompt.GivenOrPromptName(opts.namePrefix)
 			if err != nil {
@@ -71,7 +91,7 @@ func init() {
 	changePassword := &cobra.Command{
 		Use:   "change-password",
 		Short: "Change a vault's password",
-		Args:  cobra.NoArgs,
+		Args:  noArgs,
 		RunE: func(c *cobra.Command, args []string) error {
 			name, err := prompt.GivenOrPromptName(opts.namePrefix)
 			if err != nil {
@@ -113,7 +133,7 @@ func init() {
 	delete := &cobra.Command{
 		Use:   "delete",
 		Short: "Delete a vault",
-		Args:  cobra.NoArgs,
+		Args:  noArgs,
 		RunE: func(c *cobra.Command, args []string) error {
 			name, err := prompt.GivenOrPromptName(opts.namePrefix)
 			if err != nil {
@@ -149,7 +169,7 @@ func init() {
 	export := &cobra.Command{
 		Use:   "export",
 		Short: "Export secrets from a vault",
-		Args:  cobra.NoArgs,
+		Args:  noArgs,
 		RunE: func(c *cobra.Command, args []string) error {
 			name, err := prompt.GivenOrPromptName(opts.namePrefix)
 			if err != nil {
@@ -175,7 +195,7 @@ func init() {
 		Use:   "get-default",
 		Short: "Print the default vault",
 		Long:  "Print either the first vault or the one defined by $MRS_DEFAULT_VAULT_NAME",
-		Args:  cobra.NoArgs,
+		Args:  noArgs,
 		RunE: func(c *cobra.Command, args []string) error {
 			v, err := vault.Default()
 			if err != nil {
@@ -195,7 +215,7 @@ func init() {
 	list := &cobra.Command{
 		Use:   "list",
 		Short: "List all vaults",
-		Args:  cobra.NoArgs,
+		Args:  noArgs,
 		RunE: func(c *cobra.Command, args []string) error {
 			vaults, err := vault.All()
 			if err != nil {
@@ -213,10 +233,14 @@ func init() {
 	}
 
 	rename := &cobra.Command{
-		Use:                   "rename [source-name] [target-name]",
-		Short:                 "Rename a vault",
-		Args:                  cobra.ExactArgs(2),
-		DisableFlagsInUseLine: true,
+		Use:   "rename <source-name> <target-name>",
+		Short: "Rename a vault",
+		Args: func(c *cobra.Command, args []string) error {
+			if len(args) != 2 {
+				return fmt.Errorf("%s needs a source name and a target name, but got %d", c.CommandPath(), len(args))
+			}
+			return nil
+		},
 		RunE: func(c *cobra.Command, args []string) error {
 			sourceName := args[0]
 			targetName := args[1]
@@ -280,11 +304,11 @@ func readImportFile(importFile string) ([]byte, error) {
 	}
 	b, err := os.ReadFile(importFile)
 	if err != nil {
-		return nil, fmt.Errorf("could not read from import file at %s: %s", importFile, err)
+		return nil, fmt.Errorf("could not read from import file %q: %w", importFile, err)
 	}
 	if err := secret.Validate(b); err != nil {
 		crypto.Wipe(b)
-		return nil, fmt.Errorf("could not import %s: %s", importFile, err)
+		return nil, fmt.Errorf("could not import %q: %w", importFile, err)
 	}
 	return b, nil
 }

@@ -143,9 +143,8 @@ func (v *UnlockedVault) NewReader() (io.Reader, error) {
 			decrypted, err = crypto.Decrypt(b, legacyPassword, salt)
 			crypto.Wipe(legacyPassword)
 			if err == nil {
-				fmt.Fprintf(os.Stderr,
-					"Vault \"%s\" was encrypted with a password that ends in a newline. "+
-						"It will be re-encrypted with the trimmed password the next time you save it.\n",
+				warnf("vault %s was encrypted with a password that ends in a newline. "+
+					"It will be re-encrypted with the trimmed password the next time you save it.",
 					v.Name())
 				break
 			}

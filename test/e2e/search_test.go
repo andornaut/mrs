@@ -237,10 +237,11 @@ func TestSearchRequiresAPattern(t *testing.T) {
 	l := newLab(t)
 	pwFile := l.seedVault("work", "a password", searchVault)
 
-	// Without this, a bare `mrs search` would print the whole vault.
+	// Without this, a bare `mrs search` would print the whole vault. The
+	// message says what is missing, rather than counting arguments.
 	l.Run("search", "-v", "work", "-p", pwFile).
 		AssertFailed().
-		AssertStderr("requires at least 1 arg")
+		AssertStderr("nothing to search for")
 }
 
 func TestSearchRejectsAWrongPassword(t *testing.T) {

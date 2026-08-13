@@ -359,6 +359,15 @@ func TestAPromptNeverReachesStdout(t *testing.T) {
 	r.AssertStderr("Vault name: ")
 	r.AssertStdoutExactly("a key\nthe-secret-value\n")
 
+	// A prompt answered from a pipe is not echoed, so mrs supplies the newline
+	// that pressing Enter would have written. Without it, whatever it prints
+	// next continues the prompt's line, as in "Vault name: Error: ...".
+	r = l.Run("vault", "export", "-p", pwFile).AssertFailed()
+	if strings.Contains(r.Stderr, "Vault name: Error") {
+		t.Errorf("expected the error on its own line, got %q", r.Stderr)
+	}
+	r.AssertStderr("Use --vault to name one")
+
 	// And the confirmation before a destructive change.
 	r = l.RunStdin("n\n", "vault", "delete", "-v", "work").AssertOK()
 	r.AssertStderr("Delete vault work? (y/n) [n]: ")

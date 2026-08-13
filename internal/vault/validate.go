@@ -29,7 +29,7 @@ const maxNameLen = 200
 
 func validateName(n string) error {
 	if !nameRegex.MatchString(n) {
-		return fmt.Errorf("invalid vault name \"%s\"", n)
+		return fmt.Errorf("invalid vault name %q", n)
 	}
 	if len(n) > maxNameLen {
 		return fmt.Errorf("vault name must be at most %d characters, but is %d characters", maxNameLen, len(n))
@@ -39,7 +39,7 @@ func validateName(n string) error {
 
 func validateSalt(s string) error {
 	if !saltRegex.MatchString(s) {
-		return fmt.Errorf("invalid vault salt \"%s\"", s)
+		return fmt.Errorf("invalid vault salt %q", s)
 	}
 	return nil
 }
@@ -53,7 +53,7 @@ func validateFilename(n string) error {
 		return err
 	}
 	if !hasSalt {
-		return fmt.Errorf("vault filename \"%s\" has no salt", n)
+		return fmt.Errorf("vault filename %q has no salt", n)
 	}
 	return validateSalt(salt)
 }
@@ -68,13 +68,13 @@ func validatePassword(p []byte) error {
 func validatePath(p string) error {
 	fi, err := os.Stat(p)
 	if err != nil {
-		return fmt.Errorf("invalid vault path \"%s\": %w", p, err)
+		return fmt.Errorf("invalid vault path %q: %w", p, err)
 	}
 	if err := validateFilename(fi.Name()); err != nil {
 		return err
 	}
 	if fi.IsDir() {
-		return fmt.Errorf("vault path \"%s\" should be a file, but is a directory", p)
+		return fmt.Errorf("vault path %q should be a file, but is a directory", p)
 	}
 	return nil
 }
