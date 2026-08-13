@@ -104,12 +104,13 @@ func TestSearchFullHasAShortFlag(t *testing.T) {
 	l := newLab(t)
 	pwFile := l.seedVault("work", "a password", searchVault)
 
-	l.Run("search", "-v", "work", "-p", pwFile, "-a", "sekrit").
+	l.Run("search", "-v", "work", "-p", pwFile, "-f", "sekrit").
 		AssertOK().
 		AssertStderr("1 secret matched")
 
-	// Not -f. No command has one: --force is always spelled out.
-	l.Run("search", "-v", "work", "-p", pwFile, "-f", "sekrit").
+	// -f is --full, and nothing else. No command has a short form for --force,
+	// so the letter means one thing wherever it appears.
+	l.Run("search", "-v", "work", "-p", pwFile, "-a", "sekrit").
 		AssertFailed().
 		AssertStderr("unknown shorthand flag")
 }

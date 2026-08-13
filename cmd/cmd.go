@@ -176,7 +176,7 @@ func init() {
 	add.Flags().BoolVar(&opts.force, "force", false, "delete the vault's lock file first")
 	edit.Flags().BoolVar(&opts.force, "force", false, "delete the vault's lock file first")
 	edit.Flags().BoolVarP(&opts.assumeYes, "yes", "y", false, "answer yes to the confirmation before emptying the vault")
-	search.Flags().BoolVarP(&opts.includeValues, "full", "a", false, "search the full contents, instead of the first line of each secret")
+	search.Flags().BoolVarP(&opts.includeValues, "full", "f", false, "search the full contents, instead of the first line of each secret")
 	// Registered here so that cobra does not add it with a "-v" shorthand of
 	// its own, which would make -v mean --version on `mrs` and --vault on
 	// every command under it.

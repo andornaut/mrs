@@ -16,8 +16,8 @@ Each vault is an encrypted text file that contains 0 or more secrets.
 
 A secret is a newline delimited paragraph, where the first line is the search
 key and the subsequent lines are the secret value. When searching with
-`mrs search` only the key is searched, but you can include a `--full` flag to
-search through the full secret contents.
+`mrs search` only the key is searched, but you can include a `-f`, `--full`
+flag to search through the full secret contents.
 
 When you `mrs add` or `mrs edit`, a few instruction lines are shown at the top
 of the editor and removed when you save. Every other line is kept exactly as
@@ -82,10 +82,10 @@ Flag | Command | Supplies
 `-i`, `--import-file` | `vault create` | unencrypted secrets to seed the vault with
 
 A short flag means the same thing everywhere: `-p` is always the password file,
-`-v` is always the vault and `-y` is always `--yes`. A flag that only some
-commands have, and that is worth reading twice before typing, is spelled out in
-full: `--force`, which deletes another process's lock file, and `--path`, on
-`vault list` and `vault get-default`.
+`-v` is always the vault, `-y` is always `--yes` and `-f` is always `--full`. A
+flag that only some commands have, and that is worth reading twice before
+typing, is spelled out in full: `--force`, which deletes another process's lock
+file, and `--path`, on `vault list` and `vault get-default`.
 
 A trailing newline is trimmed, so `echo 'a password' > pw` works. Any other
 whitespace is part of the password.
