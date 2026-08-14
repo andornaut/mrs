@@ -1,5 +1,8 @@
 # Mr. Secretary (mrs)
 
+[![CI](https://github.com/andornaut/mrs/actions/workflows/test.yml/badge.svg)](https://github.com/andornaut/mrs/actions/workflows/test.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 A command line secrets manager for Linux and macOS. Secrets are organised into
 encrypted vaults: one file each, edited in `$EDITOR`, searched with regular
 expressions.
