@@ -158,8 +158,8 @@ jobs:
         uses: actions/checkout@v7.0.1
 
       # Matched by name, not merged blindly: `files: artifacts/*` publishes
-      # whatever lands here, so an unrelated artifact uploaded by some later
-      # step would otherwise become a dev-release asset no checksum covers.
+      # whatever lands here, so the coverage artifact the called test workflow
+      # uploads would otherwise become a dev-release asset no checksum covers.
       - name: Download build artifacts
         uses: actions/download-artifact@v8.0.1
         with:
