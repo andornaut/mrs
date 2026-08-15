@@ -104,6 +104,7 @@ func (v Vault) basename() string {
 // UnlockedVault is a vault that can be read from and written to
 type UnlockedVault struct {
 	Vault
+
 	password []byte
 }
 

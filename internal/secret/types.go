@@ -18,8 +18,8 @@ type secret []byte
 // Key returns the secret's first line, which is what a search matches on. It
 // shares the secret's memory, so wiping the secret wipes the key with it.
 func (s secret) Key() []byte {
-	if i := bytes.IndexByte(s, '\n'); i >= 0 {
-		return s[:i]
+	if before, _, ok := bytes.Cut(s, []byte{'\n'}); ok {
+		return before
 	}
 	return s
 }

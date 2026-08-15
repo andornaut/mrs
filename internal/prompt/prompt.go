@@ -44,7 +44,8 @@ func Confirm(assumeYes bool, msg string) (bool, error) {
 	_, _ = fmt.Fprintf(promptOut, "%s (y/n) [n]: ", msg)
 	answer, err := scanTrimmedLine()
 	if err != nil {
-		return false, nil
+		// Nothing readable is not a yes.
+		return false, nil //nolint:nilerr // an unreadable answer is a no, not a failure
 	}
 	return answer == "y", nil
 }

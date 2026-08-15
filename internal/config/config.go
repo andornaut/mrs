@@ -15,7 +15,7 @@ import (
 // exist, which is the same answer every time it is asked for.
 var (
 	tempDir     string
-	tempDirErr  error
+	errTempDir  error
 	tempDirOnce sync.Once
 )
 
@@ -141,23 +141,23 @@ func GetTempDir() (string, error) {
 		}
 		p = path.Join(p, "mrs")
 		if err := os.MkdirAll(p, 0700); err != nil {
-			tempDirErr = err
+			errTempDir = err
 			return
 		}
 		p, err := os.MkdirTemp(p, "")
 		if err != nil {
-			tempDirErr = err
+			errTempDir = err
 			return
 		}
 		tempDir = p
 	})
-	return tempDir, tempDirErr
+	return tempDir, errTempDir
 }
 
 // Reset forgets the temporary directory, so that the next call creates a new
 // one. This is only used for testing.
 func Reset() {
 	tempDir = ""
-	tempDirErr = nil
+	errTempDir = nil
 	tempDirOnce = sync.Once{}
 }

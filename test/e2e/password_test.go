@@ -12,7 +12,7 @@ func TestExportPrintsWhatWasImported(t *testing.T) {
 	l := newLab(t)
 	// An import is stored as the file was written, so an export returns it
 	// unchanged. Only a later add or edit puts the secrets in key order.
-	contents := "zebra\nzebra value\n\nalpha\nalpha value\n"
+	contents := "zebra\nzebra value\n\nalpha\nalpha value\n" //nolint:dupword // a fixture is a key line then its value line; the repeat is the data
 	pwFile := l.seedVault("work", "a password", contents)
 
 	l.Run("export", "-v", "work", "-p", pwFile).
@@ -23,13 +23,13 @@ func TestExportPrintsWhatWasImported(t *testing.T) {
 func TestExportPrintsTheSecretsInKeyOrderAfterAnEdit(t *testing.T) {
 	l := newLab(t)
 	pwFile := l.seedVault("work", "a password",
-		"zebra\nzebra value\n\nalpha\nalpha value\n")
+		"zebra\nzebra value\n\nalpha\nalpha value\n") //nolint:dupword // a fixture is a key line then its value line; the repeat is the data
 
 	l.Run("edit", "-v", "work", "-p", pwFile).AssertOK()
 
 	l.Run("export", "-v", "work", "-p", pwFile).
 		AssertOK().
-		AssertStdoutExactly("alpha\nalpha value\n\nzebra\nzebra value\n")
+		AssertStdoutExactly("alpha\nalpha value\n\nzebra\nzebra value\n") //nolint:dupword // a fixture is a key line then its value line; the repeat is the data
 }
 
 func TestExportOfAnEmptyVaultPrintsNothing(t *testing.T) {
@@ -95,7 +95,7 @@ func TestSecretsSurviveImportAndExport(t *testing.T) {
 	l := newLab(t)
 	// Awkward but legitimate content: indentation, trailing spaces, a blank
 	// line inside no secret, and a line that begins with a "#".
-	contents := "alpha\n  indented value  \n#not a comment\n\nbeta\nbeta value\n"
+	contents := "alpha\n  indented value  \n#not a comment\n\nbeta\nbeta value\n" //nolint:dupword // a fixture is a key line then its value line; the repeat is the data
 	pwFile := l.seedVault("work", "a password", contents)
 
 	l.Run("export", "-v", "work", "-p", pwFile).

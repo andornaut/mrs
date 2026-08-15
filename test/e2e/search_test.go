@@ -118,14 +118,14 @@ func TestSearchFullHasAShortFlag(t *testing.T) {
 func TestSearchPrintsEveryMatchSeparatedByABlankLine(t *testing.T) {
 	l := newLab(t)
 	pwFile := l.seedVault("work", "a password",
-		"alpha\nalpha value\n\nbeta\nbeta value\n\ngamma\ngamma value\n")
+		"alpha\nalpha value\n\nbeta\nbeta value\n\ngamma\ngamma value\n") //nolint:dupword // a fixture is a key line then its value line; the repeat is the data
 
 	// Matches are printed in key order, in the same shape as the vault itself,
 	// and on stdout alone, so that the output can be fed straight back into
 	// `vault create --import-file`.
 	l.Run("search", "-v", "work", "-p", pwFile, "a").
 		AssertOK().
-		AssertStdoutExactly("alpha\nalpha value\n\nbeta\nbeta value\n\ngamma\ngamma value\n").
+		AssertStdoutExactly("alpha\nalpha value\n\nbeta\nbeta value\n\ngamma\ngamma value\n"). //nolint:dupword // a fixture is a key line then its value line; the repeat is the data
 		AssertStderr("3 secrets matched \"a\" in vault work")
 }
 

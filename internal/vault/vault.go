@@ -86,7 +86,7 @@ func names(vs []Vault) []string {
 // matched, so that a caller can tell an exact name from an ambiguous prefix.
 func resolve(prefix string) (Vault, []Vault, error) {
 	if prefix == "" {
-		return "", nil, fmt.Errorf("vault name cannot be empty")
+		return "", nil, errors.New("vault name cannot be empty")
 	}
 	vs, err := findVaults(prefix)
 	if err != nil {

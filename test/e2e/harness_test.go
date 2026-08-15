@@ -275,7 +275,7 @@ func (l *lab) VaultPath(name string) string {
 	if err != nil {
 		l.t.Fatalf("failed to glob for vault %s: %s", name, err)
 	}
-	var vaults []string
+	vaults := make([]string, 0, len(matches))
 	for _, m := range matches {
 		switch filepath.Ext(m) {
 		case ".lock", ".bak", ".tmp":

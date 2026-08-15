@@ -80,7 +80,7 @@ func editSecrets(content []byte) (*secretList, error) {
 // as a secret rather than silently discarded.
 func stripInstructions(b []byte) []byte {
 	var kept [][]byte
-	for _, line := range bytes.Split(b, []byte("\n")) {
+	for line := range bytes.SplitSeq(b, []byte("\n")) {
 		// Compared as bytes: converting each line to a string to trim it would
 		// make an unwipeable copy of every line of the editor's buffer.
 		trimmed := bytes.TrimSpace(line)
@@ -119,8 +119,8 @@ func parseSecrets(plaintext []byte) (*secretList, error) {
 	)
 	for rest := plaintext; len(rest) > 0; {
 		var line []byte
-		if i := bytes.IndexByte(rest, '\n'); i >= 0 {
-			line, rest = rest[:i], rest[i+1:]
+		if before, after, ok := bytes.Cut(rest, []byte{'\n'}); ok {
+			line, rest = before, after
 		} else {
 			line, rest = rest, nil
 		}

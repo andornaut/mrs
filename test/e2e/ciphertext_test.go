@@ -188,7 +188,7 @@ func TestAWrongPasswordRevealsNothingAboutTheSecrets(t *testing.T) {
 
 	// A near miss and a wild guess have to be answered identically: nothing
 	// about the secrets, and nothing about how close the password was.
-	var answers []string
+	answers := make([]string, 0, 4)
 	for _, guess := range []string{"a passwore", "a passwor", "a password ", "entirely different"} {
 		r := l.Run("export", "-v", "personal", "-p", l.PasswordFile("guess.pw", guess)).
 			AssertFailed().

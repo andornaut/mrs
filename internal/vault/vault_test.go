@@ -157,7 +157,7 @@ func TestDeleteRemovesCompanionFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var names []string
+	names := make([]string, 0, len(entries))
 	for _, e := range entries {
 		names = append(names, e.Name())
 	}
@@ -251,11 +251,7 @@ func TestRenameReportsBackupMoveFailure(t *testing.T) {
 }
 
 func TestWriteBackup(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "mrs-test-vault")
-	if err != nil {
-		t.Fatalf("failed to create temp dir: %v", err)
-	}
-	defer func() { _ = os.RemoveAll(tmpDir) }()
+	tmpDir := t.TempDir()
 
 	vaultPath := filepath.Join(tmpDir, "test.12345678901234567890123456789012")
 	password := []byte("password")
@@ -263,7 +259,7 @@ func TestWriteBackup(t *testing.T) {
 	defer u.Wipe()
 
 	// First write should not create a backup
-	err = u.Write([]byte("first content"))
+	err := u.Write([]byte("first content"))
 	if err != nil {
 		t.Fatalf("first write failed: %v", err)
 	}
