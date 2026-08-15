@@ -2,8 +2,6 @@ module github.com/andornaut/mrs
 
 go 1.26
 
-toolchain go1.26.3
-
 require (
 	github.com/gofrs/flock v0.13.0
 	github.com/spf13/cobra v1.10.2
