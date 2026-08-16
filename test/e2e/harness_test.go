@@ -57,7 +57,7 @@ func runMain(m *testing.M) int {
 // declareSourceInputs opens every source file in the module so that `go test`
 // records them as inputs to this package. These tests exercise a binary they
 // build themselves rather than code they import, so without this the go command
-// has no idea that a change to mrs invalidates a cached pass, and reports a
+// does not know that a change to mrs invalidates a cached pass, and reports a
 // stale "ok (cached)" for a build it never ran.
 func declareSourceInputs(root string) error {
 	return filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
@@ -103,8 +103,8 @@ type lab struct {
 }
 
 // newLab returns an isolated installation of mrs backed by real directories.
-// Each lab has its own directories and its own environment, and drives mrs as a
-// subprocess, so tests share nothing and run in parallel. This matters because
+// Each lab has its own directories and environment and drives mrs as a
+// subprocess, so tests share nothing and run in parallel, which matters because
 // every command derives a key with 600,000 PBKDF2 iterations by design.
 func newLab(t *testing.T) *lab {
 	t.Helper()

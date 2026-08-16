@@ -11,9 +11,9 @@ import (
 // MRS_TEMP at a lab directory, so the environment variables mrs falls back to
 // when they are absent are exercised only here.
 
-// editorStat is what the fake editor saw while the plaintext file was open.
-// It has to be captured from inside the session, because mrs removes the file
-// and its directory before it exits.
+// editorStat is what the fake editor saw while the plaintext file was open. It
+// is captured from inside the session, because mrs removes the file and its
+// directory before it exits.
 type editorStat struct {
 	FileMode string
 	DirMode  string
@@ -21,8 +21,7 @@ type editorStat struct {
 }
 
 // editSession runs an edit and reports where mrs put the plaintext file it
-// handed the editor, which is how a test sees which temporary directory mrs
-// chose and how exposed the file was while it was there.
+// handed the editor, and how exposed that file was while it was there.
 func (l *lab) editSession(name, pwFile string) editorStat {
 	l.t.Helper()
 	statFile := filepath.Join(filepath.Dir(l.Home), "editor-stat")
@@ -150,8 +149,8 @@ func TestAnUnusableHomeIsReportedByEveryCommand(t *testing.T) {
 	notADir := l.WriteFile("not-a-dir", "")
 	l.Setenv("MRS_HOME", notADir)
 
-	// Whichever command the user reaches for, the answer must name the
-	// problem rather than report an empty or missing vault.
+	// Whichever command the user reaches for, the answer names the problem
+	// rather than reporting an empty or missing vault.
 	for _, args := range [][]string{
 		{"vault", "list"},
 		{"vault", "default"},
@@ -172,11 +171,15 @@ func TestPlaintextIsEditedUnderMrsTemp(t *testing.T) {
 	if !strings.HasPrefix(s.Path, l.Temp) {
 		t.Fatalf("expected the decrypted file under MRS_TEMP (%s), got %q", l.Temp, s.Path)
 	}
-	// mrs makes a fresh private directory per run rather than editing directly
-	// in the shared one.
+	// Neither the plaintext nor the directory it sits in may be readable by
+	// anyone else while the editor has it open.
+	if s.FileMode != "0600" {
+		t.Fatalf("expected the decrypted file to be readable only by its owner, got %q", s.FileMode)
+	}
 	if s.DirMode != "0700" {
 		t.Fatalf("expected the decrypted file's directory to be private, got %q", s.DirMode)
 	}
+	// mrs makes a fresh directory per run rather than editing in the shared one.
 	if filepath.Dir(s.Path) == l.Temp {
 		t.Fatalf("expected a directory of its own below %s, got %q", l.Temp, s.Path)
 	}
@@ -279,8 +282,7 @@ func TestTheVaultSubcommandsRequireANamedVault(t *testing.T) {
 	l.Setenv("MRS_DEFAULT_VAULT_NAME", "work")
 
 	// A vault that is about to be changed is named by an operand: the
-	// configured default is a convenience for the commands that read, and is
-	// not enough to re-key or delete by.
+	// configured default is not enough to re-key or delete by.
 	for _, args := range [][]string{
 		{"vault", "change-password", "-p", pwFile},
 		{"vault", "delete"},
@@ -323,9 +325,9 @@ func TestTheDefaultVaultNameMustNameAVaultExactly(t *testing.T) {
 	l := newLab(t)
 	l.seedVault("personal", "a password", "a key\na value\n")
 
-	// A prefix is accepted on the command line, where it is typed and read in
-	// the same moment. A name written into a shell profile is read on every run
-	// and looked at almost never, so it has to name a vault exactly.
+	// A prefix is accepted on the command line, but a name written into a shell
+	// profile is read on every run and looked at almost never, so it has to
+	// name a vault exactly.
 	for _, name := range []string{"pers", "personal2", "absent"} {
 		l.Setenv("MRS_DEFAULT_VAULT_NAME", name)
 		l.Run("vault", "default").
@@ -356,33 +358,8 @@ func TestEachRunGetsItsOwnTemporaryDirectory(t *testing.T) {
 	assertNoPlaintextUnder(t, l.Temp, "a value")
 }
 
-func TestAPromptNeverReachesStdout(t *testing.T) {
-	l := newLab(t)
-	pwFile := l.seedVault("work", "a password", "a key\nthe-secret-value\n")
-
-	// `mrs vault create second > log` reports what it did on stderr, so the
-	// file the user is capturing holds nothing but what they asked for.
-	r := l.Run("vault", "create", "second", "-p", pwFile).AssertOK()
-	r.AssertStderr("Created vault second")
-	r.AssertStdoutExactly("")
-
-	// And a vault's secrets reach stdout with nothing else mixed in.
-	l.Run("export", "-v", "work", "-p", pwFile).
-		AssertOK().
-		AssertStdoutExactly("a key\nthe-secret-value\n")
-
-	// And the question before a destructive change, which without a terminal
-	// is reported rather than asked.
-	r = l.Run("vault", "delete", "work").AssertFailed()
-	r.AssertStderr("Delete vault work?")
-	if strings.Contains(r.Stdout, "Delete vault") {
-		t.Fatalf("expected the confirmation off stdout, got %q", r.Stdout)
-	}
-}
-
-// TestNothingButDataIsEverWrittenToStdout is the general form of the rule the
-// tests above check case by case: whatever goes wrong, stdout stays empty, so
-// a caller redirecting it captures secrets or nothing at all.
+// Whatever goes wrong, stdout stays empty, so a caller redirecting it captures
+// secrets or nothing at all.
 func TestNothingButDataIsEverWrittenToStdout(t *testing.T) {
 	l := newLab(t)
 	pwFile := l.seedVault("work", "a password", "a key\nthe-secret-value\n")
@@ -427,8 +404,7 @@ func TestNothingButDataIsEverWrittenToStdout(t *testing.T) {
 }
 
 // 2 is kept for a wrong invocation and 3 for a search that matched nothing, so
-// that a script can tell a command it typed wrong, one that ran and failed, and
-// one that ran and found nothing apart.
+// that a script can tell those apart from a command that ran and failed.
 func TestExitCodesDistinguishUsageFromFailureFromNoMatch(t *testing.T) {
 	l := newLab(t)
 	pwFile := l.seedVault("work", "a password", "a key\na value\n")
@@ -460,9 +436,8 @@ func TestExitCodesDistinguishUsageFromFailureFromNoMatch(t *testing.T) {
 	}
 }
 
-// The rule stated on the success path: stdout carries the vault names, paths
-// and secrets a caller consumes, and every report of what happened goes to
-// stderr, so that redirecting stdout captures data alone.
+// The same rule on the success path: stdout carries the vault names, paths and
+// secrets a caller consumes, and every report of what happened goes to stderr.
 func TestOnlyDataIsWrittenToStdoutWhenACommandSucceeds(t *testing.T) {
 	l := newLab(t)
 	pwFile := l.seedVault("work", "a password", "a key\na value\n")
@@ -495,8 +470,8 @@ func TestOnlyDataIsWrittenToStdoutWhenACommandSucceeds(t *testing.T) {
 	}
 }
 
-// Which of several vaults a secret belongs in is not a guess worth making on
-// the user's behalf, so the commands that resolve a default ask to be told.
+// Which of several vaults a secret belongs in is not guessed at on the user's
+// behalf, so the commands that resolve a default ask to be told.
 func TestSeveralVaultsWithNoDefaultAreNotGuessedBetween(t *testing.T) {
 	l := newLab(t)
 	pwFile := l.seedVault("work", "a password", "a key\na value\n")
@@ -521,8 +496,8 @@ func TestSeveralVaultsWithNoDefaultAreNotGuessedBetween(t *testing.T) {
 	l.Run("export", "-p", pwFile).AssertOK().AssertStdout("a value")
 }
 
-// A wrong invocation is answered with the usage that would have been right, and
-// a command that ran and failed is not: by then the reader knows how to type it
+// A wrong invocation is answered with the usage that would have been right. A
+// command that ran and failed is not: by then the reader knows how to type it
 // and needs to know what went wrong. Help asked for by name is not a failure.
 func TestUsageIsPrintedForAWrongInvocationOnly(t *testing.T) {
 	l := newLab(t)

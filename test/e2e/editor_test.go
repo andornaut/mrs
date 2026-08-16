@@ -82,18 +82,6 @@ func TestAFailingEditorLeavesTheVaultUnchanged(t *testing.T) {
 	}
 }
 
-func TestALongVaultNameIsRejectedClearly(t *testing.T) {
-	l := newLab(t)
-	pwFile := l.PasswordFile("pw", "a password")
-
-	l.Run("vault", "create", strings.Repeat("a", 201), "-p", pwFile).
-		AssertFailed().
-		AssertStderr("at most 200 characters")
-
-	// A name that fits is still accepted.
-	l.Run("vault", "create", strings.Repeat("a", 200), "-p", pwFile).AssertOK()
-}
-
 // An editor opens with the cursor on the first line, so typing straight into an
 // `mrs add` session pushes the instructions below what was typed. Removing them
 // only when they come first would encrypt them as part of the secret.

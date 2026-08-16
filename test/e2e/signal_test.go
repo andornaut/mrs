@@ -33,10 +33,9 @@ func (l *lab) interruptedEdit(name, pwFile string) (string, *os.Process) {
 }
 
 func TestAnInterruptedEditingSessionLeavesNoPlaintext(t *testing.T) {
-	// Every signal a user or their system can deliver to end mrs while an
-	// editor is open. SIGINT is Ctrl-C, SIGHUP a closed terminal or a dropped
-	// ssh session, SIGQUIT Ctrl-\, and SIGTERM what a shell shutting down or
-	// a service manager sends.
+	// Every signal that can end mrs while an editor is open: SIGINT is Ctrl-C,
+	// SIGHUP a closed terminal or a dropped ssh session, SIGQUIT Ctrl-\, and
+	// SIGTERM what a shell shutting down or a service manager sends.
 	signals := []struct {
 		name string
 		sig  syscall.Signal
@@ -59,9 +58,9 @@ func TestAnInterruptedEditingSessionLeavesNoPlaintext(t *testing.T) {
 			if err != nil {
 				t.Fatalf("failed to wait for mrs: %s", err)
 			}
-			// 128+signum, as a shell reports a command its signal killed. A
-			// run cut short must not exit 1, 2 or 3, each of which says
-			// something specific about a run that finished.
+			// 128+signum, as a shell reports a command its signal killed. A run
+			// cut short must not exit 1, 2 or 3, which each say something
+			// specific about a run that finished.
 			if got, want := state.ExitCode(), 128+int(s.sig); got != want {
 				t.Fatalf("expected mrs to exit %d after %s, got %d", want, s.name, got)
 			}
@@ -90,8 +89,8 @@ func TestAnInterruptedEditingSessionReleasesTheVault(t *testing.T) {
 		t.Fatalf("failed to wait for mrs: %s", err)
 	}
 
-	// A session cut short must not leave the vault locked against the next
-	// one, or the user would have to reach for --force to get back in.
+	// A session cut short must not leave the vault locked against the next one,
+	// or the user would need --force to get back in.
 	l.Setenv("FAKE_EDITOR_MODE", "append")
 	l.Setenv("FAKE_EDITOR_CONTENT", "b key\nb-value\n")
 	delete(l.Env, "FAKE_EDITOR_READY")
@@ -110,8 +109,8 @@ func TestPlaintextIsRemovedWhenTheEditorFails(t *testing.T) {
 
 	l.Run("edit", "-v", "personal", "-p", pwFile).AssertFailed()
 
-	// An editor that exits non-zero ends the session as surely as a signal
-	// does, and leaves the same file behind if nothing removes it.
+	// An editor that exits non-zero ends the session as a signal does, and
+	// leaves the same file behind if nothing removes it.
 	assertNoPlaintextUnder(t, l.Temp, "the-secret-value")
 }
 
@@ -124,6 +123,8 @@ func TestNoPlaintextIsLeftAfterAnOrdinarySession(t *testing.T) {
 	l.Run("add", "-v", "personal", "-p", pwFile).AssertOK()
 
 	assertNoPlaintextUnder(t, l.Temp, "the-secret-value", "b-value")
+	// The vault directory holds ciphertext only, backups included.
+	assertNoPlaintextUnder(t, l.VaultDir(), "the-secret-value", "b-value")
 	// Nor is the directory mrs made for the session left behind empty.
 	entries, err := os.ReadDir(filepath.Join(l.Temp, "mrs"))
 	if err == nil && len(entries) != 0 {

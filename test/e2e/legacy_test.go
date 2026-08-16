@@ -16,10 +16,10 @@ import (
 	"github.com/andornaut/mrs/internal/crypto"
 )
 
-// gcm builds the AEAD that a vault file is sealed with. These tests construct
-// and read fixtures against crypto/aes directly rather than through mrs's own
-// crypto package, so that they check the file format rather than agreeing with
-// whatever that package currently does.
+// gcm builds the AEAD that a vault file is sealed with. Fixtures are built and
+// read against crypto/aes directly rather than through mrs's own crypto
+// package, so that they pin the file format rather than agreeing with whatever
+// that package currently does.
 func gcm(t *testing.T, password, salt string, iterations int) cipher.AEAD {
 	t.Helper()
 	k := pbkdf2.Key([]byte(password), []byte(salt), iterations, 32, sha256.New)
@@ -37,10 +37,9 @@ func gcm(t *testing.T, password, salt string, iterations int) cipher.AEAD {
 // Capability 6: vault files written by earlier versions of mrs, which are
 // upgraded in place, and the backup that is the way back from a save.
 //
-// These tests build vault files the way the version that wrote them would
-// have, rather than driving mrs to produce them, because current mrs cannot
-// write an out-of-date vault at all. Only the fixtures are constructed; every
-// assertion is made against the real binary reading and writing them.
+// The fixtures are written the way the version that made them would have,
+// because current mrs cannot write an out-of-date vault at all. Every assertion
+// is made against the real binary reading and writing them.
 
 // encrypt returns ciphertext as a version of mrs deriving its key from the
 // given salt and iteration count would have written it.
@@ -89,15 +88,15 @@ func (l *lab) writeVaultFile(filename, password, contents, salt string, iteratio
 
 func TestAVaultFileWithNoSaltIsReportedAndIgnored(t *testing.T) {
 	l := newLab(t)
-	// Versions before v0.0.3 derived every key from one static salt and left
-	// the salt out of the filename. mrs derives a key from the salt its
-	// filename carries, so such a file names no vault it can open.
+	// Versions before v0.0.3 derived every key from one static salt and left it
+	// out of the filename. mrs derives a key from the salt a filename carries,
+	// so such a file names no vault it can open.
 	p := l.writeVaultFile("personal", "a password", "a key\na-value\n",
 		"99daa49d-3a53-4bf8-a74a-93295de71d41-4bac-8cea", crypto.LegacyIterations)
 	pwFile := l.PasswordFile("pw", "a password")
 
-	// It is named on stderr rather than passed over in silence, so that it
-	// cannot look as though the vault simply vanished.
+	// It is named on stderr, so that it cannot look as though the vault simply
+	// vanished.
 	l.Run("vault", "list").
 		AssertOK().
 		AssertStdoutEquals("").

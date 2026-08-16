@@ -32,14 +32,14 @@ func TestAVaultLoosenedByHandIsTightenedWhenItIsSaved(t *testing.T) {
 	path := l.VaultPath("personal")
 
 	// A umask, a restored archive or an rsync can leave a vault readable, or
-	// writable, by everyone. Saving must not carry that forward.
-	for _, loose := range []os.FileMode{0644, 0666, 0640, 0604} {
-		chmod(t, path, loose)
+	// writable, by everyone. Saving must not carry that forward. The mode table
+	// itself is checked in TestWriteFileAtomicMode; this is the one case end to
+	// end.
+	chmod(t, path, 0644)
 
-		l.Run("edit", "-v", "personal", "-p", pwFile).AssertOK()
+	l.Run("edit", "-v", "personal", "-p", pwFile).AssertOK()
 
-		assertFileMode(t, path, 0600)
-	}
+	assertFileMode(t, path, 0600)
 	l.Run("export", "-v", "personal", "-p", pwFile).
 		AssertOK().
 		AssertStdoutExactly("a key\na value\n")
@@ -99,8 +99,8 @@ func TestAReadOnlyVaultDirectoryFailsTheSaveAndKeepsTheVault(t *testing.T) {
 	}
 
 	// A vault directory on a read-only mount, or one whose permissions were
-	// changed underneath mrs. The save cannot happen, and must not damage
-	// what is already there on its way to failing.
+	// changed underneath mrs. The save cannot happen, and must not damage what
+	// is already there on its way to failing.
 	chmod(t, l.VaultDir(), 0500)
 	defer chmod(t, l.VaultDir(), 0700)
 
@@ -137,8 +137,8 @@ func TestAnUnreadableVaultIsReported(t *testing.T) {
 	chmod(t, path, 0000)
 	defer chmod(t, path, 0600)
 
-	// Nothing can be decrypted, so say why rather than reporting a vault that
-	// failed to decrypt, which would send the user looking for their password.
+	// The file cannot be read at all, so say why: "failed to decrypt" would
+	// send the user looking for their password instead.
 	l.Run("export", "-v", "personal", "-p", pwFile).
 		AssertFailed().
 		AssertStderr("permission denied").

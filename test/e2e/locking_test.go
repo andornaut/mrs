@@ -12,7 +12,7 @@ import (
 
 // heldVault starts an editing session that sits in the editor holding the
 // vault's lock, and returns a function that ends it. Every test here needs a
-// lock that is genuinely held by another process, not merely a file on disk.
+// lock genuinely held by another process, not merely a file on disk.
 func (l *lab) heldVault(name, pwFile string) func() {
 	l.t.Helper()
 	ready := filepath.Join(filepath.Dir(l.Home), "lock-held-"+name)
@@ -41,8 +41,8 @@ func TestASecondWriterIsRefusedWhileAVaultIsOpen(t *testing.T) {
 	release := l.heldVault("work", pwFile)
 	defer release()
 
-	// Both writers would read, edit and write the whole vault, so the second
-	// one would silently discard the first one's work.
+	// Both writers read, edit and write the whole vault, so the second would
+	// silently discard the first one's work.
 	for _, args := range [][]string{
 		{"add", "-v", "work", "-p", pwFile},
 		{"edit", "-v", "work", "-p", pwFile},
@@ -80,7 +80,7 @@ func TestReadersAreNotBlockedWhileAVaultIsOpen(t *testing.T) {
 	defer release()
 
 	// A write is atomic, so a reader sees either the old vault or the new one
-	// and never a half-written file. Making readers wait would buy nothing.
+	// and never a half-written file.
 	l.Run("export", "-v", "work", "-p", pwFile).
 		AssertOK().
 		AssertStdout("the-secret-value")
@@ -130,8 +130,7 @@ func TestCreateIsRefusedWhileTheNameIsHeldAndCanBeForced(t *testing.T) {
 	defer release()
 
 	// A name that is taken is refused for being taken, whether or not another
-	// process holds its lock: the lock is transient and the collision is not,
-	// so the collision is the more useful thing to say.
+	// process holds its lock: the lock is transient and the collision is not.
 	newPw := l.PasswordFile("new.pw", "another password")
 	for _, args := range [][]string{
 		{"vault", "create", "work", "-p", newPw},

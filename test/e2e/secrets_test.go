@@ -114,8 +114,8 @@ func TestEditToEmptyIsRefusedByDefault(t *testing.T) {
 	pwFile := l.seedVault("personal", "a password", "a key\na value\n")
 	l.Setenv("FAKE_EDITOR_MODE", "clear")
 
-	// A pipe cannot answer the question, so mrs refuses rather than saving or
-	// silently succeeding, and says both what it was asking and how to answer.
+	// A pipe cannot answer the question, so mrs refuses rather than saving,
+	// and says both what it was asking and how to answer.
 	for _, stdin := range []string{"y\n", "n\n", ""} {
 		l.RunStdin(stdin, "edit", "-v", "personal", "-p", pwFile).
 			AssertFailed().
@@ -146,8 +146,8 @@ func TestAnEditThatRemovesSomeSecretsIsNotConfirmed(t *testing.T) {
 
 func TestACommentLineIsKeptAsASecret(t *testing.T) {
 	l := newLab(t)
-	// A key such as "#1 bank pin" is content, not a comment. It used to be
-	// dropped by any edit at all, including one that changed nothing.
+	// A key such as "#1 bank pin" is content, not a comment, so no edit may
+	// drop it - not even one that changed nothing.
 	pwFile := l.seedVault("personal", "a password", "#1 bank pin\npin: 4321\n")
 	l.Setenv("FAKE_EDITOR_MODE", "noop")
 
@@ -235,14 +235,15 @@ func TestInstructionsAreShownAndNeverSaved(t *testing.T) {
 
 func TestInstructionsCanBeHidden(t *testing.T) {
 	l := newLab(t)
-	pwFile := l.createVault("personal", "a password")
+	pwFile := l.seedVault("personal", "a password", "a key\na value\n")
 	l.Setenv("MRS_HIDE_EDITOR_INSTRUCTIONS", "1")
 	input := l.captureEditorInput()
 
-	l.Run("add", "-v", "personal", "-p", pwFile).AssertOK()
+	l.Run("edit", "-v", "personal", "-p", pwFile).AssertOK()
 
-	if got := input(); strings.Contains(got, "#") {
-		t.Fatalf("expected no instructions in the editor, got %q", got)
+	// The secrets alone, with nothing prepended to them.
+	if got := input(); got != "a key\na value\n" {
+		t.Fatalf("expected the editor to be shown the secrets alone, got %q", got)
 	}
 }
 
@@ -272,9 +273,9 @@ func TestSecretsSurviveARoundTrip(t *testing.T) {
 
 func TestANullByteInAValueSurvivesAnEdit(t *testing.T) {
 	l := newLab(t)
-	// A value can hold arbitrary bytes: a key blob or a token pasted whole.
-	// This one arrives by import, because an environment variable, which is
-	// how the fake editor is handed its content, cannot carry a null.
+	// A value can hold arbitrary bytes. This one arrives by import, because an
+	// environment variable, which is how the fake editor is handed its
+	// content, cannot carry a null.
 	content := "binary key\nbefore\x00after\nplain line\n"
 	pwFile := l.seedVault("personal", "a password", content)
 
@@ -345,44 +346,11 @@ func TestAddRejectsAWrongPassword(t *testing.T) {
 	}
 }
 
-func TestPlaintextIsNotLeftBehind(t *testing.T) {
-	l := newLab(t)
-	pwFile := l.seedVault("personal", "a password", "a key\nthe-secret-value\n")
-	l.editorAppends("new key\nanother-secret-value\n")
-
-	l.Run("add", "-v", "personal", "-p", pwFile).AssertOK()
-	l.Run("edit", "-v", "personal", "-p", pwFile).AssertOK()
-
-	assertNoPlaintextUnder(t, l.Temp, "the-secret-value", "another-secret-value")
-	// The vault directory must hold ciphertext only, backups included.
-	assertNoPlaintextUnder(t, l.VaultDir(), "the-secret-value", "another-secret-value")
-}
-
-func TestTheFileBeingEditedIsNotReadableByOthers(t *testing.T) {
-	l := newLab(t)
-	pwFile := l.seedVault("personal", "a password", "a key\na value\n")
-	statFile := filepath.Join(filepath.Dir(l.Home), "editor-stat")
-	l.Setenv("FAKE_EDITOR_STAT", statFile)
-
-	l.Run("edit", "-v", "personal", "-p", pwFile).AssertOK()
-
-	stat := readFile(t, statFile)
-	if !strings.Contains(stat, "file=0600") {
-		t.Fatalf("expected the decrypted file to be readable only by its owner, got %q", stat)
-	}
-	if !strings.Contains(stat, "dir=0700") {
-		t.Fatalf("expected the decrypted file's directory to be private, got %q", stat)
-	}
-	if !strings.HasPrefix(strings.SplitN(stat, "path=", 2)[1], l.Temp) {
-		t.Fatalf("expected the decrypted file to live under MRS_TEMP (%s), got %q", l.Temp, stat)
-	}
-}
-
 func TestAVaultWithALongLineStaysUsable(t *testing.T) {
 	l := newLab(t)
 	// A certificate or token pasted without line breaks. Such a vault can be
 	// created by import and read by export, so add, edit and search must not
-	// refuse it and lock the user out of their own secrets.
+	// refuse it.
 	long := strings.Repeat("A", 200_000)
 	pwFile := l.seedVault("personal", "a password", "tls cert\n"+long+"\n")
 

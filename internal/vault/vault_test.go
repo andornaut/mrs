@@ -6,141 +6,82 @@ import (
 	"testing"
 
 	"github.com/andornaut/mrs/internal/config"
-	"github.com/andornaut/mrs/internal/crypto"
 )
 
-func TestFindVaultsExcludesLockAndBackupFiles(t *testing.T) {
-	config.Reset()
-	tmpDir := t.TempDir()
-	t.Setenv("MRS_HOME", tmpDir)
+// testSalt stands in for the salt crypto.Salt() generates: 32 characters of
+// base64url, which is the shape a vault filename must carry.
+const testSalt = "12345678901234567890123456789012"
 
-	// Get the vaults directory (this will create it)
-	vaultDir, err := config.GetVaultDir()
+// newVaultDir points mrs at an empty vault directory and returns it.
+func newVaultDir(t *testing.T) string {
+	t.Helper()
+	config.Reset()
+	t.Setenv("MRS_HOME", t.TempDir())
+	dir, err := config.GetVaultDir()
 	if err != nil {
 		t.Fatalf("failed to get vault dir: %v", err)
 	}
+	return dir
+}
 
-	// Create a valid vault
-	validVault := filepath.Join(vaultDir, "test.12345678901234567890123456789012")
-	password := []byte("password")
-	u := Vault(validVault).Unlocked(password)
-	defer u.Wipe()
-	err = u.Write([]byte("test content"))
-	if err != nil {
-		t.Fatalf("failed to create test vault: %v", err)
-	}
-
-	// Create lock and backup files that should be excluded
-	lockFile := filepath.Join(vaultDir, "test.lock")
-	backupFile := filepath.Join(vaultDir, "test.12345678901234567890123456789012.bak")
-	err = os.WriteFile(lockFile, []byte{}, 0600)
-	if err != nil {
-		t.Fatalf("failed to create lock file: %v", err)
-	}
-	err = os.WriteFile(backupFile, []byte{}, 0600)
-	if err != nil {
-		t.Fatalf("failed to create backup file: %v", err)
-	}
-
-	// Find all vaults - should only return the valid one
-	vaults, err := All()
-	if err != nil {
-		t.Fatalf("All() failed: %v", err)
-	}
-
-	if len(vaults) != 1 {
-		t.Errorf("expected 1 vault, got %d", len(vaults))
-	}
-
-	if len(vaults) > 0 && vaults[0].Name() != "test" {
-		t.Errorf("expected vault name 'test', got %q", vaults[0].Name())
+// writeFile writes a file into the vault directory. Nothing here decrypts, so
+// a vault's ciphertext is stood in for by arbitrary bytes.
+func writeFile(t *testing.T, dir, name string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(dir, name), []byte("contents"), 0600); err != nil {
+		t.Fatalf("failed to write %s: %v", name, err)
 	}
 }
 
-func TestFindVaultsSkipsStrayFiles(t *testing.T) {
-	config.Reset()
-	tmpDir := t.TempDir()
-	t.Setenv("MRS_HOME", tmpDir)
-
-	vaultDir, err := config.GetVaultDir()
+// entriesIn returns the names of the files in a directory.
+func entriesIn(t *testing.T, dir string) []string {
+	t.Helper()
+	entries, err := os.ReadDir(dir)
 	if err != nil {
-		t.Fatalf("failed to get vault dir: %v", err)
+		t.Fatalf("failed to read %s: %v", dir, err)
 	}
-
-	validVault := filepath.Join(vaultDir, "test.12345678901234567890123456789012")
-	password := []byte("password")
-	u := Vault(validVault).Unlocked(password)
-	defer u.Wipe()
-	if err = u.Write([]byte("test content")); err != nil {
-		t.Fatalf("failed to create test vault: %v", err)
+	names := make([]string, 0, len(entries))
+	for _, e := range entries {
+		names = append(names, e.Name())
 	}
+	return names
+}
 
-	// Stray files that do not match the vault filename shape should be
-	// skipped, not fail the whole listing
-	for _, name := range []string{".DS_Store", ".test.swp", "notes.txt.orig"} {
-		if err = os.WriteFile(filepath.Join(vaultDir, name), []byte{}, 0600); err != nil {
-			t.Fatalf("failed to create stray file %s: %v", name, err)
-		}
+func TestFindVaultsIgnoresEverythingThatIsNotAVault(t *testing.T) {
+	dir := newVaultDir(t)
+	writeFile(t, dir, "test."+testSalt)
+	// A vault's own companion files, and files that other programs leave in a
+	// data directory. None of them names a vault.
+	for _, name := range []string{
+		"test.lock",
+		"test." + testSalt + ".bak",
+		"test." + testSalt + ".1234.tmp",
+		".DS_Store",
+		".test.swp",
+		"notes.txt.orig",
+		"README.md",
+	} {
+		writeFile(t, dir, name)
 	}
 
 	vaults, err := All()
 	if err != nil {
 		t.Fatalf("All() failed: %v", err)
 	}
-	if len(vaults) != 1 {
-		t.Errorf("expected 1 vault, got %d", len(vaults))
+	if len(vaults) != 1 || vaults[0].Name() != "test" {
+		t.Errorf("expected only the vault named test, got %v", names(vaults))
 	}
 }
 
-func TestDecryptTrailingNewlinePasswordFallback(t *testing.T) {
-	tmpDir := t.TempDir()
-	vaultPath := filepath.Join(tmpDir, "test.12345678901234567890123456789012")
-
-	// Simulate a vault created before trailing newlines were trimmed from
-	// password files: the newline is part of the encryption password.
-	legacyPassword := []byte("password1\n")
-	uLegacy := Vault(vaultPath).Unlocked(legacyPassword)
-	if err := uLegacy.Write([]byte("secret content")); err != nil {
-		t.Fatalf("failed to create vault: %v", err)
-	}
-
-	// Unlocking with the trimmed password should succeed via the fallback
-	u := Vault(vaultPath).Unlocked([]byte("password1"))
-	defer u.Wipe()
-	b, err := u.Decrypt()
-	if err != nil {
-		t.Fatalf("Decrypt() with trimmed password failed: %v", err)
-	}
-	defer crypto.Wipe(b)
-	if string(b) != "secret content" {
-		t.Errorf("content = %q, expected %q", string(b), "secret content")
-	}
-}
-
-func TestDeleteRemovesCompanionFiles(t *testing.T) {
-	config.Reset()
-	tmpDir := t.TempDir()
-	t.Setenv("MRS_HOME", tmpDir)
-
-	vaultDir, err := config.GetVaultDir()
-	if err != nil {
-		t.Fatalf("failed to get vault dir: %v", err)
-	}
-
-	vaultPath := filepath.Join(vaultDir, "test.12345678901234567890123456789012")
-	password := []byte("password")
-	u := Vault(vaultPath).Unlocked(password)
-	defer u.Wipe()
-	if err = u.Write([]byte("first")); err != nil {
-		t.Fatalf("failed to create vault: %v", err)
-	}
-	if err = u.Write([]byte("second")); err != nil {
-		t.Fatalf("failed to update vault: %v", err)
-	}
-	for _, name := range []string{"test.lock", "test.12345678901234567890123456789012.123.tmp"} {
-		if err = os.WriteFile(filepath.Join(vaultDir, name), []byte{}, 0600); err != nil {
-			t.Fatalf("failed to create companion file %s: %v", name, err)
-		}
+func TestDeleteRemovesTheVaultAndItsCompanionFiles(t *testing.T) {
+	dir := newVaultDir(t)
+	for _, name := range []string{
+		"test." + testSalt,
+		"test." + testSalt + ".bak",
+		"test." + testSalt + ".1234.tmp",
+		"test.lock",
+	} {
+		writeFile(t, dir, name)
 	}
 
 	v, err := Exact("test")
@@ -151,89 +92,45 @@ func TestDeleteRemovesCompanionFiles(t *testing.T) {
 		t.Fatalf("Delete() failed: %v", err)
 	}
 
-	// Delete removes the vault, its backup, and stale temporary files. The
-	// lock file is intentionally left in place, like other commands.
-	entries, err := os.ReadDir(vaultDir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	names := make([]string, 0, len(entries))
-	for _, e := range entries {
-		names = append(names, e.Name())
-	}
-	if len(names) != 1 || names[0] != "test.lock" {
-		t.Errorf("expected only the lock file to remain after delete, got %v", names)
+	// The lock file is left in place, as by every other command, and is
+	// harmless because it is re-lockable once no process holds it.
+	if got := entriesIn(t, dir); len(got) != 1 || got[0] != "test.lock" {
+		t.Errorf("expected only the lock file to remain after delete, got %v", got)
 	}
 }
 
 func TestDeleteReportsBackupRemovalFailure(t *testing.T) {
-	config.Reset()
-	tmpDir := t.TempDir()
-	t.Setenv("MRS_HOME", tmpDir)
-
-	vaultDir, err := config.GetVaultDir()
-	if err != nil {
-		t.Fatalf("failed to get vault dir: %v", err)
-	}
-
-	vaultPath := filepath.Join(vaultDir, "test.12345678901234567890123456789012")
-	password := []byte("password")
-	u := Vault(vaultPath).Unlocked(password)
-	defer u.Wipe()
-	if err = u.Write([]byte("secret")); err != nil {
-		t.Fatalf("failed to create vault: %v", err)
-	}
-
-	// Make the backup path unremovable by making it a non-empty directory, so
-	// os.Remove fails with a non-NotExist error.
-	bakDir := vaultPath + ".bak"
-	if err = os.Mkdir(bakDir, 0700); err != nil {
+	dir := newVaultDir(t)
+	writeFile(t, dir, "test."+testSalt)
+	// A non-empty directory at the backup's path makes os.Remove fail with
+	// something other than "not exist".
+	bakDir := filepath.Join(dir, "test."+testSalt+".bak")
+	if err := os.Mkdir(bakDir, 0700); err != nil {
 		t.Fatalf("failed to create backup dir: %v", err)
 	}
-	if err = os.WriteFile(filepath.Join(bakDir, "child"), []byte{}, 0600); err != nil {
-		t.Fatalf("failed to populate backup dir: %v", err)
-	}
+	writeFile(t, bakDir, "child")
 
 	v, err := Exact("test")
 	if err != nil {
 		t.Fatalf("Exact() failed: %v", err)
 	}
+	// A leftover backup still holds the secrets, so failing to remove it is an
+	// error rather than a warning.
 	if err = Delete(v); err == nil {
 		t.Fatal("expected Delete() to return an error when the backup cannot be removed")
 	}
-	// The vault itself must still have been deleted.
-	if _, statErr := os.Stat(vaultPath); !os.IsNotExist(statErr) {
-		t.Errorf("expected vault file to be deleted, stat err = %v", statErr)
+	if _, statErr := os.Stat(filepath.Join(dir, "test."+testSalt)); !os.IsNotExist(statErr) {
+		t.Errorf("expected the vault itself to be deleted, stat err = %v", statErr)
 	}
 }
 
 func TestRenameReportsBackupMoveFailure(t *testing.T) {
-	config.Reset()
-	tmpDir := t.TempDir()
-	t.Setenv("MRS_HOME", tmpDir)
-
-	vaultDir, err := config.GetVaultDir()
-	if err != nil {
-		t.Fatalf("failed to get vault dir: %v", err)
-	}
-
-	salt := "12345678901234567890123456789012"
-	sourcePath := filepath.Join(vaultDir, "src."+salt)
-	password := []byte("password")
-	u := Vault(sourcePath).Unlocked(password)
-	defer u.Wipe()
-	// Two writes so that a real backup exists at the source path.
-	if err = u.Write([]byte("first")); err != nil {
-		t.Fatalf("failed to create vault: %v", err)
-	}
-	if err = u.Write([]byte("second")); err != nil {
-		t.Fatalf("failed to update vault: %v", err)
-	}
-
-	// Renaming a file onto an existing directory fails with EISDIR, so a
-	// directory at the target backup path makes the backup move fail.
-	targetVaultPath := filepath.Join(vaultDir, "dst."+salt)
-	if err = os.Mkdir(targetVaultPath+".bak", 0700); err != nil {
+	dir := newVaultDir(t)
+	writeFile(t, dir, "src."+testSalt)
+	writeFile(t, dir, "src."+testSalt+".bak")
+	// Renaming a file onto a directory fails with EISDIR.
+	targetPath := filepath.Join(dir, "dst."+testSalt)
+	if err := os.Mkdir(targetPath+".bak", 0700); err != nil {
 		t.Fatalf("failed to create target backup dir: %v", err)
 	}
 
@@ -244,49 +141,9 @@ func TestRenameReportsBackupMoveFailure(t *testing.T) {
 	if err = Rename(src, "dst"); err == nil {
 		t.Fatal("expected Rename() to return an error when the backup cannot be moved")
 	}
-	// The vault itself must still have been renamed.
-	if _, statErr := os.Stat(targetVaultPath); statErr != nil {
-		t.Errorf("expected renamed vault at %q, stat err = %v", targetVaultPath, statErr)
-	}
-}
-
-func TestWriteBackup(t *testing.T) {
-	tmpDir := t.TempDir()
-
-	vaultPath := filepath.Join(tmpDir, "test.12345678901234567890123456789012")
-	password := []byte("password")
-	u := Vault(vaultPath).Unlocked(password)
-	defer u.Wipe()
-
-	// First write should not create a backup
-	err := u.Write([]byte("first content"))
-	if err != nil {
-		t.Fatalf("first write failed: %v", err)
-	}
-
-	bakPath := vaultPath + ".bak"
-	if _, statErr := os.Stat(bakPath); statErr == nil {
-		t.Error("backup file should not exist after first write")
-	}
-
-	// Second write should create a backup
-	err = u.Write([]byte("second content"))
-	if err != nil {
-		t.Fatalf("second write failed: %v", err)
-	}
-
-	if _, statErr := os.Stat(bakPath); statErr != nil {
-		t.Error("backup file should exist after second write")
-	}
-
-	// Verify backup content
-	vBak := Vault(bakPath).Unlocked(password)
-	b, err := vBak.Decrypt()
-	if err != nil {
-		t.Fatalf("failed to read backup: %v", err)
-	}
-	defer crypto.Wipe(b)
-	if string(b) != "first content" {
-		t.Errorf("backup content mismatch; expected %q, got %q", "first content", string(b))
+	// The vault itself must still have been renamed, so that the error names
+	// what actually happened.
+	if _, statErr := os.Stat(targetPath); statErr != nil {
+		t.Errorf("expected renamed vault at %q, stat err = %v", targetPath, statErr)
 	}
 }

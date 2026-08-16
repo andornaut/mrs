@@ -7,7 +7,7 @@ import (
 	"github.com/andornaut/mrs/internal/crypto"
 )
 
-func TestTranscribe(t *testing.T) {
+func TestParseSecrets(t *testing.T) {
 	// Every line is a line of secrets, including one that begins with a "#".
 	// Only mrs's own instructions are removed, and only by stripInstructions.
 	input := `
@@ -41,7 +41,7 @@ Value3
 	}
 }
 
-func TestTranscribePreservesWhitespaceWithinSecrets(t *testing.T) {
+func TestParseSecretsPreservesWhitespaceWithinSecrets(t *testing.T) {
 	input := "Key1\n  indented\ntrailing   \n\nKey2\nValue2\n"
 	b, err := parseSecrets([]byte(input))
 	if err != nil {

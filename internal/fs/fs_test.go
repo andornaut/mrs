@@ -69,29 +69,10 @@ func TestWriteFileAtomic(t *testing.T) {
 	}
 }
 
-func TestWriteFileAtomicPreservesMode(t *testing.T) {
-	tmpDir := t.TempDir()
-	p := filepath.Join(tmpDir, "target")
-	if err := os.WriteFile(p, []byte("old"), 0400); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := WriteFileAtomic(p, []byte("new"), 0600); err != nil {
-		t.Fatalf("WriteFileAtomic() error = %v", err)
-	}
-	info, err := os.Stat(p)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if info.Mode().Perm() != 0400 {
-		t.Errorf("permissions = %v, expected 0400 to be preserved", info.Mode().Perm())
-	}
-}
-
-// TestWriteFileAtomicNarrowsAWideMode checks the other direction: a mode is
-// preserved only as far as the owner's bits. A vault left readable by everyone
-// would otherwise stay that way through every save.
-func TestWriteFileAtomicNarrowsAWideMode(t *testing.T) {
+// An existing file's mode is kept, but only as far as the owner's bits: a
+// vault left readable by everyone would otherwise stay that way through every
+// save, while a stricter mode the user chose is not undone by one.
+func TestWriteFileAtomicMode(t *testing.T) {
 	tests := []struct {
 		before, want os.FileMode
 	}{

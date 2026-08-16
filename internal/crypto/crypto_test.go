@@ -41,12 +41,12 @@ func TestLegacyDecrypt(t *testing.T) {
 	salt, _ := Salt()
 	data := []byte("legacy data")
 
-	// Manually encrypt with legacy iterations
+	// Encrypted as an older version of mrs would have, so that Decrypt has to
+	// fall back to the old iteration count to read it.
 	k, _ := key(password, salt, LegacyIterations)
 	defer Wipe(k[:])
 	encrypted, _ := seal(data, k)
 
-	// Decrypt using the new Decrypt function which should fallback to legacy
 	decrypted, err := Decrypt(encrypted, password, salt)
 	if err != nil {
 		t.Fatalf("Legacy decryption failed: %v", err)
@@ -94,8 +94,10 @@ func TestSalt(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Salt() error: %v", err)
 	}
-	if len(s1) < minSaltLen {
-		t.Errorf("salt too short: got %d, want at least %d", len(s1), minSaltLen)
+	// Exactly, not at least: a vault's filename is <name>.<salt>, and a salt of
+	// any other length is not recognised as one.
+	if len(s1) != minSaltLen {
+		t.Errorf("salt length = %d, want %d", len(s1), minSaltLen)
 	}
 
 	s2, _ := Salt()

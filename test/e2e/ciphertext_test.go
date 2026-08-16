@@ -10,9 +10,8 @@ import (
 )
 
 // Capability 9: what the vault file gives away, and what it refuses. Every
-// assertion here is made against the bytes on disk or through mrs reading them
-// back, because these are the properties that hold when the file itself is in
-// someone else's hands.
+// assertion is made against the bytes on disk or through mrs reading them back:
+// these are the properties that hold when the file is in someone else's hands.
 
 // tamper rewrites a vault file through a function, returning what was there.
 func tamper(t *testing.T, path string, f func([]byte) []byte) []byte {
@@ -95,39 +94,13 @@ func TestTwoVaultsWithTheSamePasswordAndSecretsDiffer(t *testing.T) {
 	}
 }
 
-func TestATamperedVaultIsRefused(t *testing.T) {
-	l := newLab(t)
-	pwFile := l.seedVault("personal", "a password", "a key\nthe-secret-value\n")
-	path := l.VaultPath("personal")
-
-	// One bit, in the middle of the ciphertext. Authenticated encryption is
-	// what turns this into a refusal rather than plausible-looking rubbish.
-	before := tamper(t, path, func(b []byte) []byte {
-		b[len(b)/2] ^= 0x01
-		return b
-	})
-
-	l.Run("export", "-v", "personal", "-p", pwFile).
-		AssertFailed().
-		AssertStderr("failed to decrypt").
-		AssertNoOutput("the-secret-value")
-
-	// Restoring the byte restores the vault, so the file was not otherwise
-	// altered by the failed read.
-	if err := os.WriteFile(path, before, 0600); err != nil {
-		t.Fatalf("failed to restore the vault: %s", err)
-	}
-	l.Run("export", "-v", "personal", "-p", pwFile).
-		AssertOK().
-		AssertStdout("the-secret-value")
-}
-
 func TestADamagedVaultIsRefusedRatherThanGuessedAt(t *testing.T) {
 	l := newLab(t)
 	pwFile := l.seedVault("personal", "a password", "a key\nthe-secret-value\n")
 	path := l.VaultPath("personal")
 
 	damage := map[string]func([]byte) []byte{
+		"one bit":      func(b []byte) []byte { b[len(b)/2] ^= 0x01; return b },
 		"truncated":    func(b []byte) []byte { return b[:len(b)/2] },
 		"emptied":      func(b []byte) []byte { return nil },
 		"appended to":  func(b []byte) []byte { return append(b, 'x') },
@@ -152,8 +125,14 @@ func TestADamagedVaultIsRefusedRatherThanGuessedAt(t *testing.T) {
 		}
 	}
 
-	// Reading is one path, whichever command asks for it, so one case stands
-	// for the rest rather than paying to derive a key twice per shape.
+	// Restoring the bytes restores the vault, so none of the failed reads
+	// altered the file on its way to refusing.
+	l.Run("export", "-v", "personal", "-p", pwFile).
+		AssertOK().
+		AssertStdoutExactly("a key\nthe-secret-value\n")
+
+	// Reading is one path whichever command asks for it, so one case stands
+	// for the rest rather than deriving a key again per shape.
 	tamper(t, path, damage["truncated"])
 	l.Run("search", "-v", "personal", "-p", pwFile, "a key").
 		AssertFailed().
@@ -186,8 +165,8 @@ func TestAWrongPasswordRevealsNothingAboutTheSecrets(t *testing.T) {
 	l := newLab(t)
 	l.seedVault("personal", "a password", "my bank\npin: 4321\n")
 
-	// A near miss and a wild guess have to be answered identically: nothing
-	// about the secrets, and nothing about how close the password was.
+	// A near miss and a wild guess are answered identically: nothing about the
+	// secrets, and nothing about how close the password was.
 	answers := make([]string, 0, 4)
 	for _, guess := range []string{"a passwore", "a passwor", "a password ", "entirely different"} {
 		r := l.Run("export", "-v", "personal", "-p", l.PasswordFile("guess.pw", guess)).
@@ -210,12 +189,10 @@ func TestAReaderNeverSeesAPartiallyWrittenVault(t *testing.T) {
 	// touches the lab's map from two goroutines.
 	env, dir := l.environ(), l.UserHome
 
-	// A writer takes the vault's exclusive lock; a reader takes no lock at
-	// all, and relies on the write being a rename over the old file. Whether
-	// that holds is only visible when the two actually overlap, so the reader
-	// decides when to stop: the writer keeps saving until enough reads have
-	// landed, rather than the reader hoping to fit inside a fixed number of
-	// writes.
+	// A writer takes the vault's exclusive lock; a reader takes none, and
+	// relies on the write being a rename over the old file. That is only
+	// exercised when the two overlap, so the reader decides when to stop: the
+	// writer keeps saving until enough reads have landed.
 	const wantReads = 5
 	var reads atomic.Int64
 	stop := make(chan struct{})
@@ -237,9 +214,9 @@ func TestAReaderNeverSeesAPartiallyWrittenVault(t *testing.T) {
 			writes <- err
 		}
 	}()
-	// A failed assertion below ends this goroutine's test without reads ever
-	// reaching wantReads, so the writer is stopped and waited for here rather
-	// than left saving into a directory the test is about to remove.
+	// A failed assertion below ends the test without reads reaching wantReads,
+	// so the writer is stopped and waited for here rather than left saving into
+	// a directory the test is about to remove.
 	t.Cleanup(func() { close(stop); <-writes })
 
 	for reads.Load() < wantReads {

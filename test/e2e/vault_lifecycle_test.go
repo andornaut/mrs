@@ -85,6 +85,7 @@ func TestCreateRejectsInvalidNames(t *testing.T) {
 		"an empty name":    "",
 		"a tilde":          "~",
 		"a wildcard":       "*",
+		"a non-ASCII name": "café",
 	}
 	for desc, name := range invalid {
 		t.Run(desc, func(t *testing.T) {
@@ -119,6 +120,18 @@ func TestCreateReportsAMissingPasswordFile(t *testing.T) {
 	l.Run("vault", "create", "personal", "-p", filepath.Join(l.UserHome, "absent")).
 		AssertFailed().
 		AssertStderr("could not read from password file")
+}
+
+func TestCreateRejectsALongName(t *testing.T) {
+	l := newLab(t)
+	pwFile := l.PasswordFile("pw", "a password")
+
+	l.Run("vault", "create", strings.Repeat("a", 201), "-p", pwFile).
+		AssertFailed().
+		AssertStderr("at most 200 characters")
+
+	// A name that fits is still accepted.
+	l.Run("vault", "create", strings.Repeat("a", 200), "-p", pwFile).AssertOK()
 }
 
 // A create that cannot succeed says so before asking for a password, as delete
@@ -170,33 +183,14 @@ func TestDefaultPrintsTheOnlyVault(t *testing.T) {
 	l.Run("vault", "default", "--path").AssertOK().AssertStdoutEquals(l.VaultPath("personal"))
 }
 
-// Nothing to print is not an answer: a caller reading the default vault out of
-// this command gets an error rather than an empty line and a success.
+// A caller reading the default vault out of this command gets an error rather
+// than an empty line and a success.
 func TestDefaultFailsWhenNoVaultsExist(t *testing.T) {
 	l := newLab(t)
 	l.Run("vault", "default").
 		AssertFailed().
 		AssertStdoutEquals("").
 		AssertStderr("no vaults found")
-}
-
-func TestDefaultHonoursTheConfiguredName(t *testing.T) {
-	l := newLab(t)
-	l.createVault("personal", "a password")
-	l.createVault("work", "a password")
-
-	l.Setenv("MRS_DEFAULT_VAULT_NAME", "work")
-	l.Run("vault", "default").AssertOK().AssertStdoutEquals("work")
-}
-
-func TestDefaultFailsWhenTheConfiguredVaultIsMissing(t *testing.T) {
-	l := newLab(t)
-	l.createVault("personal", "a password")
-
-	l.Setenv("MRS_DEFAULT_VAULT_NAME", "absent")
-	l.Run("vault", "default").
-		AssertFailed().
-		AssertStderr(`default vault "absent" not found`)
 }
 
 func TestListIgnoresStrayFiles(t *testing.T) {
@@ -250,7 +244,14 @@ func TestListIgnoresLockBackupAndTempFiles(t *testing.T) {
 	if err := os.WriteFile(vaultPath+".1234.tmp", []byte("x"), 0600); err != nil {
 		t.Fatalf("failed to write temp file: %s", err)
 	}
-	l.Run("vault", "list").AssertOK().AssertStdoutEquals("personal")
+
+	// And quietly: these are mrs's own files, so warning about them the way a
+	// stray file is warned about would report a problem on every run.
+	r := l.Run("vault", "list").AssertOK()
+	r.AssertStdoutEquals("personal")
+	if r.Stderr != "" {
+		t.Fatalf("expected nothing on stderr, got %q", r.Stderr)
+	}
 }
 
 func TestRenamePreservesTheSecrets(t *testing.T) {
@@ -347,9 +348,9 @@ func TestDeleteRemovesTheVaultWhenConfirmed(t *testing.T) {
 	l.Run("vault", "list").AssertOK().AssertStdoutEquals("")
 }
 
-// A pipe cannot answer a question, whatever it holds. Taking the safe answer
-// and exiting 0 would tell the script that ran it that the delete was done, so
-// mrs refuses instead and names the flag that answers in advance.
+// A pipe cannot answer a question, whatever it holds. Exiting 0 without asking
+// would tell the script that ran it that the delete was done, so mrs refuses
+// and names the flag that answers in advance.
 func TestDeleteWithoutAnAnswerKeepsTheVault(t *testing.T) {
 	l := newLab(t)
 	l.createVault("personal", "a password")
@@ -361,10 +362,6 @@ func TestDeleteWithoutAnAnswerKeepsTheVault(t *testing.T) {
 			AssertStderr("Use --yes")
 		l.Run("vault", "list").AssertOK().AssertStdoutEquals("personal")
 	}
-
-	// And --yes answers it.
-	l.Run("vault", "delete", "personal", "--yes").AssertOK().AssertStderr("Deleted vault personal")
-	l.Run("vault", "list").AssertOK().AssertStdoutEquals("")
 }
 
 func TestDeleteRemovesTheBackupFile(t *testing.T) {
@@ -401,8 +398,8 @@ func TestDeleteConfirmsWithTheVaultsOwnName(t *testing.T) {
 	l := newLab(t)
 	l.createVault("personal", "a password")
 
-	// A destructive confirmation has to name what will actually be destroyed,
-	// whether it is asked or reported as unanswerable.
+	// A destructive confirmation names what will be destroyed, whether it is
+	// asked or reported as unanswerable.
 	l.RunStdin("n\n", "vault", "delete", "personal").
 		AssertFailed().
 		AssertStderr("Delete vault personal?")
@@ -482,8 +479,7 @@ func TestDeleteReportsAMissingVault(t *testing.T) {
 
 // One rule for every command: an exact name wins, and short of one a prefix has
 // to fit exactly one vault. Choosing between candidates alphabetically would
-// read one vault while the user meant another, and write to one while they
-// meant another.
+// read or write a vault the user did not mean.
 func TestAnAmbiguousPrefixIsRefused(t *testing.T) {
 	l := newLab(t)
 	l.seedVault("alpha", "a password", "alpha key\nalpha value\n")
@@ -523,9 +519,9 @@ func TestAnAmbiguousPrefixIsRefused(t *testing.T) {
 }
 
 // A vault is found by a glob on its name, so a shorter name is matched
-// alongside every longer one beginning with it. Only "-" sorts before the "."
-// that separates a name from its salt, so "work-archive" is the case that
-// displaced "work" in the glob's order and shadowed it everywhere.
+// alongside every longer one beginning with it. A "-" sorts before the "." that
+// separates a name from its salt, so "work-archive" comes first in the glob's
+// order and shadowed "work" everywhere.
 func TestAnExactNameIsNeverShadowedByALongerOne(t *testing.T) {
 	l := newLab(t)
 	workPw := l.seedVault("work", "a password", "k\nwork-value\n")
@@ -542,7 +538,7 @@ func TestAnExactNameIsNeverShadowedByALongerOne(t *testing.T) {
 
 	// And writing commands must write to it. Saving to the wrong vault is the
 	// same defect, but silent: only the vault named in the success message
-	// would have told the user.
+	// would tell the user.
 	l.editorAppends("added key\nadded-value\n")
 	l.Run("add", "-v", "work", "-p", workPw).
 		AssertOK().
@@ -603,25 +599,6 @@ func TestVaultNamesAreCaseSensitive(t *testing.T) {
 		AssertNoOutput("lower value")
 }
 
-func TestCreateRejectsANonASCIIName(t *testing.T) {
-	l := newLab(t)
-	pwFile := l.PasswordFile("pw", "a password")
-
-	l.Run("vault", "create", "café", "-p", pwFile).
-		AssertFailed().
-		AssertStderr("invalid vault name")
-}
-
-func TestUnusableHomeIsReported(t *testing.T) {
-	l := newLab(t)
-	// A user who points MRS_HOME at a file should get a clear error, not a panic
-	// or a silent empty listing.
-	notADir := l.WriteFile("not-a-dir", "")
-	l.Setenv("MRS_HOME", notADir)
-
-	l.Run("vault", "list").AssertFailed().AssertStderr("not a directory")
-}
-
 func TestHelpDocumentsEveryCommand(t *testing.T) {
 	l := newLab(t)
 
@@ -633,12 +610,6 @@ func TestHelpDocumentsEveryCommand(t *testing.T) {
 	for _, c := range []string{"change-password", "create", "default", "delete", "list", "rename"} {
 		vaultHelp.AssertStdout(c)
 	}
-}
-
-func TestUnknownCommandFails(t *testing.T) {
-	l := newLab(t)
-	l.Run("nonsense").AssertFailed().AssertStderr("unknown command")
-	l.Run("vault", "nonsense").AssertFailed().AssertStderr("unknown command")
 }
 
 // A command that has no subcommands cannot have been given one, so an argument
@@ -665,9 +636,9 @@ func TestACommandThatTakesNoArgumentsSaysSo(t *testing.T) {
 	l.Run("vault", "lst").AssertFailed().AssertStderr("unknown command")
 }
 
-// Without a vault there is nothing to name, so asking which one to use has no
-// answer a user could give. The first thing a new user runs is likely to be one
-// of these, so it has to point at the command that gets them started.
+// Without a vault there is nothing to name, so these commands report that
+// rather than asking which vault to use, and point at the command that creates
+// one.
 func TestTheFirstRunSaysThereAreNoVaults(t *testing.T) {
 	l := newLab(t)
 	pwFile := l.PasswordFile("pw", "a password")
@@ -689,9 +660,8 @@ func TestTheFirstRunSaysThereAreNoVaults(t *testing.T) {
 func TestVersionIsReported(t *testing.T) {
 	l := newLab(t)
 
-	// A binary installed from a release archive has to be able to say what it
-	// is, so that a bug report can name a version. GoReleaser sets this at
-	// link time; a build made any other way says "dev".
+	// GoReleaser sets the version at link time; a build made any other way
+	// says "dev".
 	l.Run("--version").AssertOK().AssertStdout("mrs version")
 
 	// Not -v. Cobra gives --version that shorthand unless the flag is already
@@ -700,8 +670,8 @@ func TestVersionIsReported(t *testing.T) {
 	l.Run("help").AssertOK().AssertNoOutput("-v, --version")
 }
 
-// The generated completion command works but is not listed: it is noise beside
-// this few commands, and gog hides its own for the same reason.
+// The generated completion command works but is not listed, being noise beside
+// this few commands.
 func TestCompletionIsAvailableButNotListed(t *testing.T) {
 	l := newLab(t)
 

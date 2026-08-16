@@ -79,8 +79,8 @@ func TestExportNeedsAPasswordItCanRead(t *testing.T) {
 	l.seedVault("work", "a password", "a key\nthe-secret-value\n")
 
 	// `mrs vault export > secrets` is the natural way to run this command, so
-	// nothing that is not a secret may be written to stdout - least of all a
-	// password prompt, which the user would never see.
+	// nothing but a secret may reach stdout - least of all a password prompt,
+	// which the user would never see.
 	r := l.RunStdin("a password\n", "export", "-v", "work").
 		AssertFailed().
 		AssertStderr("stdin is not a terminal").
@@ -122,8 +122,7 @@ func TestImportRefusesSecretsThatCannotBeReadBack(t *testing.T) {
 	l := newLab(t)
 	pwFile := l.PasswordFile("pw", "a password")
 	// One line beyond the limit that every command applies when it parses a
-	// vault. Stored unchecked, it would make a vault that only export can
-	// read, because add, edit and search each parse the secrets first.
+	// vault. Stored unchecked, it would make a vault that only export can read.
 	huge := l.WriteFile("huge.txt", "huge\n"+strings.Repeat("x", 17*1024*1024)+"\n")
 
 	l.Run("vault", "create", "big", "-p", pwFile, "-i", huge).

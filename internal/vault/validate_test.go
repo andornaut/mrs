@@ -1,6 +1,7 @@
 package vault
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -18,6 +19,11 @@ func TestValidateName(t *testing.T) {
 		{"my.vault", false},
 		{"vault/../../etc/passwd", false},
 		{"vault!", false},
+		{"café", false},
+		// A name is bounded so that its filename, with a salt and a suffix,
+		// fits within the 255 bytes most filesystems allow.
+		{strings.Repeat("a", maxNameLen), true},
+		{strings.Repeat("a", maxNameLen+1), false},
 	}
 
 	for _, tt := range tests {
@@ -50,7 +56,7 @@ func TestValidatePassword(t *testing.T) {
 }
 
 func TestValidateFilename(t *testing.T) {
-	const salt = "12345678901234567890123456789012" // 32 characters, as crypto.Salt() returns
+	const salt = testSalt
 	tests := []struct {
 		name    string
 		isValid bool

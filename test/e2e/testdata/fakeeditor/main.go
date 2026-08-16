@@ -6,8 +6,6 @@
 //	FAKE_EDITOR_CONTENT  the content used by the replace, append and prepend modes
 //	FAKE_EDITOR_CAPTURE  if set, a path to copy the file to before editing it,
 //	                     so that a test can assert on what mrs handed the editor
-//	FAKE_EDITOR_LOG      if set, a path to append one line per invocation to
-//	FAKE_EDITOR_EXIT     the exit code for the fail mode (default: 1)
 //	FAKE_EDITOR_STAT     if set, a path to write the edited file's permissions
 //	                     and directory to, so that a test can check that the
 //	                     decrypted secrets are not exposed while being edited
@@ -40,13 +38,6 @@ func run() int {
 	if want, ok := os.LookupEnv("FAKE_EDITOR_EXPECT_ARGS"); ok {
 		if got := strings.Join(args[:len(args)-1], " "); got != want {
 			fmt.Fprintf(os.Stderr, "fake-editor: expected arguments %q, got %q\n", want, got)
-			return 2
-		}
-	}
-
-	if logPath := os.Getenv("FAKE_EDITOR_LOG"); logPath != "" {
-		if err := appendLine(logPath, p); err != nil {
-			fmt.Fprintf(os.Stderr, "fake-editor: %s\n", err)
 			return 2
 		}
 	}
@@ -118,14 +109,8 @@ func run() int {
 		time.Sleep(time.Duration(seconds) * time.Second)
 		return 0
 	case "fail":
-		code := 1
-		if s := os.Getenv("FAKE_EDITOR_EXIT"); s != "" {
-			if n, err := strconv.Atoi(s); err == nil {
-				code = n
-			}
-		}
 		fmt.Fprintln(os.Stderr, "fake-editor: failing on purpose")
-		return code
+		return 1
 	default:
 		fmt.Fprintf(os.Stderr, "fake-editor: unknown mode %q\n", mode)
 		return 2
@@ -159,14 +144,4 @@ func writeStat(out, p string) error {
 	}
 	return os.WriteFile(out, fmt.Appendf(nil, "file=%04o dir=%04o path=%s\n",
 		fi.Mode().Perm(), di.Mode().Perm(), p), 0600)
-}
-
-func appendLine(p, line string) error {
-	f, err := os.OpenFile(p, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = f.Close() }()
-	_, err = fmt.Fprintln(f, line)
-	return err
 }

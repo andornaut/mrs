@@ -9,7 +9,7 @@ import (
 // newTestVault returns a Vault rooted in a temp dir with name "test" and a salt.
 func newTestVault(t *testing.T) Vault {
 	t.Helper()
-	return Vault(filepath.Join(t.TempDir(), "test.12345678901234567890123456789012"))
+	return Vault(filepath.Join(t.TempDir(), "test."+testSalt))
 }
 
 func TestLockPath(t *testing.T) {
@@ -48,45 +48,38 @@ func TestExclusiveLockAndUnlock(t *testing.T) {
 	unlock2()
 }
 
-func TestExclusiveLockUnnamedVault(t *testing.T) {
+// An unnamed vault has no lock path, so locking it would lock the vault
+// directory itself.
+func TestAnUnnamedVaultCannotBeLocked(t *testing.T) {
 	if _, err := Vault("").ExclusiveLock(); err == nil {
 		t.Error("expected ExclusiveLock() on an unnamed vault to return an error")
 	}
-}
-
-func TestRemoveLockUnnamedVault(t *testing.T) {
 	if err := Vault("").RemoveLock(); err == nil {
 		t.Error("expected RemoveLock() on an unnamed vault to return an error")
 	}
 }
 
-func TestRemoveLockNoFile(t *testing.T) {
+func TestRemoveLock(t *testing.T) {
 	v := newTestVault(t)
 
-	// Removing a non-existent lock file is a no-op, not an error.
+	// Removing a lock file that is not there is a no-op, not an error.
 	if err := v.RemoveLock(); err != nil {
 		t.Errorf("RemoveLock() with no lock file should be nil, got: %v", err)
 	}
-}
-
-func TestRemoveLockDeletesFile(t *testing.T) {
-	v := newTestVault(t)
 
 	if err := os.WriteFile(v.lockPath(), []byte{}, 0600); err != nil {
 		t.Fatalf("failed to create lock file: %v", err)
 	}
-
 	if err := v.RemoveLock(); err != nil {
 		t.Fatalf("RemoveLock() error: %v", err)
 	}
-
 	if _, err := os.Stat(v.lockPath()); !os.IsNotExist(err) {
 		t.Errorf("expected lock file to be deleted, stat err = %v", err)
 	}
 }
 
-// TestExclusiveLockForce exercises the --force path callers use: with a lock
-// held, force=false fails like ExclusiveLock, while force=true breaks it.
+// With a lock held, force=false fails like ExclusiveLock, while force=true
+// breaks it.
 func TestExclusiveLockForce(t *testing.T) {
 	v := newTestVault(t)
 
