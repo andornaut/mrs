@@ -398,9 +398,9 @@ func TestDeleteConfirmsWithTheVaultsOwnName(t *testing.T) {
 	l := newLab(t)
 	l.createVault("personal", "a password")
 
-	// A destructive confirmation names what will be destroyed, whether it is
-	// asked or reported as unanswerable.
-	l.RunStdin("n\n", "vault", "delete", "personal").
+	// A destructive confirmation names what will be destroyed. Reported here
+	// rather than asked, there being no terminal to ask on.
+	l.Run("vault", "delete", "personal").
 		AssertFailed().
 		AssertStderr("Delete vault personal?")
 	l.Run("vault", "list").AssertOK().AssertStdoutEquals("personal")
@@ -621,14 +621,25 @@ func TestACommandThatTakesNoArgumentsSaysSo(t *testing.T) {
 	pwFile := l.seedVault("personal", "a password", "a key\na value\n")
 
 	for _, args := range [][]string{
-		{"add", "-p", pwFile, "my key"},
-		{"edit", "-p", pwFile, "my key"},
 		{"export", "-p", pwFile, "personal"},
 		{"vault", "list", "personal"},
 	} {
 		l.Run(args...).
 			AssertFailed().
 			AssertStderr("takes no arguments").
+			AssertNoOutput("unknown command")
+	}
+
+	// add and edit say more than that, because an argument given to one is a
+	// user expecting to name a secret, and the answer is where secrets go.
+	for _, args := range [][]string{
+		{"add", "-p", pwFile, "my key"},
+		{"edit", "-p", pwFile, "my key"},
+	} {
+		l.Run(args...).
+			AssertFailed().
+			AssertStderr(`takes no arguments, but got "my key"`).
+			AssertStderr("Secrets are typed in your editor, not on the command line").
 			AssertNoOutput("unknown command")
 	}
 

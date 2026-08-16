@@ -49,20 +49,6 @@ func withStdin(t *testing.T, input string) {
 	t.Cleanup(func() { os.Stdin = prev; _ = f.Close() })
 }
 
-func TestPasswordPromptIsNotWrittenToStdout(t *testing.T) {
-	buf := capturePrompt(t)
-	pretendTerminal(t)
-	withStdin(t, "")
-
-	// The read fails, because the fake terminal is a file. What matters is
-	// where the prompt went on the way there.
-	_, _ = Password("Vault password")
-
-	if !strings.Contains(buf.String(), "Vault password: ") {
-		t.Errorf("expected the prompt to be written away from stdout, got %q", buf.String())
-	}
-}
-
 func TestEveryPromptIsWrittenAwayFromStdout(t *testing.T) {
 	buf := capturePrompt(t)
 	pretendTerminal(t)
@@ -74,8 +60,15 @@ func TestEveryPromptIsWrittenAwayFromStdout(t *testing.T) {
 	if _, err := Confirm(false, "Delete vault personal?"); err != nil {
 		t.Fatalf("Confirm() error: %s", err)
 	}
+	// The read fails, because the fake terminal is a file. What matters is
+	// where the prompt went on the way there.
+	_, _ = Password("Vault password")
 
-	for _, want := range []string{"Vault name: ", "Delete vault personal? (y/n) [n]: "} {
+	for _, want := range []string{
+		"Vault name: ",
+		"Delete vault personal? (y/n) [n]: ",
+		"Vault password: ",
+	} {
 		if !strings.Contains(buf.String(), want) {
 			t.Errorf("expected %q to be written away from stdout, got %q", want, buf.String())
 		}
@@ -123,54 +116,45 @@ func TestPasswordNeedsATerminal(t *testing.T) {
 	}
 }
 
-func TestAPasswordFileIsTrimmedOfItsTrailingNewline(t *testing.T) {
-	tests := map[string]string{
-		"bare":            "a password",
-		"unix newline":    "a password\n",
-		"windows newline": "a password\r\n",
-		"several":         "a password\n\n",
+// `echo a password > pw` leaves a newline that is not part of the password, so
+// trailing newlines are trimmed to match what the prompt returns. Nothing else
+// is: a space is a character of the password like any other.
+func TestOnlyATrailingNewlineIsTrimmedFromAPasswordFile(t *testing.T) {
+	tests := map[string]struct{ contents, want string }{
+		"bare":                {"a password", "a password"},
+		"unix newline":        {"a password\n", "a password"},
+		"windows newline":     {"a password\r\n", "a password"},
+		"several":             {"a password\n\n", "a password"},
+		"surrounding spaces":  {"  a password  \n", "  a password  "},
+		"an interior newline": {"two\nlines\n", "two\nlines"},
 	}
-	for desc, contents := range tests {
+	for desc, tt := range tests {
 		t.Run(desc, func(t *testing.T) {
-			// `echo a password > pw` leaves a newline that is not part of the
-			// password, so it is trimmed to match what the prompt returns.
 			p := filepath.Join(t.TempDir(), "pw")
-			if err := os.WriteFile(p, []byte(contents), 0600); err != nil {
+			if err := os.WriteFile(p, []byte(tt.contents), 0600); err != nil {
 				t.Fatal(err)
 			}
 			got, err := readPasswordFile(p)
 			if err != nil {
 				t.Fatalf("readPasswordFile() error: %s", err)
 			}
-			if string(got) != "a password" {
-				t.Errorf("expected %q, got %q", "a password", got)
+			if string(got) != tt.want {
+				t.Errorf("expected %q, got %q", tt.want, got)
 			}
 		})
 	}
 }
 
-func TestAPasswordFileKeepsItsInteriorWhitespace(t *testing.T) {
-	// Only trailing newlines are trimmed. Spaces are part of the password.
-	p := filepath.Join(t.TempDir(), "pw")
-	if err := os.WriteFile(p, []byte("  a password  \n"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	got, err := readPasswordFile(p)
-	if err != nil {
-		t.Fatalf("readPasswordFile() error: %s", err)
-	}
-	if string(got) != "  a password  " {
-		t.Errorf("expected interior whitespace to be kept, got %q", got)
-	}
-}
-
 func TestAMissingPasswordFileIsNamed(t *testing.T) {
-	_, err := readPasswordFile(filepath.Join(t.TempDir(), "absent"))
+	p := filepath.Join(t.TempDir(), "absent")
+	_, err := readPasswordFile(p)
 	if err == nil {
 		t.Fatal("expected an error for a missing password file")
 	}
-	if !strings.Contains(err.Error(), "password file") {
-		t.Errorf("expected the error to say which file, got %q", err)
+	// The path, not just the phrase: a command may be given two password files,
+	// and the one it could not read is the useful half of the answer.
+	if !strings.Contains(err.Error(), p) {
+		t.Errorf("expected the error to name %q, got %q", p, err)
 	}
 }
 
@@ -227,30 +211,33 @@ func TestTheFlagThatSuppliesAPasswordIsNamed(t *testing.T) {
 }
 
 func TestOnlyYesConfirms(t *testing.T) {
-	tests := []struct {
+	tests := map[string]struct {
 		input string
 		want  bool
 	}{
-		{"y\n", true},
-		{"n\n", false},
-		{"\n", false},    // a bare newline is not an answer
-		{"", false},      // nor is end-of-input, which Ctrl-D gives
-		{"yes\n", false}, // only an exact "y" is yes
-		{"Y\n", false},
-		{" y \n", true}, // the answer is trimmed
+		"y":                {"y\n", true},
+		"n":                {"n\n", false},
+		"a bare newline":   {"\n", false},
+		"end of input":     {"", false}, // which Ctrl-D gives
+		"the whole word":   {"yes\n", false},
+		"a capital Y":      {"Y\n", false},
+		"y among spaces":   {" y \n", true}, // the answer is trimmed
+		"something else":   {"maybe\n", false},
+		"y then something": {"y and more\n", false},
 	}
-	for _, tt := range tests {
-		input, want := tt.input, tt.want
-		capturePrompt(t)
-		pretendTerminal(t)
-		withStdin(t, input)
-		got, err := Confirm(false, "Continue?")
-		if err != nil {
-			t.Fatalf("Confirm(%q) error: %s", input, err)
-		}
-		if got != want {
-			t.Errorf("Confirm(%q) = %v, want %v", input, got, want)
-		}
+	for desc, tt := range tests {
+		t.Run(desc, func(t *testing.T) {
+			capturePrompt(t)
+			pretendTerminal(t)
+			withStdin(t, tt.input)
+			got, err := Confirm(false, "Continue?")
+			if err != nil {
+				t.Fatalf("Confirm(%q) error: %s", tt.input, err)
+			}
+			if got != tt.want {
+				t.Errorf("Confirm(%q) = %v, want %v", tt.input, got, tt.want)
+			}
+		})
 	}
 }
 
@@ -259,8 +246,8 @@ func TestAConfirmationNeedsATerminalOrAFlag(t *testing.T) {
 	withStdin(t, "y\n")
 
 	// Nobody is there to answer, so the question is not asked. Taking the safe
-	// answer instead would exit successfully having done nothing, which reads
-	// as "done" to the script that ran it.
+	// answer would exit successfully having done nothing, which reads as "done"
+	// to the script that ran it.
 	_, err := Confirm(false, "Delete vault personal?")
 	if !errors.Is(err, ErrNoTerminal) {
 		t.Fatalf("expected ErrNoTerminal, got %v", err)

@@ -2,6 +2,7 @@ package secret
 
 import (
 	"regexp"
+	"slices"
 	"testing"
 
 	"github.com/andornaut/mrs/internal/crypto"
@@ -117,35 +118,37 @@ func TestStripInstructions(t *testing.T) {
 }
 
 func TestSecretListSearch(t *testing.T) {
-	secrets := []secret{
-		secret(`Apple
-color: red`),
-		secret(`Banana
-color: yellow`),
-		secret(`Cherry
-color: red`),
-	}
-	b := newSecretList(secrets)
+	// "red" appears in two values and in no key, so it tells the two searches
+	// apart: without it, a SearchKeys that also matched values would pass.
+	b := newSecretList([]secret{
+		secret("Apple\ncolor: red"),
+		secret("Banana\ncolor: yellow"),
+		secret("Cherry\ncolor: red"),
+	})
 
-	// Search by key
-	re1 := regexp.MustCompile("(?i)apple")
-	res1 := b.SearchKeys(*re1)
-	if res1.Len() != 1 {
-		t.Errorf("SearchKeys expected 1 match, got %d", res1.Len())
+	tests := []struct {
+		name    string
+		search  func(*secretList, regexp.Regexp) *secretList
+		pattern string
+		want    []string
+	}{
+		{"a key", (*secretList).SearchKeys, "(?i)apple", []string{"Apple"}},
+		{"a value is not a key", (*secretList).SearchKeys, "(?i)red", nil},
+		{"no match at all", (*secretList).SearchKeys, "Grape", nil},
+		{"a value, with --full", (*secretList).SearchKeysAndValues, "(?i)red", []string{"Apple", "Cherry"}},
+		{"a key, with --full", (*secretList).SearchKeysAndValues, "(?i)banana", []string{"Banana"}},
 	}
-
-	// Search by key or value
-	re2 := regexp.MustCompile("(?i)red")
-	res2 := b.SearchKeysAndValues(*re2)
-	if res2.Len() != 2 {
-		t.Errorf("SearchKeysAndValues expected 2 matches, got %d", res2.Len())
-	}
-
-	// No match
-	re3 := regexp.MustCompile("Grape")
-	res3 := b.SearchKeys(*re3)
-	if res3.Len() != 0 {
-		t.Errorf("SearchKeys expected 0 matches, got %d", res3.Len())
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.search(b, *regexp.MustCompile(tt.pattern))
+			keys := make([]string, 0, got.Len())
+			for _, s := range got.secrets {
+				keys = append(keys, string(s.Key()))
+			}
+			if !slices.Equal(keys, tt.want) {
+				t.Errorf("matched %v, want %v", keys, tt.want)
+			}
+		})
 	}
 }
 
