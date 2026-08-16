@@ -37,7 +37,7 @@ func (v Vault) Salt() string {
 	if len(arr) == 1 {
 		return ""
 	}
-	return strings.TrimSuffix(arr[1], ".bak")
+	return arr[1]
 }
 
 // Path returns the absolute file path to the vault

@@ -29,11 +29,6 @@ func TestMain(m *testing.M) {
 }
 
 func runMain(m *testing.M) int {
-	if err := declareSourceInputs("../.."); err != nil {
-		fmt.Fprintf(os.Stderr, "failed to read the module source: %s\n", err)
-		return 1
-	}
-
 	buildDir, err := os.MkdirTemp("", "mrs-e2e-build")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to create build dir: %s\n", err)
@@ -54,13 +49,35 @@ func runMain(m *testing.M) int {
 	return m.Run()
 }
 
-// declareSourceInputs opens every source file in the module so that `go test`
-// records them as inputs to this package. These tests exercise a binary they
-// build themselves rather than code they import, so without this the go command
-// does not know that a change to mrs invalidates a cached pass, and reports a
-// stale "ok (cached)" for a build it never ran.
-func declareSourceInputs(root string) error {
-	return filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
+// These tests exercise a binary they compile themselves rather than code they
+// import, so nothing tells the go command that a change to mrs invalidates a
+// previous run: edit internal/vault, run the suite, and it answers with a stale
+// "ok (cached)" for a binary it never built. Reading the module's source from
+// inside a test is what stops that. The go command records the files a test
+// reads and re-runs the package when any of them changes, so a run that would
+// build a different binary is never answered from the cache, while a run that
+// would build the same one still is.
+//
+// It has to be read from a test rather than from TestMain, which is where this
+// used to be and where it did nothing: the go command only records what is read
+// once testing.M.Run has started.
+func TestTheModuleSourceIsRead(t *testing.T) {
+	n, err := readModuleSource("../..")
+	if err != nil {
+		t.Fatalf("failed to read the module source: %s", err)
+	}
+	// A walk that quietly found nothing - a moved package, a changed layout -
+	// would restore caching, and with it the stale pass this exists to prevent.
+	if n < 10 {
+		t.Fatalf("expected the module's source files to be read, got %d", n)
+	}
+}
+
+// readModuleSource opens every source file in the module and reports how many
+// it read.
+func readModuleSource(root string) (int, error) {
+	var n int
+	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -76,10 +93,12 @@ func declareSourceInputs(root string) error {
 			if err != nil {
 				return err
 			}
+			n++
 			return f.Close()
 		}
 		return nil
 	})
+	return n, err
 }
 
 func build(out, pkg string) error {
