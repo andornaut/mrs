@@ -3,6 +3,7 @@ module github.com/andornaut/mrs
 go 1.26
 
 require (
+	github.com/creack/pty v1.1.24
 	github.com/gofrs/flock v0.13.0
 	github.com/spf13/cobra v1.10.2
 	golang.org/x/crypto v0.54.0

@@ -106,6 +106,33 @@ func TestSalt(t *testing.T) {
 	}
 }
 
+// SecureCompare answers whether two passwords typed at a prompt agree, which is
+// the only thing standing between a typo and a vault encrypted under a password
+// its owner does not know. Its one job is to say no to everything but an exact
+// match, whatever the two differ by.
+func TestSecureCompare(t *testing.T) {
+	tests := map[string]struct {
+		a, b string
+		want bool
+	}{
+		"the same":            {"a password", "a password", true},
+		"both empty":          {"", "", true},
+		"entirely different":  {"a password", "something else", false},
+		"one character apart": {"a password", "a passwore", false},
+		"a prefix":            {"a password", "a passwor", false},
+		"a trailing space":    {"a password", "a password ", false},
+		"differing case":      {"a password", "A Password", false},
+		"one empty":           {"a password", "", false},
+	}
+	for desc, tt := range tests {
+		t.Run(desc, func(t *testing.T) {
+			if got := SecureCompare([]byte(tt.a), []byte(tt.b)); got != tt.want {
+				t.Errorf("SecureCompare(%q, %q) = %v, want %v", tt.a, tt.b, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestWipe(t *testing.T) {
 	buf := []byte{1, 2, 3, 4, 5}
 	Wipe(buf)

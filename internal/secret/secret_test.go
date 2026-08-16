@@ -152,6 +152,28 @@ func TestSecretListSearch(t *testing.T) {
 	}
 }
 
+// Secrets are ordered by key ignoring case, so "apple" sorts before "Zebra"
+// rather than after every capital letter, which comparing bytes would give.
+// Keys that differ only in length are ordered by it, so a key that is another's
+// prefix comes first.
+func TestSecretsAreSortedIgnoringCase(t *testing.T) {
+	b := newSecretList([]secret{
+		secret("Zebra\nvalue"),
+		secret("apple\nvalue"),
+		secret("Banana\nvalue"),
+		secret("app\nvalue"),
+	})
+
+	want := []string{"app", "apple", "Banana", "Zebra"}
+	got := make([]string, 0, b.Len())
+	for _, s := range b.secrets {
+		got = append(got, string(s.Key()))
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("sorted %v, want %v", got, want)
+	}
+}
+
 func TestSecretListCombined(t *testing.T) {
 	b1 := newSecretList([]secret{secret(`A
 val`)})

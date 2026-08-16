@@ -200,7 +200,15 @@ The ciphertext is `nonce|ciphertext|tag` with a random 96-bit nonce per save.
 
 ## Developing
 
-See the [Makefile](./Makefile).
+See the [Makefile](./Makefile). `make test` runs both layers:
+
+- [`internal/`](./internal) holds unit tests, beside the code they exercise.
+- [`test/e2e`](./test/e2e) drives a compiled `mrs` against real vault files, a
+  real editor process and real encryption. Nothing is mocked. Each test gets its
+  own vault, temporary and home directories, so they run in parallel; the
+  [fake editor](./test/e2e/testdata/fakeeditor) is scripted through the
+  environment, and the cases that answer a prompt run `mrs` on a pseudo-terminal,
+  because without one it reports that it cannot ask.
 
 To release, push a semantic version tag from `main`:
 
