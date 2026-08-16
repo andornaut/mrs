@@ -24,11 +24,14 @@ lint:
 	golangci-lint config verify
 	golangci-lint run
 
+# CGO_ENABLED=0 on each recipe rather than exported for the file, because the
+# test target runs with -race, which needs cgo. Nothing here imports os/user or
+# net, so this only settles how the binary links.
 $(PLATFORMS):
-	GOARCH=amd64 GOOS=$@ go build -ldflags="$(LDFLAGS)" -trimpath -o "$(DISTDIR)/$(TARGET)-$@-amd64"
+	CGO_ENABLED=0 GOARCH=amd64 GOOS=$@ go build -ldflags="$(LDFLAGS)" -trimpath -o "$(DISTDIR)/$(TARGET)-$@-amd64"
 
 $(TARGET):
-	go build -ldflags="$(LDFLAGS)" -trimpath -o $@
+	CGO_ENABLED=0 go build -ldflags="$(LDFLAGS)" -trimpath -o $@
 
 clean:
 	go clean
