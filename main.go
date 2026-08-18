@@ -8,11 +8,8 @@ import (
 
 	"github.com/andornaut/mrs/cmd"
 	"github.com/andornaut/mrs/internal/fs"
+	"github.com/andornaut/mrs/internal/version"
 )
-
-// version is the release this binary was built from. GoReleaser sets it at
-// link time; a build made any other way reports "dev".
-var version = "dev"
 
 // exitInterrupted is the status for a signal that carries no number to add to
 // 128, which os.Interrupt does not on every platform.
@@ -54,6 +51,6 @@ func run() int {
 		os.Exit(code)
 	}()
 
-	cmd.Cmd.Version = version
+	cmd.Cmd.Version = version.Version
 	return cmd.ExitCode(cmd.Cmd.Execute())
 }
