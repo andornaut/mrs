@@ -64,8 +64,7 @@ func ExitCode(err error) int {
 	if errors.Is(err, errNoMatch) {
 		return exitNoMatch
 	}
-	var u cli.UsageError
-	if errors.As(err, &u) {
+	if _, ok := errors.AsType[cli.UsageError](err); ok {
 		return exitUsage
 	}
 	return exitFailed

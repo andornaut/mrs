@@ -75,9 +75,18 @@ func TestTheModuleSourceIsRead(t *testing.T) {
 
 // readModuleSource opens every source file in the module and reports how many
 // it read.
-func readModuleSource(root string) (int, error) {
+func readModuleSource(dir string) (int, error) {
+	// Opened through a root so that each file is reached by a path relative to
+	// the tree being read, rather than by the absolute one the walk hands back
+	// after having already stat'd it.
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = root.Close() }()
+
 	var n int
-	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
+	err = filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -89,7 +98,11 @@ func readModuleSource(root string) (int, error) {
 		}
 		switch {
 		case strings.HasSuffix(p, ".go"), d.Name() == "go.mod", d.Name() == "go.sum":
-			f, err := os.Open(p)
+			rel, err := filepath.Rel(dir, p)
+			if err != nil {
+				return err
+			}
+			f, err := root.Open(rel)
 			if err != nil {
 				return err
 			}

@@ -369,11 +369,24 @@ func TestAVaultWithALongLineStaysUsable(t *testing.T) {
 // of the given secrets.
 func assertNoPlaintextUnder(t *testing.T, dir string, secrets ...string) {
 	t.Helper()
-	err := filepath.Walk(dir, func(p string, info os.FileInfo, err error) error {
+	// Read through a root so that each file is reached by a path relative to
+	// the tree being walked, rather than by the absolute one the walk hands
+	// back after having already stat'd it.
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		t.Fatalf("failed to open %s: %s", dir, err)
+	}
+	defer func() { _ = root.Close() }()
+
+	err = filepath.Walk(dir, func(p string, info os.FileInfo, err error) error {
 		if err != nil || info.IsDir() {
 			return err
 		}
-		b, err := os.ReadFile(p)
+		rel, err := filepath.Rel(dir, p)
+		if err != nil {
+			return err
+		}
+		b, err := root.ReadFile(rel)
 		if err != nil {
 			return err
 		}
