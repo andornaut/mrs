@@ -81,7 +81,6 @@ linters:
       ignore-map-keys: true
     gosec:
       excludes:
-        - G115 # integer conversion overflow - signal numbers and file modes
         - G204 # subprocess launched with variable - running $EDITOR is the point
         - G304 # file operations with user paths - vault and password paths are the tool's purpose
         - G703 # path traversal - validating user paths is the tool's purpose
