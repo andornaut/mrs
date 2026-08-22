@@ -27,7 +27,7 @@ tar -xzf mrs_linux_x86_64.tar.gz mrs
 sudo install -m 755 mrs /usr/local/bin/mrs
 ```
 
-To compile from source, with [Go](https://golang.org/doc/install) and
+To compile from source, with [Go](https://go.dev/doc/install) and
 [Make](https://www.gnu.org/software/make/):
 
 ```bash
@@ -187,7 +187,7 @@ Environment variable | Description
 
 ## Encryption
 
-- [256-bit AES-GCM](https://tools.ietf.org/html/rfc5288).
+- [256-bit AES-GCM](https://datatracker.ietf.org/doc/html/rfc5288).
 - PBKDF2-SHA256, 600,000 iterations, over a 32 character salt that is unique per
   vault and carried in its filename.
 - Vaults written with the earlier 4,096 iterations are still read, and are
