@@ -1,6 +1,7 @@
 package e2e
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -107,23 +108,74 @@ func TestAnotherVaultIsUnaffectedByAHeldLock(t *testing.T) {
 	}
 }
 
-func TestForceBreaksAHeldLock(t *testing.T) {
+func TestForceDoesNotTakeAHeldLock(t *testing.T) {
 	l := newLab(t)
 	pwFile := l.seedVault("work", "a password", "a key\na value\n")
 	release := l.heldVault("work", pwFile)
 	defer release()
 
-	// --force exists for a lock left behind by a process that died. It cannot
-	// tell that case from a session that is still open, so it breaks both.
+	// --force repairs a lock file that cannot be used. Taking one another
+	// process holds would mean removing the file, leaving the two processes
+	// holding two different files, so every command refuses it alike.
 	l.editorAppends("forced key\nforced value\n")
-	l.Run("edit", "--force", "-v", "work", "-p", pwFile).AssertOK()
+	for _, args := range [][]string{
+		{"add", "--force", "-v", "work", "-p", pwFile},
+		{"edit", "--force", "-v", "work", "-p", pwFile},
+		{"vault", "change-password", "--force", "work", "-p", pwFile, "-n", pwFile},
+		{"vault", "delete", "--force", "work", "--yes"},
+		{"vault", "rename", "--force", "work", "elsewhere"},
+	} {
+		l.Run(args...).
+			AssertFailed().
+			AssertStderr("locked by another process").
+			// The refusal says why the flag did not help, rather than reading
+			// as though it did nothing.
+			AssertStderr("--force")
+	}
 
-	if got := l.export("work", pwFile); !strings.Contains(got, "forced value") {
-		t.Fatalf("expected the forced edit to be saved, got %q", got)
+	if got := l.export("work", pwFile); strings.Contains(got, "forced value") {
+		t.Fatalf("expected no forced write to have landed, got %q", got)
 	}
 }
 
-func TestCreateIsRefusedWhileTheNameIsHeldAndCanBeForced(t *testing.T) {
+// A lock file that cannot be opened is the one thing --force is for: without it
+// the vault cannot be locked at all, and no other command clears it.
+func TestForceRepairsAnUnusableLockFile(t *testing.T) {
+	l := newLab(t)
+	pwFile := l.seedVault("work", "a password", "a key\na value\n")
+	lockPath := filepath.Join(l.VaultDir(), "work.lock")
+
+	for _, tt := range []struct {
+		name  string
+		spoil func(*testing.T)
+	}{
+		{"a lock file nothing may open", func(t *testing.T) {
+			t.Helper()
+			if err := os.WriteFile(lockPath, nil, 0); err != nil {
+				t.Fatalf("failed to write the lock file: %s", err)
+			}
+		}},
+		{"a directory in its place", func(t *testing.T) {
+			t.Helper()
+			if err := os.Mkdir(lockPath, 0700); err != nil {
+				t.Fatalf("failed to create the directory: %s", err)
+			}
+		}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			_ = os.RemoveAll(lockPath)
+			tt.spoil(t)
+
+			l.editorAppends("")
+			l.Run("edit", "-v", "work", "-p", pwFile).
+				AssertFailed().
+				AssertStderr("lock file cannot be used")
+			l.Run("edit", "--force", "-v", "work", "-p", pwFile).AssertOK()
+		})
+	}
+}
+
+func TestCreateIsRefusedWhileTheNameIsHeld(t *testing.T) {
 	l := newLab(t)
 	pwFile := l.seedVault("work", "a password", "a key\na value\n")
 	release := l.heldVault("work", pwFile)
@@ -132,15 +184,40 @@ func TestCreateIsRefusedWhileTheNameIsHeldAndCanBeForced(t *testing.T) {
 	// A name that is taken is refused for being taken, whether or not another
 	// process holds its lock: the lock is transient and the collision is not.
 	newPw := l.PasswordFile("new.pw", "another password")
-	for _, args := range [][]string{
-		{"vault", "create", "work", "-p", newPw},
-		{"vault", "create", "--force", "work", "-p", newPw},
-	} {
-		l.Run(args...).AssertFailed().AssertStderr("already exists")
-	}
+	l.Run("vault", "create", "work", "-p", newPw).
+		AssertFailed().
+		AssertStderr("already exists")
 
-	// A free name creates normally once the lock is out of the way.
-	l.Run("vault", "create", "--force", "other", "-p", newPw).AssertOK()
+	// --force means the same thing here as everywhere: repair a lock file that
+	// cannot be used, never take one. A name that is taken stays taken.
+	l.Run("vault", "create", "--force", "work", "-p", newPw).
+		AssertFailed().
+		AssertStderr("already exists")
+
+	// A free name creates normally while another vault's lock is held.
+	l.Run("vault", "create", "other", "-p", newPw).AssertOK()
+}
+
+// Claiming a name is refused while another process holds that name's lock, and
+// there is no way to force past it. Two processes that each broke the lock
+// would hold two different lock files and both write a vault under the name.
+func TestANameClaimCannotBeForcedPastAHeldNameLock(t *testing.T) {
+	l := newLab(t)
+	pwFile := l.seedVault("work", "a password", "a key\na value\n")
+	l.seedVault("other", "a password", "b key\nb value\n")
+	release := l.heldVault("work", pwFile)
+	defer release()
+
+	// Renaming onto the held name is refused, with and without --force, which
+	// means the same thing on the target name as on the source: repair, never
+	// take.
+	for _, args := range [][]string{
+		{"vault", "rename", "other", "work"},
+		{"vault", "rename", "--force", "other", "work"},
+	} {
+		l.Run(args...).AssertFailed()
+	}
+	l.Run("vault", "list").AssertOK().AssertStdoutEquals("other\nwork")
 }
 
 func TestAReleasedLockDoesNotBlockLaterWrites(t *testing.T) {

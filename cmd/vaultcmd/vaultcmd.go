@@ -28,7 +28,7 @@ var Cmd = &cobra.Command{
 
 type vaultOptions struct {
 	assumeYes       bool
-	force           bool
+	repairLock      bool
 	importFile      string
 	isPath          bool
 	newPasswordFile string
@@ -46,7 +46,7 @@ func (o *vaultOptions) locked(name string) (vault.Vault, func(), error) {
 	if err != nil {
 		return "", nil, err
 	}
-	unlock, err := v.ExclusiveLockForce(o.force)
+	unlock, err := v.ExclusiveLockRepair(o.repairLock)
 	if err != nil {
 		return "", nil, err
 	}
@@ -90,7 +90,7 @@ func init() {
 				return err
 			}
 
-			v, err := vault.Create(name, password, contents, opts.force)
+			v, err := vault.Create(name, password, contents, opts.repairLock)
 			if err != nil {
 				return err
 			}
@@ -217,7 +217,7 @@ func init() {
 			}
 			defer unlock()
 
-			if err := vault.Rename(v, targetName); err != nil {
+			if err := vault.Rename(v, targetName, opts.repairLock); err != nil {
 				return err
 			}
 			fmt.Fprintf(os.Stderr, "Renamed vault %s to %s\n", sourceName, targetName)
@@ -229,10 +229,15 @@ func init() {
 		c.Flags().StringVarP(&opts.passwordFile, "password-file", "p", "", "path to a file that contains your password")
 	}
 	// --force has no short form, because it is not the flag a hurried -f is
-	// reaching for: it breaks another process's lock rather than overwriting
-	// anything, and is worth spelling out.
+	// reaching for: it repairs a lock rather than overwriting anything, and is
+	// worth spelling out.
+	//
+	// Every command that takes a lock takes it, and it means one thing on all
+	// of them: make a lock file that cannot be used usable again. It never
+	// takes a lock another process holds, so it is as safe on the name create
+	// claims, and on the name rename claims, as it is on a vault being written.
 	for _, c := range []*cobra.Command{changePassword, create, deleteCmd, rename} {
-		c.Flags().BoolVar(&opts.force, "force", false, "delete the vault's lock file first")
+		c.Flags().BoolVar(&opts.repairLock, "force", false, "repair a lock file that cannot be used")
 	}
 	deleteCmd.Flags().BoolVarP(&opts.assumeYes, "yes", "y", false, "answer yes to the confirmation")
 

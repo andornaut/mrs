@@ -54,6 +54,16 @@ func (v Vault) Unlocked(password []byte) UnlockedVault {
 	return UnlockedVault{v, password}
 }
 
+// ErrLockHeld reports that another process holds the vault's lock. It is the
+// one lock failure that repairing cannot help with, and callers test for it so
+// that they do not offer a remedy that is not one.
+var ErrLockHeld = errors.New("locked by another process")
+
+// ErrLockUnusable reports that the vault's lock file could not be opened, as a
+// file whose mode forbids it or a directory left in its place cannot be. This
+// is what --force repairs.
+var ErrLockUnusable = errors.New("the lock file cannot be used")
+
 // ExclusiveLock acquires an exclusive lock on the vault.
 // It returns an unlock function and any error encountered.
 func (v Vault) ExclusiveLock() (func(), error) {
@@ -63,32 +73,72 @@ func (v Vault) ExclusiveLock() (func(), error) {
 	f := flock.New(v.lockPath())
 	locked, err := f.TryLock()
 	if err != nil {
-		return nil, fmt.Errorf("could not acquire lock on vault %s: %w", v.Name(), err)
+		return nil, fmt.Errorf("%w for vault %s: %w", ErrLockUnusable, v.Name(), err)
 	}
 	if !locked {
-		return nil, fmt.Errorf("vault %s is currently locked by another process", v.Name())
+		return nil, fmt.Errorf("vault %s is currently %w", v.Name(), ErrLockHeld)
 	}
 	return func() { _ = f.Unlock() }, nil
 }
 
-// ExclusiveLockForce is like ExclusiveLock, but when force is true it first
-// deletes the vault's lock file, breaking any lock held by another process.
-func (v Vault) ExclusiveLockForce(force bool) (func(), error) {
-	if force {
-		if err := v.RemoveLock(); err != nil {
-			return nil, err
-		}
+// ExclusiveLockRepair is ExclusiveLock, and when repair is true it first makes
+// a lock file that cannot be used usable again.
+//
+// Repairing is not taking. A lock another process holds is refused whether or
+// not repair was asked for, because the only way past a held lock is to remove
+// the lock file, which leaves the two processes holding two different files and
+// each believing the vault is theirs. That is true of the lock on a vault and
+// of the lock a name is claimed under alike, so neither is ever taken from
+// anyone: what a caller can ask for is that an unusable lock file be made
+// usable, after which the lock decides as it always does.
+//
+// Repairing therefore keeps the lock file's identity wherever there is one to
+// keep, so that a process already holding it goes on holding it.
+func (v Vault) ExclusiveLockRepair(repair bool) (func(), error) {
+	unlock, err := v.ExclusiveLock()
+	if err == nil || !repair {
+		return unlock, err
+	}
+	if errors.Is(err, ErrLockHeld) {
+		// Say why the flag did not help, rather than repeat a refusal that
+		// looks the same as the one given without it.
+		return nil, fmt.Errorf(
+			"%w. --force repairs a lock file that cannot be used, and does not take a lock another process holds", err)
+	}
+	if !errors.Is(err, ErrLockUnusable) {
+		return nil, err
+	}
+	if repairErr := v.repairLock(); repairErr != nil {
+		return nil, repairErr
 	}
 	return v.ExclusiveLock()
 }
 
-// RemoveLock deletes the vault's lock file, breaking any lock held by another process.
-func (v Vault) RemoveLock() error {
+// repairLock makes an unusable lock file usable, without changing what holds
+// it. A file is chmod'd rather than removed, so that its identity survives and
+// a lock another process took on it survives with it. A directory in its place
+// was never a lock and nobody can be holding it, so it is removed.
+func (v Vault) repairLock() error {
 	if v == "" {
-		return errors.New("cannot remove the lock on a vault with no name")
+		return errors.New("cannot repair the lock on a vault with no name")
 	}
-	if err := os.Remove(v.lockPath()); err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("could not remove lock on vault %s: %w", v.Name(), err)
+	p := v.lockPath()
+	fi, err := os.Lstat(p)
+	if err != nil {
+		if os.IsNotExist(err) {
+			// Nothing to repair. The lock file is created by taking the lock.
+			return nil
+		}
+		return fmt.Errorf("could not repair the lock on vault %s: %w", v.Name(), err)
+	}
+	if fi.IsDir() {
+		if err := os.Remove(p); err != nil {
+			return fmt.Errorf("could not remove the directory in place of the lock on vault %s: %w", v.Name(), err)
+		}
+		return nil
+	}
+	if err := os.Chmod(p, 0600); err != nil {
+		return fmt.Errorf("could not repair the lock on vault %s: %w", v.Name(), err)
 	}
 	return nil
 }

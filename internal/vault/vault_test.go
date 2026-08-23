@@ -138,12 +138,91 @@ func TestRenameReportsBackupMoveFailure(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Exact() failed: %v", err)
 	}
-	if err = Rename(src, "dst"); err == nil {
+	if err = Rename(src, "dst", false); err == nil {
 		t.Fatal("expected Rename() to return an error when the backup cannot be moved")
 	}
 	// The vault itself must still have been renamed, so that the error names
 	// what actually happened.
 	if _, statErr := os.Stat(targetPath); statErr != nil {
 		t.Errorf("expected renamed vault at %q, stat err = %v", targetPath, statErr)
+	}
+}
+
+// A rename claims a name, so it takes that name's lock before asking whether
+// the name is free. Without it, a create or another rename could claim the same
+// name between the answer and the rename, leaving two vault files carrying it.
+func TestRenameIsRefusedWhileTheTargetNameIsLocked(t *testing.T) {
+	dir := newVaultDir(t)
+	writeFile(t, dir, "src."+testSalt)
+
+	held, err := Vault(filepath.Join(dir, "dst")).ExclusiveLock()
+	if err != nil {
+		t.Fatalf("failed to hold the target name's lock: %v", err)
+	}
+	defer held()
+
+	src, err := Exact("src")
+	if err != nil {
+		t.Fatalf("Exact() failed: %v", err)
+	}
+	if err = Rename(src, "dst", false); err == nil {
+		t.Fatal("expected Rename() to be refused while the target name is locked")
+	}
+	// The source must be left alone, so that a refused rename changes nothing.
+	if _, statErr := os.Stat(filepath.Join(dir, "src."+testSalt)); statErr != nil {
+		t.Errorf("expected the source vault to be untouched, stat err = %v", statErr)
+	}
+}
+
+// A name lock is never broken, because breaking one deletes the lock file and
+// two processes that each broke it would go on to lock two different files.
+// Nothing that claims a name may be forced past another claim on it.
+func TestCreateAndRenameDoNotBreakANameLock(t *testing.T) {
+	dir := newVaultDir(t)
+	writeFile(t, dir, "src."+testSalt)
+
+	held, err := Vault(filepath.Join(dir, "dst")).ExclusiveLock()
+	if err != nil {
+		t.Fatalf("failed to hold the target name's lock: %v", err)
+	}
+	defer held()
+
+	src, err := Exact("src")
+	if err != nil {
+		t.Fatalf("Exact() failed: %v", err)
+	}
+	if err = Rename(src, "dst", false); err == nil {
+		t.Error("expected Rename() to be refused rather than break the target name's lock")
+	}
+	if _, err = Create("dst", []byte("a password"), nil, false); err == nil {
+		t.Error("expected Create() to be refused rather than break the name's lock")
+	}
+	// Neither may have left a file under the locked name.
+	for _, name := range entriesIn(t, dir) {
+		if name == "dst."+testSalt || (len(name) > 4 && name[:4] == "dst." && name != "dst.lock") {
+			t.Errorf("expected no vault file under the locked name, found %q", name)
+		}
+	}
+}
+
+// Exists asks of the filename, so the files that live alongside a vault never
+// make its name look taken. A name whose vault was deleted has to be free
+// again, and delete leaves the lock file behind.
+func TestExistsIgnoresTheFilesBesideAVault(t *testing.T) {
+	dir := newVaultDir(t)
+	for _, name := range []string{
+		"gone.lock",
+		"gone." + testSalt + ".bak",
+		"gone." + testSalt + ".1234.tmp",
+	} {
+		writeFile(t, dir, name)
+	}
+
+	taken, err := Exists("gone")
+	if err != nil {
+		t.Fatalf("Exists() failed: %v", err)
+	}
+	if taken {
+		t.Error("expected a name with only a vault's companion files left behind to be free")
 	}
 }

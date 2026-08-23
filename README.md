@@ -80,11 +80,25 @@ Flag | Commands | Supplies
 `-i`, `--import-file` | `vault create` | unencrypted secrets to seed the vault with
 `-f`, `--full` | `search` | match values as well as keys
 `-y`, `--yes` | `edit`, `vault delete` | the answer to the confirmation
-`--force` | `add`, `edit`, `vault create`, `vault change-password`, `vault delete`, `vault rename` | permission to delete another process's lock file
+`--force` | `add`, `edit`, `vault create`, `vault change-password`, `vault delete`, `vault rename` | permission to repair a lock file that cannot be used
 `--path` | `vault list`, `vault default` | paths instead of names
 
 A short flag means the same thing on every command. `--force` and `--path` have
 no short form, because both are worth spelling out.
+
+`--force` repairs a lock file that cannot be opened, because its mode forbids it
+or a directory sits in its place. It never takes a lock another process holds:
+taking one would mean deleting the lock file, leaving the two processes holding
+two different files. A held lock is refused with or without the flag:
+
+```console
+$ mrs vault delete work --force --yes
+Error: vault work is currently locked by another process. --force repairs a lock
+file that cannot be used, and does not take a lock another process holds
+```
+
+Wait for the other process, or stop it. A lock file left behind by a process
+that died needs neither: it is already re-lockable.
 
 ## Naming a vault
 
@@ -169,11 +183,13 @@ Path | Holds
 --- | ---
 `$MRS_HOME/vaults/<name>.<salt>` | the vault, mode 0600
 `$MRS_HOME/vaults/<name>.<salt>.bak` | the version before the last save
-`$MRS_HOME/vaults/<name>.lock` | the write lock, empty
+`$MRS_HOME/vaults/<name>.lock` | the lock on the name, empty
 `$MRS_TEMP/mrs/<run>/` | decrypted secrets while an editor is open, mode 0700
 
 The vault directory is mode 0700. `mrs` narrows permissions it finds wider than
-that and never widens them. The temporary directory is removed when `mrs` exits,
+that and never widens them. One process at a time may write a vault or claim its
+name; reads take no lock, and every write is atomic, so a reader never sees a
+half-written vault. The temporary directory is removed when `mrs` exits,
 including on SIGHUP, SIGINT, SIGQUIT and SIGTERM.
 
 ## Configuration

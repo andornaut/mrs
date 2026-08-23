@@ -84,7 +84,7 @@ func noEditorArgs(c *cobra.Command, args []string) error {
 
 type rootOptions struct {
 	assumeYes     bool
-	force         bool
+	repairLock    bool
 	includeValues bool
 	namePrefix    string
 	passwordFile  string
@@ -99,7 +99,7 @@ func (o *rootOptions) unlocked(fn func(vault.UnlockedVault) error) error {
 	if err != nil {
 		return err
 	}
-	unlock, err := v.ExclusiveLockForce(o.force)
+	unlock, err := v.ExclusiveLockRepair(o.repairLock)
 	if err != nil {
 		return err
 	}
@@ -215,10 +215,10 @@ func init() {
 		c.Flags().StringVarP(&opts.passwordFile, "password-file", "p", "", "path to a file that contains your password")
 	}
 	// --force has no short form, because it is not the flag a hurried -f is
-	// reaching for: it breaks another process's lock rather than overwriting
-	// anything, and is worth spelling out.
+	// reaching for: it repairs a lock rather than overwriting anything, and is
+	// worth spelling out.
 	for _, c := range []*cobra.Command{add, edit} {
-		c.Flags().BoolVar(&opts.force, "force", false, "delete the vault's lock file first")
+		c.Flags().BoolVar(&opts.repairLock, "force", false, "repair a lock file that cannot be used")
 	}
 	edit.Flags().BoolVarP(&opts.assumeYes, "yes", "y", false, "answer yes to the confirmation before emptying the vault")
 	search.Flags().BoolVarP(&opts.includeValues, "full", "f", false, "search the full contents, instead of the first line of each secret")

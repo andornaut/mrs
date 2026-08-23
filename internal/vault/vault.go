@@ -131,7 +131,7 @@ func ChangePassword(v Vault, oldPassword, newPassword []byte) (UnlockedVault, er
 // Create creates a vault holding the given secrets, which may be empty. The
 // caller reads and validates any import file, so that a vault is never created
 // from contents that mrs cannot read back.
-func Create(name string, password, contents []byte, force bool) (UnlockedVault, error) {
+func Create(name string, password, contents []byte, repair bool) (UnlockedVault, error) {
 	if err := ValidateName(name); err != nil {
 		return UnlockedVault{}, err
 	}
@@ -139,13 +139,15 @@ func Create(name string, password, contents []byte, force bool) (UnlockedVault, 
 		return UnlockedVault{}, err
 	}
 
-	// Lock the vault name before creating files.
-	// We use toPath(name) to get a base path for the lock file.
+	// Lock the vault name before creating files. The lock is never taken from
+	// another process, only repaired if its file cannot be used: two processes
+	// that each removed it would hold two different files and both write a
+	// vault under this name.
 	p, err := toPath(name)
 	if err != nil {
 		return UnlockedVault{}, err
 	}
-	unlock, err := Vault(p).ExclusiveLockForce(force)
+	unlock, err := Vault(p).ExclusiveLockRepair(repair)
 	if err != nil {
 		return UnlockedVault{}, err
 	}
@@ -205,8 +207,10 @@ func Export(v Vault, password []byte) ([]byte, error) {
 	return u.Decrypt()
 }
 
-// Rename renames a vault
-func Rename(sourceVault Vault, targetName string) error {
+// Rename renames a vault. The caller holds the source vault's lock; the target
+// name is locked here. repair applies to both alike, and to neither does it
+// mean taking a lock another process holds.
+func Rename(sourceVault Vault, targetName string, repair bool) error {
 	sourceName := sourceVault.Name()
 	if sourceName == targetName {
 		return fmt.Errorf("the source and target vault names cannot both be %q", sourceName)
@@ -214,6 +218,24 @@ func Rename(sourceVault Vault, targetName string) error {
 	if err := ValidateName(targetName); err != nil {
 		return err
 	}
+
+	// Lock the target name before asking whether it is taken, as Create does:
+	// the answer only decides anything while nothing else can claim the name
+	// between the question and the rename below. Without this, a concurrent
+	// create or rename of the same name leaves two vault files carrying it,
+	// which every command that resolves a name then picks between by glob
+	// order. The source is locked under a different name, so the two locks
+	// cannot be the same one, and both are taken without blocking.
+	targetPath, err := toPath(targetName)
+	if err != nil {
+		return err
+	}
+	unlock, err := Vault(targetPath).ExclusiveLockRepair(repair)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+
 	// Comparing paths is not enough, because the target keeps the source's salt
 	// and so never collides with the path of an existing vault of the same name.
 	exists, err := Exists(targetName)
@@ -224,7 +246,7 @@ func Rename(sourceVault Vault, targetName string) error {
 		return fmt.Errorf("a vault named %q already exists", targetName)
 	}
 	// The target keeps the source's salt, because renaming does not decrypt.
-	targetPath, err := toPathWithSalt(targetName, sourceVault.Salt())
+	targetPath, err = toPathWithSalt(targetName, sourceVault.Salt())
 	if err != nil {
 		return err
 	}
@@ -268,18 +290,39 @@ func removeTempFiles(vaultPath string) error {
 	return errors.Join(errs...)
 }
 
-// Exists reports whether a vault with exactly the given name exists, whatever
-// salt its filename carries. A command may use it to refuse early, but Create
-// asks again while holding the lock, which is the answer that decides.
+// Exists reports whether a vault file with exactly the given name is there,
+// whatever salt its filename carries. A command may use it to refuse early, but
+// Create asks again while holding the lock, which is the answer that decides.
+//
+// It asks of the filename rather than of the contents. A file mrs cannot read
+// still occupies the name: a symlink whose target is not mounted, or a vault at
+// a key derivation this version does not support. Handing the name out again
+// would leave two files carrying it, which is what every command that resolves
+// a name would then have to choose between.
 func Exists(name string) (bool, error) {
-	vs, err := findVaults(name)
+	if err := ValidateName(name); err != nil {
+		return false, err
+	}
+	pattern, err := toPath(name + ".*")
 	if err != nil {
 		return false, err
 	}
-	for _, v := range vs {
-		if v.Name() == name {
-			return true, nil
+	matches, err := filepath.Glob(pattern)
+	if err != nil {
+		return false, err
+	}
+	for _, m := range matches {
+		if validateFilename(filepath.Base(m)) != nil {
+			// A lock, a backup or a leftover temporary file, none of which is
+			// the vault itself.
+			continue
 		}
+		// Lstat, so that a symlink counts as the file it is rather than as the
+		// file it points at, which may not be there.
+		if _, err := os.Lstat(m); err != nil {
+			continue
+		}
+		return true, nil
 	}
 	return false, nil
 }
