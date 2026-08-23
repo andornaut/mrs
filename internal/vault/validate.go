@@ -1,18 +1,19 @@
 package vault
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"os"
 	"regexp"
 	"strings"
+	"unicode/utf8"
 )
 
 var (
 	// Avoid hidden files, paths with '../', names with file extensions, and names with special characters, etc.
 	// Names cannot contain the "." character, because it is used as the name/hash separator.
-	nameRegex     = regexp.MustCompile(`^[\w-_]+$`)
-	passwordRegex = regexp.MustCompile(`^.{8,}$`)
+	nameRegex = regexp.MustCompile(`^[\w-_]+$`)
 	// A salt is base64url encoded and truncated to a fixed length by
 	// crypto.Salt(). Requiring its exact shape keeps unrelated files that a user
 	// or another program left in the vault directory - notes.txt, README.md -
@@ -26,6 +27,11 @@ var (
 // ".<random>.tmp". Without this, a long name fails deep inside a lock or a
 // write with an obscure "file name too long".
 const maxNameLen = 200
+
+// minPasswordLen is counted in characters rather than bytes, so that a
+// passphrase written in a script whose characters take more than one byte is
+// measured the way the person who wrote it would count it.
+const minPasswordLen = 8
 
 // ValidateName reports whether a name can be used for a vault.
 func ValidateName(n string) error {
@@ -59,9 +65,20 @@ func validateFilename(n string) error {
 	return validateSalt(salt)
 }
 
-func validatePassword(p []byte) error {
-	if !passwordRegex.Match(p) {
-		return errors.New("password must contain at least 8 characters")
+// ValidatePassword reports whether a password can be used for a vault. A
+// command may call it to refuse early, as ValidateName is called, so that a
+// password mrs will not accept is refused before anything else is asked for.
+func ValidatePassword(p []byte) error {
+	// A newline is refused rather than counted. readPasswordFile trims the one
+	// an editor leaves at the end, so a password that still holds one came from
+	// a file of several lines, which is nearly always a file of something other
+	// than a password. Counting it would encrypt a vault under that file, and
+	// reporting it as a length is what the character count below is for.
+	if bytes.IndexByte(p, '\n') >= 0 {
+		return errors.New("password cannot contain a newline")
+	}
+	if utf8.RuneCount(p) < minPasswordLen {
+		return fmt.Errorf("password must contain at least %d characters", minPasswordLen)
 	}
 	return nil
 }

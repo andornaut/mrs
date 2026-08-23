@@ -45,13 +45,32 @@ func TestValidatePassword(t *testing.T) {
 		{"", false},
 		{"1234567", false},
 		{"12345678", true},
+		// Characters, not bytes: eight of these take sixteen.
+		{"\u00e1\u00e9\u00ed\u00f3\u00fa\u00f1\u00fc\u00f6", true},
+		// A password file of several lines is a file of something else.
+		{"abc\ndefghij", false},
+		{"\n12345678", false},
+		{"12345678\n", false},
 	}
 
 	for _, tt := range tests {
-		err := validatePassword([]byte(tt.password))
+		err := ValidatePassword([]byte(tt.password))
 		if (err == nil) != tt.isValid {
-			t.Errorf("validatePassword(%q) expected valid=%v, got err=%v", tt.password, tt.isValid, err)
+			t.Errorf("ValidatePassword(%q) expected valid=%v, got err=%v", tt.password, tt.isValid, err)
 		}
+	}
+}
+
+// A password long enough to pass the length rule but holding a newline is
+// refused for the newline, so that the error names what is actually wrong with
+// it rather than reporting a ten character password as too short.
+func TestValidatePasswordNamesANewlineRatherThanTheLength(t *testing.T) {
+	err := ValidatePassword([]byte("abc\ndefghij"))
+	if err == nil {
+		t.Fatal("expected a password holding a newline to be refused")
+	}
+	if !strings.Contains(err.Error(), "newline") {
+		t.Errorf("expected the error to name the newline, got %q", err)
 	}
 }
 

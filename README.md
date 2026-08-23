@@ -116,7 +116,8 @@ Names may hold ASCII letters, digits, `_` and `-`, up to 200 characters.
 
 ## Passwords
 
-- Prompted on the terminal with echo off, and at least 8 characters long.
+- Prompted on the terminal with echo off. At least 8 characters, and no
+  newline.
 - Without a terminal there is nothing to prompt from, so pass
   `--password-file`. A trailing newline is trimmed, so `echo 'pw' > pw` works;
   other whitespace is part of the password.

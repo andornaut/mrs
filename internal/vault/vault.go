@@ -118,7 +118,7 @@ func named(vs []Vault, name string) (Vault, bool) {
 // ChangePassword changes a vault's password. It re-keys the vault, so it takes
 // the whole name rather than a prefix that could reach a neighbouring one.
 func ChangePassword(v Vault, oldPassword, newPassword []byte) (UnlockedVault, error) {
-	if err := validatePassword(newPassword); err != nil {
+	if err := ValidatePassword(newPassword); err != nil {
 		return UnlockedVault{}, fmt.Errorf("invalid new password: %w", err)
 	}
 	u := v.Unlocked(oldPassword)
@@ -135,7 +135,7 @@ func Create(name string, password, contents []byte, force bool) (UnlockedVault, 
 	if err := ValidateName(name); err != nil {
 		return UnlockedVault{}, err
 	}
-	if err := validatePassword(password); err != nil {
+	if err := ValidatePassword(password); err != nil {
 		return UnlockedVault{}, err
 	}
 
