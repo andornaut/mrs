@@ -232,6 +232,12 @@ func TestAllOrdersNamesThatDifferOnlyInCase(t *testing.T) {
 	for _, name := range []string{"app", "APP", "App"} {
 		writeFile(t, dir, name+"."+testSalt)
 	}
+	if len(entriesIn(t, dir)) != 3 {
+		// A filesystem that does not distinguish the three names holds one file
+		// for them, and there is no order left to check. macOS is one by
+		// default.
+		t.Skip("the filesystem does not distinguish names that differ only in case")
+	}
 
 	vs, err := All()
 	if err != nil {
