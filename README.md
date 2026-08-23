@@ -195,7 +195,9 @@ name; reads take no lock, and every write is atomic, so a reader never sees a
 half-written vault. A lock file outlives the vault it is named for, because
 removing it would leave two processes holding two different files. The temporary
 directory is created only when secrets are decrypted, and removed when `mrs`
-exits, including on SIGHUP, SIGINT, SIGQUIT and SIGTERM.
+exits, including on SIGHUP, SIGINT, SIGQUIT and SIGTERM. A SIGKILL or a power
+loss leaves the decrypted file behind, because nothing runs to remove it, and no
+later run sweeps it up; delete it by hand.
 
 A file in the vault directory that is not shaped like a vault is named on stderr
 and otherwise left alone. A vault that mrs cannot read is a different thing: a
