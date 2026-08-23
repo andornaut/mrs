@@ -92,7 +92,7 @@ func TestAVaultFileWithNoSaltIsReportedAndIgnored(t *testing.T) {
 	// out of the filename. mrs derives a key from the salt a filename carries,
 	// so such a file names no vault it can open.
 	p := l.writeVaultFile("personal", "a password", "a key\na-value\n",
-		"99daa49d-3a53-4bf8-a74a-93295de71d41-4bac-8cea", crypto.LegacyIterations)
+		"99daa49d-3a53-4bf8-a74a-93295de71d41-4bac-8cea", crypto.CurrentIterations)
 	pwFile := l.PasswordFile("pw", "a password")
 
 	// It is named on stderr, so that it cannot look as though the vault simply
@@ -117,7 +117,7 @@ func TestAVaultFileWithNoSaltIsReportedAndIgnored(t *testing.T) {
 func TestAVaultFileWithNoSaltDoesNotBlockANewVault(t *testing.T) {
 	l := newLab(t)
 	l.writeVaultFile("personal", "a password", "a key\na-value\n",
-		"99daa49d-3a53-4bf8-a74a-93295de71d41-4bac-8cea", crypto.LegacyIterations)
+		"99daa49d-3a53-4bf8-a74a-93295de71d41-4bac-8cea", crypto.CurrentIterations)
 	pwFile := l.PasswordFile("pw", "a password")
 
 	// The old file is not a vault, so it does not occupy the name.
@@ -125,39 +125,53 @@ func TestAVaultFileWithNoSaltDoesNotBlockANewVault(t *testing.T) {
 	l.Run("vault", "list").AssertOK().AssertStdoutEquals("personal")
 }
 
-func TestAVaultAtTheOldIterationCountIsUpgradedWhenItIsSaved(t *testing.T) {
+// oldIterations is the count mrs derived a key with before it was raised. It is
+// written here rather than taken from the crypto package, which no longer names
+// it, so that these fixtures keep pinning the file an old release wrote.
+const oldIterations = 4096
+
+func TestAVaultAtTheOldIterationCountIsNotRead(t *testing.T) {
 	l := newLab(t)
 	// A vault from the version that gave each vault its own salt but had not
-	// yet raised the iteration count.
+	// yet raised the iteration count. mrs derives a key one way, so the right
+	// password no longer opens it.
 	salt := strings.Repeat("a", 32)
-	p := l.writeVaultFile("personal."+salt, "a password", "a key\na-value\n", salt, crypto.LegacyIterations)
+	p := l.writeVaultFile("personal."+salt, "a password", "a key\na-value\n", salt, oldIterations)
 	pwFile := l.PasswordFile("pw", "a password")
 
 	l.Run("export", "-v", "personal", "-p", pwFile).
-		AssertOK().
-		AssertStdoutExactly("a key\na-value\n").
-		// Its filename already carries a salt, so there is nothing to say.
-		AssertNoOutput("static salt")
+		AssertFailed().
+		AssertStderr("failed to decrypt")
 
-	l.Run("edit", "-v", "personal", "-p", pwFile).AssertOK()
+	// The file is left exactly as it was, so an older release can still open it
+	// and a newer one can read it once it has been saved by that release.
+	if !decrypts(t, p, "a password", salt, oldIterations) {
+		t.Fatal("expected the vault file to be left untouched")
+	}
+}
 
-	// The salt is kept, since it is already unique; only the key derivation
-	// is brought up to date.
+// A vault mrs cannot decrypt is still a vault as far as every command that only
+// looks at filenames is concerned, so it occupies its name rather than
+// disappearing.
+func TestAVaultAtTheOldIterationCountStillOccupiesItsName(t *testing.T) {
+	l := newLab(t)
+	salt := strings.Repeat("a", 32)
+	l.writeVaultFile("personal."+salt, "a password", "a key\na-value\n", salt, oldIterations)
+	pwFile := l.PasswordFile("pw", "a password")
+
+	l.Run("vault", "list").AssertOK().AssertStdoutEquals("personal")
+	l.Run("vault", "create", "personal", "-p", pwFile).
+		AssertFailed().
+		AssertStderr("already exists")
 	if filepath.Base(l.VaultPath("personal")) != "personal."+salt {
-		t.Fatalf("expected the salt to be kept, got %q", l.VaultPath("personal"))
-	}
-	if !decrypts(t, p, "a password", salt, crypto.CurrentIterations) {
-		t.Fatal("expected the saved vault to use the current iteration count")
-	}
-	if decrypts(t, p, "a password", salt, crypto.LegacyIterations) {
-		t.Fatal("expected the saved vault to no longer use the old iteration count")
+		t.Fatalf("expected the vault file to be left in place, got %q", l.VaultPath("personal"))
 	}
 }
 
 func TestAnOldVaultKeepsItsSaltWhenRenamed(t *testing.T) {
 	l := newLab(t)
 	salt := strings.Repeat("c", 32)
-	l.writeVaultFile("personal."+salt, "a password", "a key\nold-value\n", salt, crypto.LegacyIterations)
+	l.writeVaultFile("personal."+salt, "a password", "a key\nold-value\n", salt, crypto.CurrentIterations)
 	pwFile := l.PasswordFile("pw", "a password")
 
 	// Renaming does not decrypt, so the salt has to travel with the file.

@@ -35,26 +35,27 @@ func TestEncryptDecrypt(t *testing.T) {
 	}
 }
 
-func TestLegacyDecrypt(t *testing.T) {
+// Decrypt derives a key one way only. A vault sealed under the 4,096 iterations
+// an older release used is not read back, so that no vault is opened at a key
+// derivation weaker than the one mrs writes.
+func TestDecryptRefusesTheOldIterationCount(t *testing.T) {
 	password := []byte("password")
 	defer Wipe(password)
 	salt, _ := Salt()
-	data := []byte("legacy data")
+	data := []byte("old data")
 
-	// Encrypted as an older version of mrs would have, so that Decrypt has to
-	// fall back to the old iteration count to read it.
-	k, _ := key(password, salt, LegacyIterations)
-	defer Wipe(k[:])
-	encrypted, _ := seal(data, k)
-
-	decrypted, err := Decrypt(encrypted, password, salt)
+	k, err := key(password, salt, 4096)
 	if err != nil {
-		t.Fatalf("Legacy decryption failed: %v", err)
+		t.Fatalf("failed to derive the fixture key: %v", err)
 	}
-	defer Wipe(decrypted)
+	defer Wipe(k[:])
+	encrypted, err := seal(data, k)
+	if err != nil {
+		t.Fatalf("failed to seal the fixture: %v", err)
+	}
 
-	if !bytes.Equal(data, decrypted) {
-		t.Errorf("Legacy decrypted data does not match original; expected %q, got %q", string(data), string(decrypted))
+	if _, err := Decrypt(encrypted, password, salt); err == nil {
+		t.Fatal("expected Decrypt() to refuse a vault sealed at the old iteration count")
 	}
 }
 

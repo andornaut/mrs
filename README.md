@@ -190,8 +190,9 @@ Environment variable | Description
 - [256-bit AES-GCM](https://datatracker.ietf.org/doc/html/rfc5288).
 - PBKDF2-SHA256, 600,000 iterations, over a 32 character salt that is unique per
   vault and carried in its filename.
-- Vaults written with the earlier 4,096 iterations are still read, and are
-  re-encrypted at 600,000 on the next save.
+- Vaults written with the earlier 4,096 iterations are not read. Every release
+  up to v0.1.7 reads one and re-encrypts it at 600,000 iterations on the next
+  save, so open and save such a vault with one of those before upgrading.
 
 The AES-GCM seal and open in [`internal/crypto`](./internal/crypto/crypto.go)
 are copied from [cryptopasta](https://github.com/gtank/cryptopasta), which its

@@ -15,8 +15,11 @@ import (
 )
 
 const (
-	minSaltLen        = 32
-	LegacyIterations  = 4096
+	minSaltLen = 32
+	// CurrentIterations is the only iteration count mrs derives a key with. A
+	// vault written by a release that used fewer is not read: a fallback opens
+	// it at that weaker derivation for as long as it goes unsaved, which is
+	// indefinitely for a vault nobody edits.
 	CurrentIterations = 600000
 )
 
@@ -32,26 +35,12 @@ func Wipe(buf []byte) {
 
 // Decrypt returns decrypted data.
 func Decrypt(data []byte, password []byte, salt string) ([]byte, error) {
-	// Try the current (new) iterations first
 	k, err := key(password, salt, CurrentIterations)
 	if err != nil {
 		return nil, err
 	}
 	defer Wipe(k[:])
-
-	decrypted, err := open(data, k)
-	if err == nil {
-		return decrypted, nil
-	}
-
-	// Fallback to legacy iterations
-	kLegacy, err := key(password, salt, LegacyIterations)
-	if err != nil {
-		return nil, err
-	}
-	defer Wipe(kLegacy[:])
-
-	return open(data, kLegacy)
+	return open(data, k)
 }
 
 // Encrypt returns encrypted data.
