@@ -1,6 +1,6 @@
 # Mr. Secretary (mrs)
 
-[![CI](https://github.com/andornaut/mrs/actions/workflows/release.yml/badge.svg)](https://github.com/andornaut/mrs/actions/workflows/release.yml)
+[![Test](https://github.com/andornaut/mrs/actions/workflows/test.yml/badge.svg)](https://github.com/andornaut/mrs/actions/workflows/test.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/license/MIT)
 
 A command line secrets manager for Linux and macOS. Secrets are organised into
@@ -120,7 +120,7 @@ Names may hold ASCII letters, digits, `_` and `-`, up to 200 characters.
 - Without a terminal there is nothing to prompt from, so pass
   `--password-file`. A trailing newline is trimmed, so `echo 'pw' > pw` works;
   other whitespace is part of the password.
-- Every save first copies the vault to `<name>.<salt>.bak`. After
+- Saving an existing vault first copies it to `<name>.<salt>.bak`. After
   `vault change-password` that backup still opens with the old password until
   the next save, so delete it if that password is no longer trusted.
 
@@ -217,6 +217,8 @@ git tag -a v1.0.0 -m "Release v1.0.0"
 git push origin v1.0.0
 ```
 
-The [release workflow](.github/workflows/release.yml) runs the tests, then
-builds and publishes the binaries with [GoReleaser](https://goreleaser.com/).
-Every push to `main` republishes the rolling `dev` release the same way.
+The [test workflow](.github/workflows/test.yml) runs the tests and
+`golangci-lint` on every branch and pull request. The
+[release workflow](.github/workflows/release.yml) calls it, then builds and
+publishes the binaries with [GoReleaser](https://goreleaser.com/). Every push to
+`main` republishes the rolling `dev` release the same way.
