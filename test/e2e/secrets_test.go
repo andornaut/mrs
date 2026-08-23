@@ -401,3 +401,28 @@ func assertNoPlaintextUnder(t *testing.T, dir string, secrets ...string) {
 		t.Fatalf("failed to walk %s: %s", dir, err)
 	}
 }
+
+func TestDuplicateKeysAreReportedOnImport(t *testing.T) {
+	l := newLab(t)
+	pwFile := l.PasswordFile("pw", "a password")
+
+	// An import is where duplicates arrive, so it is the moment the warning is
+	// most worth having. Hearing it only on the next save would be hearing it
+	// about a file the user no longer has in hand.
+	importFile := l.WriteFile("import.txt", "shared key\nfirst value\n\nshared key\nsecond value\n")
+
+	l.Run("vault", "create", "personal", "-p", pwFile, "-i", importFile).
+		AssertOK().
+		AssertStderr(`2 secrets share the key "shared key"`)
+
+	// The file is stored as it was written, so importing it did not reorder it.
+	l.Run("export", "-v", "personal", "-p", pwFile).
+		AssertOK().
+		AssertStdoutExactly("shared key\nfirst value\n\nshared key\nsecond value\n")
+
+	// An import without duplicates says nothing.
+	clean := l.WriteFile("clean.txt", "a key\na value\n\nb key\nb value\n")
+	l.Run("vault", "create", "other", "-p", pwFile, "-i", clean).
+		AssertOK().
+		AssertNoOutput("share the key")
+}

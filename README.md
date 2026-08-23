@@ -43,7 +43,9 @@ make install
 - Every line is kept as typed: indentation, trailing spaces, and lines that
   begin with a `#`.
 - Secrets are sorted by key, ignoring case, when saved. Two may share a key, and
-  `mrs` warns when they do.
+  `mrs` warns when they do, on import as well as on save.
+- A file given to `vault create --import-file` is stored as it is written, so it
+  keeps its own order until the vault is next saved.
 - `mrs add` and `mrs edit` open `$VISUAL` or `$EDITOR` on three instruction
   lines, which are removed on save wherever they end up in the buffer.
 

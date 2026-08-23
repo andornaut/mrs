@@ -101,12 +101,18 @@ func warnDuplicateKeys(b *secretList) {
 // Validate reports whether mrs can read the given secrets back. Every command
 // that reads a vault parses its contents first, so contents that fail here
 // would leave a vault that only export can read.
+//
+// It warns about duplicate keys as a save does, because it has parsed the
+// secrets and so can. An import is where duplicates arrive, so it is the one
+// moment the warning is most worth having, and a caller that only heard it on
+// the next save would hear it about a file it no longer has.
 func Validate(b []byte) error {
 	parsed, err := parseSecrets(b)
 	if err != nil {
 		return err
 	}
-	parsed.Wipe()
+	defer parsed.Wipe()
+	warnDuplicateKeys(parsed)
 	return nil
 }
 
