@@ -144,3 +144,30 @@ func TestAnUnreadableVaultIsReported(t *testing.T) {
 		AssertStderr("permission denied").
 		AssertNoOutput("the-secret-value")
 }
+
+func TestAVaultDirectoryThatCannotBeReadIsReportedRatherThanReadAsEmpty(t *testing.T) {
+	requireUnprivileged(t)
+	l := newLab(t)
+	pwFile := l.seedVault("personal", "a password", "a key\na value\n")
+	dir := l.VaultDir()
+
+	// A vault directory mrs cannot look in is not an empty one. Answering
+	// "no vaults found" reads as though the vaults were gone, which is the
+	// worst wrong answer a secrets manager can give about a directory that is
+	// still there.
+	chmod(t, dir, 0000)
+	t.Cleanup(func() { _ = os.Chmod(dir, 0700) })
+
+	for _, args := range [][]string{
+		{"vault", "list"},
+		{"vault", "default"},
+		{"export", "-v", "personal", "-p", pwFile},
+		{"vault", "delete", "personal", "--yes"},
+	} {
+		l.Run(args...).
+			AssertFailed().
+			AssertStderr("could not read the vault directory").
+			AssertNoOutput("no vaults found").
+			AssertNoOutput("not found")
+	}
+}

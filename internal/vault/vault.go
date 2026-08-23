@@ -303,11 +303,7 @@ func Exists(name string) (bool, error) {
 	if err := ValidateName(name); err != nil {
 		return false, err
 	}
-	pattern, err := toPath(name + ".*")
-	if err != nil {
-		return false, err
-	}
-	matches, err := filepath.Glob(pattern)
+	matches, err := matchVaultFiles(name + ".")
 	if err != nil {
 		return false, err
 	}
@@ -348,19 +344,12 @@ func Exact(name string) (Vault, error) {
 // If prefix is empty, then it return all vaults.
 // Returns a slice with at least one vault or nil.
 func findVaults(prefix string) ([]Vault, error) {
-	if prefix == "" {
-		prefix = "/*"
-	} else {
+	if prefix != "" {
 		if err := ValidateName(prefix); err != nil {
 			return nil, err
 		}
-		prefix += "*"
 	}
-	pattern, err := toPath(prefix)
-	if err != nil {
-		return nil, err
-	}
-	matchedPaths, err := filepath.Glob(pattern)
+	matchedPaths, err := matchVaultFiles(prefix)
 	if err != nil {
 		return nil, err
 	}
@@ -415,6 +404,33 @@ func findVaults(prefix string) ([]Vault, error) {
 		vs = append(vs, Vault(p))
 	}
 	return vs, nil
+}
+
+// matchVaultFiles returns the paths in the vault directory whose filenames
+// begin with prefix, in filename order.
+//
+// filepath.Glob is not used, because it reports a directory it could not read
+// as no matches at all. A vault directory whose mode or ownership keeps mrs out
+// would be answered with "no vaults found", which is the wrong answer to a
+// directory that could not be looked in and reads as though the vaults were
+// gone.
+func matchVaultFiles(prefix string) ([]string, error) {
+	dir, err := config.GetVaultDir()
+	if err != nil {
+		return nil, err
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, fmt.Errorf("could not read the vault directory %q: %w", dir, err)
+	}
+	var ps []string
+	for _, e := range entries {
+		if !strings.HasPrefix(e.Name(), prefix) {
+			continue
+		}
+		ps = append(ps, path.Join(dir, e.Name()))
+	}
+	return ps, nil
 }
 
 func toPath(n string) (string, error) {
