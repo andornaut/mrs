@@ -59,7 +59,11 @@ func editSecrets(content []byte) (*secretList, error) {
 	}
 	b, err := os.ReadFile(p)
 	if err != nil {
-		return nil, err
+		// Say that the file being read back is the one the editor was given. An
+		// editor is expected to save over that file, so a read that fails here
+		// is one that moved or removed it instead, and the bare error names a
+		// temporary path the user has never seen.
+		return nil, fmt.Errorf("could not read back the file the editor was given: %w", err)
 	}
 	defer crypto.Wipe(b)
 	if showInstructions {

@@ -210,7 +210,11 @@ func TestEditSurvivesAnEditorThatRemovesTheFile(t *testing.T) {
 	pwFile := l.seedVault("personal", "a password", "a key\na value\n")
 	l.Setenv("FAKE_EDITOR_MODE", "delete")
 
-	l.Run("edit", "-v", "personal", "-p", pwFile).AssertFailed()
+	// The error names the file the editor was given, rather than reporting a
+	// temporary path the user has never seen.
+	l.Run("edit", "-v", "personal", "-p", pwFile).
+		AssertFailed().
+		AssertStderr("could not read back the file the editor was given")
 
 	if got := l.export("personal", pwFile); !strings.Contains(got, "a value") {
 		t.Fatalf("expected the secrets to survive, got %q", got)
