@@ -142,20 +142,26 @@ func TestExclusiveLockRepairDoesNotTakeAHeldLock(t *testing.T) {
 	}
 }
 
-// A lock file that cannot be opened is what --force is for, and without it the
-// vault cannot be locked at all.
+// Whatever is left where the lock file should be, --force leaves a lock that
+// can be taken. Where the platform refuses it outright, that is the whole point
+// of the flag; where the platform can lock it anyway, the flag must not make
+// things worse.
 func TestExclusiveLockRepairFixesAnUnusableLockFile(t *testing.T) {
 	for _, tt := range []struct {
-		name   string
-		break_ func(t *testing.T, path string)
+		name string
+		// mayLock reports that some platforms take a lock on what this leaves
+		// behind rather than refusing it. Darwin locks a directory quite
+		// happily; Linux will not open one for writing.
+		mayLock bool
+		break_  func(t *testing.T, path string)
 	}{
-		{"mode 0", func(t *testing.T, p string) {
+		{name: "mode 0", break_: func(t *testing.T, p string) {
 			t.Helper()
 			if err := os.WriteFile(p, []byte{}, 0); err != nil {
 				t.Fatalf("failed to write the lock file: %v", err)
 			}
 		}},
-		{"a directory", func(t *testing.T, p string) {
+		{name: "a directory", mayLock: true, break_: func(t *testing.T, p string) {
 			t.Helper()
 			if err := os.Mkdir(p, 0700); err != nil {
 				t.Fatalf("failed to create the directory: %v", err)
@@ -166,12 +172,21 @@ func TestExclusiveLockRepairFixesAnUnusableLockFile(t *testing.T) {
 			v := newTestVault(t)
 			tt.break_(t, v.lockPath())
 
-			if _, err := v.ExclusiveLockRepair(false); !errors.Is(err, ErrLockUnusable) {
+			switch unlock, err := v.ExclusiveLockRepair(false); {
+			case err == nil:
+				// The platform locked what was there, so the vault is already
+				// excluded and there is nothing to repair.
+				unlock()
+				if !tt.mayLock {
+					t.Fatal("ExclusiveLockRepair(false) = <nil>, want ErrLockUnusable")
+				}
+			case !errors.Is(err, ErrLockUnusable):
 				t.Fatalf("ExclusiveLockRepair(false) = %v, want ErrLockUnusable", err)
 			}
+
 			unlock, err := v.ExclusiveLockRepair(true)
 			if err != nil {
-				t.Fatalf("ExclusiveLockRepair(true) should repair it, got: %v", err)
+				t.Fatalf("ExclusiveLockRepair(true) should leave a lockable lock, got: %v", err)
 			}
 			unlock()
 		})

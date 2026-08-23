@@ -146,16 +146,20 @@ func TestForceRepairsAnUnusableLockFile(t *testing.T) {
 	lockPath := filepath.Join(l.VaultDir(), "work.lock")
 
 	for _, tt := range []struct {
-		name  string
-		spoil func(*testing.T)
+		name string
+		// mayLock reports that some platforms take a lock on what this leaves
+		// behind rather than refusing it. Darwin locks a directory quite
+		// happily; Linux will not open one for writing.
+		mayLock bool
+		spoil   func(*testing.T)
 	}{
-		{"a lock file nothing may open", func(t *testing.T) {
+		{name: "a lock file nothing may open", spoil: func(t *testing.T) {
 			t.Helper()
 			if err := os.WriteFile(lockPath, nil, 0); err != nil {
 				t.Fatalf("failed to write the lock file: %s", err)
 			}
 		}},
-		{"a directory in its place", func(t *testing.T) {
+		{name: "a directory in its place", mayLock: true, spoil: func(t *testing.T) {
 			t.Helper()
 			if err := os.Mkdir(lockPath, 0700); err != nil {
 				t.Fatalf("failed to create the directory: %s", err)
@@ -167,9 +171,15 @@ func TestForceRepairsAnUnusableLockFile(t *testing.T) {
 			tt.spoil(t)
 
 			l.editorAppends("")
-			l.Run("edit", "-v", "work", "-p", pwFile).
-				AssertFailed().
-				AssertStderr("lock file cannot be used")
+			// Where the platform can lock what was left behind, the vault is
+			// already excluded and there is nothing for --force to repair.
+			if r := l.Run("edit", "-v", "work", "-p", pwFile); r.ExitCode == 0 {
+				if !tt.mayLock {
+					t.Fatalf("expected the save to be refused\n%s", r.describe())
+				}
+			} else {
+				r.AssertStderr("lock file cannot be used")
+			}
 			l.Run("edit", "--force", "-v", "work", "-p", pwFile).AssertOK()
 		})
 	}

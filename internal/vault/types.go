@@ -117,7 +117,9 @@ func (v Vault) ExclusiveLockRepair(repair bool) (func(), error) {
 // repairLock makes an unusable lock file usable, without changing what holds
 // it. A file is chmod'd rather than removed, so that its identity survives and
 // a lock another process took on it survives with it. A directory in its place
-// was never a lock and nobody can be holding it, so it is removed.
+// is removed: this is only reached once the platform has refused to lock it, so
+// nothing can be holding it. A platform that locks a directory instead - Darwin
+// does - has already excluded everyone else and never gets here.
 func (v Vault) repairLock() error {
 	if v == "" {
 		return errors.New("cannot repair the lock on a vault with no name")
