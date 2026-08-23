@@ -189,8 +189,9 @@ Path | Holds
 The vault directory is mode 0700. `mrs` narrows permissions it finds wider than
 that and never widens them. One process at a time may write a vault or claim its
 name; reads take no lock, and every write is atomic, so a reader never sees a
-half-written vault. The temporary directory is removed when `mrs` exits,
-including on SIGHUP, SIGINT, SIGQUIT and SIGTERM.
+half-written vault. The temporary directory is created only when secrets are
+decrypted, and removed when `mrs` exits, including on SIGHUP, SIGINT, SIGQUIT
+and SIGTERM.
 
 ## Configuration
 

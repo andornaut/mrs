@@ -13,10 +13,15 @@ import (
 // otherwise get a directory that the cleanup on exit never removes. The other
 // two resolve an environment variable and create a directory that may already
 // exist, which is the same answer every time it is asked for.
+//
+// A mutex rather than a sync.Once, because CreatedTempDir has to read what was
+// remembered without asking for a directory to be created. The signal handler
+// reads it while the command may still be inside GetTempDir.
 var (
+	tempDirMu   sync.Mutex
 	tempDir     string
 	errTempDir  error
-	tempDirOnce sync.Once
+	tempDirDone bool
 )
 
 // DefaultVaultName returns the vault named by $MRS_DEFAULT_VAULT_NAME, or the
@@ -131,33 +136,51 @@ func GetVaultDir() (string, error) {
 // GetTempDir returns the directory where mrs stores temporary files.
 // It creates the directory if it does not exist.
 func GetTempDir() (string, error) {
-	tempDirOnce.Do(func() {
-		p := os.Getenv("MRS_TEMP")
-		if p == "" {
-			p = os.Getenv("XDG_RUNTIME_DIR")
-		}
-		if p == "" {
-			p = os.TempDir()
-		}
-		p = path.Join(p, "mrs")
-		if err := os.MkdirAll(p, 0700); err != nil {
-			errTempDir = err
-			return
-		}
-		p, err := os.MkdirTemp(p, "")
-		if err != nil {
-			errTempDir = err
-			return
-		}
-		tempDir = p
-	})
-	return tempDir, errTempDir
+	tempDirMu.Lock()
+	defer tempDirMu.Unlock()
+	if tempDirDone {
+		return tempDir, errTempDir
+	}
+	tempDirDone = true
+
+	p := os.Getenv("MRS_TEMP")
+	if p == "" {
+		p = os.Getenv("XDG_RUNTIME_DIR")
+	}
+	if p == "" {
+		p = os.TempDir()
+	}
+	p = path.Join(p, "mrs")
+	if err := os.MkdirAll(p, 0700); err != nil {
+		errTempDir = err
+		return "", errTempDir
+	}
+	p, err := os.MkdirTemp(p, "")
+	if err != nil {
+		errTempDir = err
+		return "", errTempDir
+	}
+	tempDir = p
+	return tempDir, nil
+}
+
+// CreatedTempDir returns the temporary directory this run created, or the empty
+// string if it never created one. Cleanup asks for this rather than for
+// GetTempDir, which creates: a run that decrypts nothing would otherwise make a
+// directory only to remove it, and a run whose directory could not be made
+// would be reported as having left secrets behind.
+func CreatedTempDir() string {
+	tempDirMu.Lock()
+	defer tempDirMu.Unlock()
+	return tempDir
 }
 
 // Reset forgets the temporary directory, so that the next call creates a new
 // one. This is only used for testing.
 func Reset() {
+	tempDirMu.Lock()
+	defer tempDirMu.Unlock()
 	tempDir = ""
 	errTempDir = nil
-	tempDirOnce = sync.Once{}
+	tempDirDone = false
 }

@@ -18,9 +18,13 @@ var ErrDirSync = errors.New("the parent directory could not be synced")
 // RemoveTempDir removes the temporary directory if it was created.
 // This should be called via defer in main.go.
 func RemoveTempDir() error {
-	p, err := config.GetTempDir()
-	if err != nil {
-		return err
+	p := config.CreatedTempDir()
+	if p == "" {
+		// No directory was created, so nothing was written to one and there is
+		// nothing to remove. Asking GetTempDir instead would create a directory
+		// on every run that never decrypted anything, and would report a
+		// directory that could not be created as secrets left on disk.
+		return nil
 	}
 	return os.RemoveAll(p)
 }
