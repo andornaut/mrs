@@ -3,6 +3,8 @@ package cli
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
 
 	"github.com/spf13/cobra"
 )
@@ -49,11 +51,28 @@ func NoArgs(c *cobra.Command, args []string) error {
 // names neither. A maxArgs below zero means there is no upper bound.
 func RequireArgs(minArgs, maxArgs int, want string) cobra.PositionalArgs {
 	return func(c *cobra.Command, args []string) error {
-		if len(args) < minArgs || (maxArgs >= 0 && len(args) > maxArgs) {
+		if len(args) < minArgs {
 			return Usagef("%s requires %s", c.CommandPath(), want)
+		}
+		if maxArgs >= 0 && len(args) > maxArgs {
+			// Say how many arrived, as NoArgs does. Too many operands is
+			// usually a name the shell split on a space, and a message that
+			// only restates what the command wanted does not show that.
+			return Usagef("%s requires %s, but got %d arguments: %s",
+				c.CommandPath(), want, len(args), strings.Join(quoted(args), " "))
 		}
 		return nil
 	}
+}
+
+// quoted returns the arguments, each quoted, so that the one carrying a space
+// can be told from two that do not.
+func quoted(args []string) []string {
+	qs := make([]string, 0, len(args))
+	for _, a := range args {
+		qs = append(qs, strconv.Quote(a))
+	}
+	return qs
 }
 
 // Plural returns word, pluralised for n.

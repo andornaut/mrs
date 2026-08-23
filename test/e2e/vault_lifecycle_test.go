@@ -746,6 +746,29 @@ func TestCompletionIsAvailableButNotListed(t *testing.T) {
 	l.Run("completion", "bash").AssertOK().AssertStdout("bash completion")
 }
 
+func TestTooManyOperandsSayHowManyArrived(t *testing.T) {
+	l := newLab(t)
+
+	// A name the shell split on a space is the usual way a command is given
+	// more operands than it takes, and a message that only restates what was
+	// wanted does not show that it happened.
+	l.Run("vault", "create", "my", "vault").
+		AssertUsageError().
+		AssertStderr("requires a name for the new vault, but got 2 arguments: \"my\" \"vault\"")
+	l.Run("vault", "rename", "a", "b", "c").
+		AssertUsageError().
+		AssertStderr("but got 3 arguments")
+	l.Run("vault", "delete", "a", "b").
+		AssertUsageError().
+		AssertStderr("but got 2 arguments")
+
+	// Too few is unchanged: there is nothing to report back.
+	l.Run("vault", "create").
+		AssertUsageError().
+		AssertStderr("mrs vault create requires a name for the new vault").
+		AssertNoOutput("arguments")
+}
+
 func TestADirectoryWhereAVaultShouldBeIsStillAVault(t *testing.T) {
 	l := newLab(t)
 	pwFile := l.createVault("personal", "a password")
