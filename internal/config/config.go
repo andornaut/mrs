@@ -32,18 +32,23 @@ func DefaultVaultName() string {
 }
 
 // Editor returns the command to run to launch a text editor, as a program
-// followed by its arguments. $EDITOR commonly carries arguments - "vim -n",
-// "code -w", "emacsclient -t" - so it is split rather than treated as a single
-// program name. Arguments are split on whitespace, honouring single quotes,
-// double quotes and backslash escapes, so that a program whose path contains a
-// space can be quoted. The editor is executed directly rather than through a
-// shell, so no shell metacharacters are interpreted.
+// followed by its arguments: $VISUAL, else $EDITOR, else nano. $VISUAL is read
+// first because that is the order git, crontab and sudoedit read them in, and
+// an editor chosen for one of those is the editor a user expects here.
+//
+// Either variable commonly carries arguments - "vim -n", "code -w",
+// "emacsclient -t" - so it is split rather than treated as a single program
+// name. Arguments are split on whitespace, honouring single quotes, double
+// quotes and backslash escapes, so that a program whose path contains a space
+// can be quoted. The editor is executed directly rather than through a shell,
+// so no shell metacharacters are interpreted.
 func Editor() []string {
-	argv := splitArgs(os.Getenv("EDITOR"))
-	if len(argv) == 0 {
-		return []string{"nano"}
+	for _, name := range []string{"VISUAL", "EDITOR"} {
+		if argv := splitArgs(os.Getenv(name)); len(argv) > 0 {
+			return argv
+		}
 	}
-	return argv
+	return []string{"nano"}
 }
 
 func splitArgs(s string) []string {

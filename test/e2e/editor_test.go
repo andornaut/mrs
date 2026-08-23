@@ -99,3 +99,33 @@ func TestInstructionsAreRemovedWhereverTheyEndUp(t *testing.T) {
 		AssertStdoutExactly("top key\ntop value\n").
 		AssertNoOutput("# Secrets are separated by blank lines.")
 }
+
+func TestVisualIsPreferredToEditor(t *testing.T) {
+	l := newLab(t)
+	pwFile := l.createVault("personal", "a password")
+
+	// $VISUAL first, as git, crontab and sudoedit read them.
+	l.Setenv("VISUAL", editorBin+" --visual")
+	l.Setenv("EDITOR", "no-such-editor-exists")
+	l.Setenv("FAKE_EDITOR_EXPECT_ARGS", "--visual")
+	l.Setenv("FAKE_EDITOR_MODE", "append")
+	l.Setenv("FAKE_EDITOR_CONTENT", "a key\na value\n")
+
+	l.Run("edit", "-v", "personal", "-p", pwFile).AssertOK()
+
+	if got := l.export("personal", pwFile); !strings.Contains(got, "a value") {
+		t.Fatalf("expected the edit to be saved, got %q", got)
+	}
+
+	// An empty $VISUAL is no editor at all, so $EDITOR is what is left.
+	l.Setenv("VISUAL", "")
+	l.Setenv("EDITOR", editorBin+" --editor")
+	l.Setenv("FAKE_EDITOR_EXPECT_ARGS", "--editor")
+	l.Setenv("FAKE_EDITOR_CONTENT", "b key\nb value\n")
+
+	l.Run("edit", "-v", "personal", "-p", pwFile).AssertOK()
+
+	if got := l.export("personal", pwFile); !strings.Contains(got, "b value") {
+		t.Fatalf("expected the edit to be saved, got %q", got)
+	}
+}

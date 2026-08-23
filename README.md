@@ -4,8 +4,8 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/license/MIT)
 
 A command line secrets manager for Linux and macOS. Secrets are organised into
-encrypted vaults: one file each, edited in `$EDITOR`, searched with regular
-expressions.
+encrypted vaults: one file each, edited in `$VISUAL` or `$EDITOR`, searched
+with regular expressions.
 
 ## Installation
 
@@ -44,8 +44,8 @@ make install
   begin with a `#`.
 - Secrets are sorted by key, ignoring case, when saved. Two may share a key, and
   `mrs` warns when they do.
-- `mrs add` and `mrs edit` open `$EDITOR` on three instruction lines, which are
-  removed on save wherever they end up in the buffer.
+- `mrs add` and `mrs edit` open `$VISUAL` or `$EDITOR` on three instruction
+  lines, which are removed on save wherever they end up in the buffer.
 
 ## Commands
 
@@ -204,11 +204,12 @@ any other; only the commands that have to read them fail.
 
 Environment variable | Description
 --- | ---
-`EDITOR` | The editor `add` and `edit` open (default: `nano`). May carry arguments, such as `vim -n`. Quote a path that contains spaces.
+`EDITOR` | The editor `add` and `edit` open, if `$VISUAL` is unset (default: `nano`). May carry arguments, such as `vim -n`. Quote a path that contains spaces.
 `MRS_DEFAULT_VAULT_NAME` | The vault to use when `--vault` is not given. Must name one exactly (default: the only vault, if there is just one).
 `MRS_HIDE_EDITOR_INSTRUCTIONS` | If set to any value, omit the instruction lines from editor sessions.
 `MRS_HOME` | Where vaults are stored (default: `$XDG_DATA_HOME/mrs`, else `$HOME/.local/share/mrs`).
 `MRS_TEMP` | Where decrypted secrets are written while an editor is open (default: `$XDG_RUNTIME_DIR`, else the system temporary directory).
+`VISUAL` | The editor `add` and `edit` open, in preference to `$EDITOR`. Same form.
 
 ## Encryption
 

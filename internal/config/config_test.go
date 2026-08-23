@@ -120,6 +120,33 @@ func TestEditor(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("VISUAL", "")
+			t.Setenv("EDITOR", tt.editor)
+			got := Editor()
+			if !slices.Equal(got, tt.expected) {
+				t.Errorf("Editor() = %q, expected %q", got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestEditorPrefersVisual(t *testing.T) {
+	tests := []struct {
+		name     string
+		visual   string
+		editor   string
+		expected []string
+	}{
+		{"Visual wins", "vim", "ed", []string{"vim"}},
+		{"Visual only", "vim -n", "", []string{"vim", "-n"}},
+		{"Empty visual falls through", "", "ed", []string{"ed"}},
+		{"Whitespace visual falls through", "   ", "ed", []string{"ed"}},
+		{"Neither", "", "", []string{"nano"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("VISUAL", tt.visual)
 			t.Setenv("EDITOR", tt.editor)
 			got := Editor()
 			if !slices.Equal(got, tt.expected) {

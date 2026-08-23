@@ -120,7 +120,7 @@ func init() {
 	add := &cobra.Command{
 		Use:                   "add",
 		Short:                 "Add secrets to a vault",
-		Long:                  "Use an editor ($EDITOR) to add secrets to a vault",
+		Long:                  "Use an editor ($VISUAL or $EDITOR) to add secrets to a vault",
 		Args:                  noEditorArgs,
 		DisableFlagsInUseLine: true,
 		RunE: func(c *cobra.Command, args []string) error {
@@ -142,7 +142,7 @@ func init() {
 	edit := &cobra.Command{
 		Use:                   "edit",
 		Short:                 "Edit secrets in a vault",
-		Long:                  "Use an editor ($EDITOR) to edit the secrets in a vault",
+		Long:                  "Use an editor ($VISUAL or $EDITOR) to edit the secrets in a vault",
 		Args:                  noEditorArgs,
 		DisableFlagsInUseLine: true,
 		RunE: func(c *cobra.Command, args []string) error {
