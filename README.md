@@ -193,6 +193,13 @@ half-written vault. The temporary directory is created only when secrets are
 decrypted, and removed when `mrs` exits, including on SIGHUP, SIGINT, SIGQUIT
 and SIGTERM.
 
+A file in the vault directory that is not shaped like a vault is named on stderr
+and otherwise left alone. A vault that mrs cannot read is a different thing: a
+symlink whose target is not there, a directory where a file should be, or a
+vault written by a release that derived its key differently. Those are listed
+with a warning saying why, keep their names, and can be renamed or deleted like
+any other; only the commands that have to read them fail.
+
 ## Configuration
 
 Environment variable | Description

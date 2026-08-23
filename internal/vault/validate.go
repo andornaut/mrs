@@ -83,16 +83,20 @@ func ValidatePassword(p []byte) error {
 	return nil
 }
 
+// validatePath reports whether the entry at p is a vault this version of mrs
+// can read. Its errors are phrased as reasons rather than as complete
+// sentences, because findVaults reports them as the reason a vault it lists
+// cannot be read.
 func validatePath(p string) error {
 	fi, err := os.Stat(p)
 	if err != nil {
-		return fmt.Errorf("invalid vault path %q: %w", p, err)
+		return err
 	}
 	if err := validateFilename(fi.Name()); err != nil {
 		return err
 	}
 	if fi.IsDir() {
-		return fmt.Errorf("vault path %q should be a file, but is a directory", p)
+		return errors.New("a vault is a file, and this is a directory")
 	}
 	return nil
 }

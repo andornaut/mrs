@@ -228,6 +228,62 @@ func TestListWarnsAboutAVaultFileRenamedByHand(t *testing.T) {
 		AssertStderr("personal.backup")
 }
 
+// A vault kept on a drive that is not mounted is a symlink to a file that is
+// not there. It stays a vault: listed, holding its name, and removable. Only
+// the commands that have to read it fail, and a warning says why.
+func TestAVaultWhoseTargetIsAwayIsStillAVault(t *testing.T) {
+	l := newLab(t)
+	pwFile := l.createVault("personal", "a password")
+	l.createVault("away", "a password")
+
+	awayPath := l.VaultPath("away")
+	moved := filepath.Join(filepath.Dir(l.VaultDir()), filepath.Base(awayPath))
+	if err := os.Rename(awayPath, moved); err != nil {
+		t.Fatalf("failed to move the vault off the vault directory: %s", err)
+	}
+	if err := os.Symlink(moved, awayPath); err != nil {
+		t.Fatalf("failed to link the moved vault: %s", err)
+	}
+	// Both are readable while the target is in place.
+	l.Run("vault", "list").AssertOK().AssertStdoutEquals("away\npersonal")
+
+	// Take the target away, as unmounting the drive would.
+	if err := os.Rename(moved, moved+".unmounted"); err != nil {
+		t.Fatalf("failed to take the target away: %s", err)
+	}
+
+	// It is still listed, and the warning says why it cannot be read.
+	l.Run("vault", "list").
+		AssertOK().
+		AssertStdoutEquals("away\npersonal").
+		AssertStderr("symlink to a file that is not there")
+
+	// The name is still taken, by create and by rename alike.
+	l.Run("vault", "create", "away", "-p", pwFile).
+		AssertFailed().
+		AssertStderr("already exists")
+	l.Run("vault", "rename", "personal", "away").
+		AssertFailed().
+		AssertStderr("already exists")
+
+	// Reading it fails, as reading a vault mrs cannot decrypt does.
+	l.Run("export", "-v", "away", "-p", pwFile).AssertFailed()
+
+	// Put it back, and there is one vault under the name, not two.
+	if err := os.Rename(moved+".unmounted", moved); err != nil {
+		t.Fatalf("failed to put the target back: %s", err)
+	}
+	l.Run("vault", "list").AssertOK().AssertStdoutEquals("away\npersonal")
+
+	// And while it is away it can be got rid of, which is the way out of a
+	// link whose target is never coming back.
+	if err := os.Rename(moved, moved+".unmounted"); err != nil {
+		t.Fatalf("failed to take the target away again: %s", err)
+	}
+	l.Run("vault", "delete", "away", "--yes").AssertOK()
+	l.Run("vault", "list").AssertOK().AssertStdoutEquals("personal")
+}
+
 func TestListIgnoresLockBackupAndTempFiles(t *testing.T) {
 	l := newLab(t)
 	pwFile := l.createVault("personal", "a password")
@@ -688,4 +744,39 @@ func TestCompletionIsAvailableButNotListed(t *testing.T) {
 
 	l.Run("help").AssertOK().AssertNoOutput("completion")
 	l.Run("completion", "bash").AssertOK().AssertStdout("bash completion")
+}
+
+func TestADirectoryWhereAVaultShouldBeIsStillAVault(t *testing.T) {
+	l := newLab(t)
+	pwFile := l.createVault("personal", "a password")
+
+	// A directory carrying a vault's name is not readable as a vault, and is
+	// treated like every other vault mrs cannot read rather than failing the
+	// whole listing: doing that would take out "personal" over an entry that
+	// has nothing to do with it, and leave no way to remove the entry with mrs.
+	broken := filepath.Join(l.VaultDir(), "broken."+strings.Repeat("B", 32))
+	if err := os.Mkdir(broken, 0700); err != nil {
+		t.Fatalf("failed to create the directory: %s", err)
+	}
+
+	l.Run("vault", "list").
+		AssertOK().
+		AssertStdoutEquals("broken\npersonal").
+		AssertStderr("vault broken cannot be read: a vault is a file, and this is a directory")
+
+	// Every other vault is reachable, as it would be if the entry were not
+	// there.
+	l.Run("export", "-v", "personal", "-p", pwFile).AssertOK()
+
+	// The name is taken, as a vault's name is.
+	l.Run("vault", "create", "broken", "-p", pwFile).
+		AssertFailed().
+		AssertStderr("already exists")
+
+	// Reading it fails, as reading any vault mrs cannot read does.
+	l.Run("export", "-v", "broken", "-p", pwFile).AssertFailed()
+
+	// And it can be removed with mrs, which is the way out.
+	l.Run("vault", "delete", "broken", "--yes").AssertOK()
+	l.Run("vault", "list").AssertOK().AssertStdoutEquals("personal")
 }

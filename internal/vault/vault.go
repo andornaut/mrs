@@ -384,16 +384,33 @@ func findVaults(prefix string) ([]Vault, error) {
 			}
 			continue
 		}
-		// A file that has a vault-shaped name but cannot be stat'd or is a
-		// directory is a real problem: surface it instead of hiding the vault.
-		// A vault can vanish between the glob and this stat if another process
-		// deletes it concurrently, so skip that case rather than failing the
-		// whole listing.
+		// A vault mrs cannot read is a vault like any other: it is listed,
+		// holds its name, and can be renamed or deleted; only the commands that
+		// have to read it fail, exactly as they do for a vault written at a key
+		// derivation mrs no longer supports. The warning says why, because the
+		// entry is there and the reason it cannot be read is not.
+		//
+		// Failing the whole listing instead would take out every other vault
+		// over one bad entry, and leave no way to remove the bad entry with
+		// mrs.
 		if err := validatePath(p); err != nil {
+			// The one entry that is not listed is one that is no longer there:
+			// a vault can vanish between reading the directory and the stat if
+			// another process deletes it, which is nothing to report and
+			// nothing to list. A path still there as a symlink is the other
+			// case: the vault is present and what it points at is not, as when
+			// the drive it lives on is not mounted.
 			if errors.Is(err, os.ErrNotExist) {
-				continue
+				if _, lstatErr := os.Lstat(p); lstatErr != nil {
+					continue
+				}
+				warnf("vault %s is a symlink to a file that is not there, so it cannot be read",
+					Vault(p).Name())
+			} else {
+				warnf("vault %s cannot be read: %s", Vault(p).Name(), err)
 			}
-			return nil, err
+			vs = append(vs, Vault(p))
+			continue
 		}
 		vs = append(vs, Vault(p))
 	}

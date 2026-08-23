@@ -205,6 +205,44 @@ func TestCreateAndRenameDoNotBreakANameLock(t *testing.T) {
 	}
 }
 
+// A vault whose file is a symlink to a target that is not there - a drive that
+// is not mounted, a store moved elsewhere - is a vault like any other. It is
+// listed and it holds its name; only the commands that have to read it fail,
+// as they do for a vault at a key derivation mrs no longer supports.
+func TestADanglingVaultSymlinkIsAVaultLikeAnyOther(t *testing.T) {
+	dir := newVaultDir(t)
+	writeFile(t, dir, "here."+testSalt)
+	if err := os.Symlink(filepath.Join(dir, "not-mounted"), filepath.Join(dir, "away."+testSalt)); err != nil {
+		t.Fatalf("failed to create the dangling symlink: %v", err)
+	}
+
+	vs, err := All()
+	if err != nil {
+		t.Fatalf("All() failed: %v", err)
+	}
+	if got := names(vs); len(got) != 2 || got[0] != "away" || got[1] != "here" {
+		t.Errorf("expected both vaults to be listed, got %v", got)
+	}
+	// Naming it resolves, so that delete and rename can reach it.
+	if _, exactErr := Exact("away"); exactErr != nil {
+		t.Errorf("expected Exact() to find the dangling vault, got %v", exactErr)
+	}
+
+	taken, err := Exists("away")
+	if err != nil {
+		t.Fatalf("Exists() failed: %v", err)
+	}
+	if !taken {
+		t.Error("expected the dangling vault to hold its name")
+	}
+	if _, err := Create("away", []byte("a password"), nil, false); err == nil {
+		t.Error("expected Create() to refuse a name a dangling vault holds")
+	}
+	if err := Rename(Vault(filepath.Join(dir, "here."+testSalt)), "away", false); err == nil {
+		t.Error("expected Rename() to refuse a name a dangling vault holds")
+	}
+}
+
 // Exists asks of the filename, so the files that live alongside a vault never
 // make its name look taken. A name whose vault was deleted has to be free
 // again, and delete leaves the lock file behind.
