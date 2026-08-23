@@ -104,6 +104,24 @@ func (o *vaultOptions) runChangePassword(name string) error {
 	return nil
 }
 
+// named returns what these commands print for a vault: its path when --path was
+// given, and its name otherwise.
+func (o *vaultOptions) named(v vault.Vault) string {
+	if o.isPath {
+		return v.Path()
+	}
+	return v.Name()
+}
+
+// printLine writes one line of the output a caller consumes, and reports a
+// write it could not make. fmt.Println discards that error, so a listing sent
+// to a full disk would be lost while the command reported success, which is
+// what export and search already refuse to do.
+func printLine(s string) error {
+	_, err := fmt.Fprintln(os.Stdout, s)
+	return err
+}
+
 func init() {
 	opts := &vaultOptions{}
 
@@ -201,12 +219,7 @@ func init() {
 			if err != nil {
 				return err
 			}
-			if opts.isPath {
-				fmt.Println(v.Path())
-			} else {
-				fmt.Println(v.Name())
-			}
-			return nil
+			return printLine(opts.named(v))
 		},
 	}
 
@@ -221,10 +234,8 @@ func init() {
 				return err
 			}
 			for _, v := range vaults {
-				if opts.isPath {
-					fmt.Println(v.Path())
-				} else {
-					fmt.Println(v.Name())
+				if err := printLine(opts.named(v)); err != nil {
+					return err
 				}
 			}
 			return nil
