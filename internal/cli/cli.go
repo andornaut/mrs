@@ -7,6 +7,8 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+
+	"github.com/andornaut/mrs/internal/vault"
 )
 
 // UsageError marks a wrong invocation: an unknown command, an unknown flag, or
@@ -81,4 +83,32 @@ func Plural(n int, word string) string {
 		return word
 	}
 	return word + "s"
+}
+
+// CompleteVaultNames offers the names of the vaults that exist, for an operand
+// or a flag that names one. A shell asks for completions on every Tab, so a
+// failure offers nothing rather than putting an error on the command line.
+// Filenames are never offered alongside: a vault is named, not pathed.
+func CompleteVaultNames(_ *cobra.Command, _ []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	vs, err := vault.All()
+	if err != nil {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	names := make([]string, 0, len(vs))
+	for _, v := range vs {
+		if strings.HasPrefix(v.Name(), toComplete) {
+			names = append(names, v.Name())
+		}
+	}
+	return names, cobra.ShellCompDirectiveNoFileComp
+}
+
+// CompleteFirstVaultName offers vault names for the first operand only, for a
+// command whose later operands name no vault, as rename's target is a name that
+// no vault has yet.
+func CompleteFirstVaultName(c *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	if len(args) > 0 {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	return CompleteVaultNames(c, args, toComplete)
 }

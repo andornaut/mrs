@@ -213,6 +213,9 @@ func init() {
 	for _, c := range []*cobra.Command{add, edit, search, export} {
 		c.Flags().StringVarP(&opts.namePrefix, "vault", "v", "", "name of a vault, or the start of one")
 		c.Flags().StringVarP(&opts.passwordFile, "password-file", "p", "", "path to a file that contains your password")
+		// The only error this returns is a flag that was not registered, which
+		// the line above just registered.
+		_ = c.RegisterFlagCompletionFunc("vault", cli.CompleteVaultNames)
 	}
 	// --force has no short form, because it is not the flag a hurried -f is
 	// reaching for: it repairs a lock rather than overwriting anything, and is

@@ -746,6 +746,56 @@ func TestCompletionIsAvailableButNotListed(t *testing.T) {
 	l.Run("completion", "bash").AssertOK().AssertStdout("bash completion")
 }
 
+func TestCompletionOffersVaultNames(t *testing.T) {
+	l := newLab(t)
+	l.createVault("work", "a password")
+	l.createVault("work-archive", "a password")
+	l.createVault("personal", "a password")
+
+	// Every command that names a vault offers the names there are, whether it
+	// takes the name as an operand or as --vault.
+	for _, args := range [][]string{
+		{"__complete", "vault", "delete", ""},
+		{"__complete", "vault", "change-password", ""},
+		{"__complete", "vault", "rename", ""},
+		{"__complete", "edit", "-v", ""},
+		{"__complete", "export", "-v", ""},
+	} {
+		l.Run(args...).
+			AssertOK().
+			AssertStdout("personal\nwork\nwork-archive").
+			AssertStderr("ShellCompDirectiveNoFileComp")
+	}
+
+	// A prefix narrows them, as it does when the command runs.
+	l.Run("__complete", "vault", "delete", "work").
+		AssertOK().
+		AssertStdout("work\nwork-archive").
+		AssertNoOutput("personal")
+
+	// --vault is completed after a search term, which is an operand of its own.
+	l.Run("__complete", "search", "aws", "-v", "work").
+		AssertOK().
+		AssertStdout("work\nwork-archive")
+
+	// A name that no vault has yet is neither a vault name nor a file: create's
+	// operand, and rename's target.
+	for _, args := range [][]string{
+		{"__complete", "vault", "create", ""},
+		{"__complete", "vault", "rename", "work", ""},
+	} {
+		l.Run(args...).
+			AssertOK().
+			AssertNoOutput("personal").
+			AssertStderr("ShellCompDirectiveNoFileComp")
+	}
+
+	// A password file is a file, so the shell goes on completing paths for it.
+	l.Run("__complete", "search", "-p", "").
+		AssertOK().
+		AssertStderr("ShellCompDirectiveDefault")
+}
+
 func TestTooManyOperandsSayHowManyArrived(t *testing.T) {
 	l := newLab(t)
 

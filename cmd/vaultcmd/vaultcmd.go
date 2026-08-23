@@ -126,9 +126,12 @@ func init() {
 	opts := &vaultOptions{}
 
 	create := &cobra.Command{
-		Use:                   "create <name>",
-		Short:                 "Create a vault",
-		Args:                  cli.RequireArgs(1, 1, "a name for the new vault"),
+		Use:   "create <name>",
+		Short: "Create a vault",
+		Args:  cli.RequireArgs(1, 1, "a name for the new vault"),
+		// A vault that does not exist yet has no name to offer, and is not a
+		// file either.
+		ValidArgsFunction:     cobra.NoFileCompletions,
 		DisableFlagsInUseLine: true,
 		RunE: func(c *cobra.Command, args []string) error {
 			name := args[0]
@@ -173,6 +176,7 @@ func init() {
 		Use:                   "change-password <name>",
 		Short:                 "Change a vault's password",
 		Args:                  cli.RequireArgs(1, 1, "the name of a vault"),
+		ValidArgsFunction:     cli.CompleteVaultNames,
 		DisableFlagsInUseLine: true,
 		RunE: func(c *cobra.Command, args []string) error {
 			return opts.runChangePassword(args[0])
@@ -183,6 +187,7 @@ func init() {
 		Use:                   "delete <name>",
 		Short:                 "Delete a vault",
 		Args:                  cli.RequireArgs(1, 1, "the name of a vault"),
+		ValidArgsFunction:     cli.CompleteVaultNames,
 		DisableFlagsInUseLine: true,
 		RunE: func(c *cobra.Command, args []string) error {
 			v, unlock, err := opts.locked(args[0])
@@ -243,9 +248,11 @@ func init() {
 	}
 
 	rename := &cobra.Command{
-		Use:                   "rename <source-name> <target-name>",
-		Short:                 "Rename a vault",
-		Args:                  cli.RequireArgs(2, 2, "a source name and a target name"),
+		Use:   "rename <source-name> <target-name>",
+		Short: "Rename a vault",
+		Args:  cli.RequireArgs(2, 2, "a source name and a target name"),
+		// The source names a vault; the target is a name no vault has yet.
+		ValidArgsFunction:     cli.CompleteFirstVaultName,
 		DisableFlagsInUseLine: true,
 		RunE: func(c *cobra.Command, args []string) error {
 			sourceName, targetName := args[0], args[1]
