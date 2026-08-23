@@ -796,6 +796,20 @@ func TestCompletionOffersVaultNames(t *testing.T) {
 		AssertStderr("ShellCompDirectiveDefault")
 }
 
+func TestListSortsNamesIgnoringCase(t *testing.T) {
+	l := newLab(t)
+	for _, name := range []string{"zebra", "Apple", "mango", "_under", "Banana"} {
+		l.createVault(name, "a password")
+	}
+
+	// Sorted as secrets are sorted by key. Filename order would put every
+	// uppercase name ahead of every lowercase one, and "_under" between
+	// "Banana" and "mango".
+	l.Run("vault", "list").
+		AssertOK().
+		AssertStdoutEquals("_under\nApple\nBanana\nmango\nzebra")
+}
+
 func TestTooManyOperandsSayHowManyArrived(t *testing.T) {
 	l := newLab(t)
 

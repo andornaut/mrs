@@ -6,6 +6,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/andornaut/mrs/internal/config"
@@ -101,11 +102,10 @@ func resolve(prefix string) (Vault, []Vault, error) {
 	return vs[0], vs, nil
 }
 
-// named returns the vault whose name is exactly name. A vault is matched by a
-// glob on its name, so a shorter name is always matched alongside every longer
-// one that begins with it. Without preferring the exact match, a vault named
-// "work" is read and written as "work-archive" whenever both exist, because a
-// "-" sorts before the "." that separates a name from its salt.
+// named returns the vault whose name is exactly name, which a prefix match
+// finds alongside every longer name that begins with it. The exact match is
+// chosen rather than the first of them, so that a vault named "work" is never
+// read or written as "work-archive" whenever both exist.
 func named(vs []Vault, name string) (Vault, bool) {
 	for _, v := range vs {
 		if v.Name() == name {
@@ -403,6 +403,18 @@ func findVaults(prefix string) ([]Vault, error) {
 		}
 		vs = append(vs, Vault(p))
 	}
+	// Sorted by name ignoring case, as secrets are sorted by key, so that both
+	// listings read the same way. Filename order would put every uppercase name
+	// ahead of every lowercase one, and "_under" between "Banana" and "mango".
+	// Names that differ only in case fall back to byte order, so that the order
+	// is total and a listing does not change between runs.
+	slices.SortFunc(vs, func(a, b Vault) int {
+		an, bn := a.Name(), b.Name()
+		if c := strings.Compare(strings.ToLower(an), strings.ToLower(bn)); c != 0 {
+			return c
+		}
+		return strings.Compare(an, bn)
+	})
 	return vs, nil
 }
 

@@ -3,6 +3,7 @@ package vault
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/andornaut/mrs/internal/config"
@@ -202,6 +203,43 @@ func TestCreateAndRenameDoNotBreakANameLock(t *testing.T) {
 		if name == "dst."+testSalt || (len(name) > 4 && name[:4] == "dst." && name != "dst.lock") {
 			t.Errorf("expected no vault file under the locked name, found %q", name)
 		}
+	}
+}
+
+// Vaults are listed sorted by name ignoring case, as secrets are sorted by key.
+// Filename order would put every uppercase name ahead of every lowercase one,
+// and "_under" between "Banana" and "mango".
+func TestAllSortsNamesIgnoringCase(t *testing.T) {
+	dir := newVaultDir(t)
+	for _, name := range []string{"zebra", "Apple", "mango", "_under", "Banana", "App"} {
+		writeFile(t, dir, name+"."+testSalt)
+	}
+
+	vs, err := All()
+	if err != nil {
+		t.Fatalf("All() failed: %v", err)
+	}
+	want := []string{"_under", "App", "Apple", "Banana", "mango", "zebra"}
+	if got := names(vs); !slices.Equal(got, want) {
+		t.Errorf("expected %v, got %v", want, got)
+	}
+}
+
+// Names that differ only in case fall back to byte order, so that a listing is
+// the same on every run.
+func TestAllOrdersNamesThatDifferOnlyInCase(t *testing.T) {
+	dir := newVaultDir(t)
+	for _, name := range []string{"app", "APP", "App"} {
+		writeFile(t, dir, name+"."+testSalt)
+	}
+
+	vs, err := All()
+	if err != nil {
+		t.Fatalf("All() failed: %v", err)
+	}
+	want := []string{"APP", "App", "app"}
+	if got := names(vs); !slices.Equal(got, want) {
+		t.Errorf("expected %v, got %v", want, got)
 	}
 }
 

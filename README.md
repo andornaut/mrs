@@ -70,6 +70,7 @@ Command | Does
 
 `search` matches keys only, unless `--full`. Matching is case insensitive, and
 arguments are joined, so `mrs search bank account` matches `bank account`.
+`vault list` prints names sorted ignoring case, as secrets are sorted by key.
 `mrs --version` prints the version, and `-h`, `--help` works on every command.
 
 ## Flags
