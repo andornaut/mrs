@@ -53,6 +53,57 @@ func (o *vaultOptions) locked(name string) (vault.Vault, func(), error) {
 	return v, unlock, nil
 }
 
+// runChangePassword re-keys a vault. What was given on the command line is
+// checked before anything is asked for, as create checks its name and its
+// import file.
+func (o *vaultOptions) runChangePassword(name string) error {
+	v, unlock, err := o.locked(name)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+
+	// A new password given as a file is read and checked before the current one
+	// is asked for: a change that cannot succeed must not first make the user
+	// type the password they already have. One that is typed cannot be checked
+	// before it is typed, so that order is unchanged.
+	var newPassword []byte
+	if o.newPasswordFile != "" {
+		newPassword, err = prompt.GivenOrPromptNewPassword(o.newPasswordFile)
+		if err != nil {
+			return err
+		}
+		defer crypto.Wipe(newPassword)
+		// Advisory: vault.ChangePassword checks again, which is the answer that
+		// counts.
+		if validateErr := vault.ValidatePassword(newPassword); validateErr != nil {
+			return fmt.Errorf("invalid new password: %w", validateErr)
+		}
+	}
+
+	oldPassword, err := prompt.GivenOrPromptPassword(o.passwordFile)
+	if err != nil {
+		return err
+	}
+	defer crypto.Wipe(oldPassword)
+
+	if newPassword == nil {
+		newPassword, err = prompt.GivenOrPromptNewPassword(o.newPasswordFile)
+		if err != nil {
+			return err
+		}
+		defer crypto.Wipe(newPassword)
+	}
+
+	uv, err := vault.ChangePassword(v, oldPassword, newPassword)
+	if err != nil {
+		return err
+	}
+	defer uv.Wipe()
+	fmt.Fprintf(os.Stderr, "Changed password of vault %s\n", uv)
+	return nil
+}
+
 func init() {
 	opts := &vaultOptions{}
 
@@ -106,31 +157,7 @@ func init() {
 		Args:                  cli.RequireArgs(1, 1, "the name of a vault"),
 		DisableFlagsInUseLine: true,
 		RunE: func(c *cobra.Command, args []string) error {
-			v, unlock, err := opts.locked(args[0])
-			if err != nil {
-				return err
-			}
-			defer unlock()
-
-			oldPassword, err := prompt.GivenOrPromptPassword(opts.passwordFile)
-			if err != nil {
-				return err
-			}
-			defer crypto.Wipe(oldPassword)
-
-			newPassword, err := prompt.GivenOrPromptNewPassword(opts.newPasswordFile)
-			if err != nil {
-				return err
-			}
-			defer crypto.Wipe(newPassword)
-
-			uv, err := vault.ChangePassword(v, oldPassword, newPassword)
-			if err != nil {
-				return err
-			}
-			defer uv.Wipe()
-			fmt.Fprintf(os.Stderr, "Changed password of vault %s\n", uv)
-			return nil
+			return opts.runChangePassword(args[0])
 		},
 	}
 
