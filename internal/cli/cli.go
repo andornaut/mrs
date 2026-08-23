@@ -90,7 +90,7 @@ func Plural(n int, word string) string {
 // failure offers nothing rather than putting an error on the command line.
 // Filenames are never offered alongside: a vault is named, not pathed.
 func CompleteVaultNames(_ *cobra.Command, _ []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-	vs, err := vault.All()
+	vs, err := vault.AllQuiet()
 	if err != nil {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}

@@ -15,7 +15,15 @@ import (
 
 // All returns a slice of all vaults
 func All() ([]Vault, error) {
-	return findVaults("")
+	return findVaults(true, "")
+}
+
+// AllQuiet returns every vault without reporting the ones mrs cannot read. A
+// shell asking what to offer for a Tab is no place to report anything: the
+// warning would land in the middle of the line being typed, on every press.
+// The commands that list vaults report them, once, when the user asks.
+func AllQuiet() ([]Vault, error) {
+	return findVaults(false, "")
 }
 
 // Default returns the vault to use when none is named: the one that
@@ -25,7 +33,7 @@ func Default() (Vault, error) {
 		// Exactly, unlike --vault. A name written into a shell profile is read
 		// on every run and looked at almost never, so a typo that reaches a
 		// neighbouring vault would go on doing so unnoticed.
-		vs, err := findVaults(name)
+		vs, err := findVaults(true, name)
 		if err != nil {
 			return "", err
 		}
@@ -89,7 +97,7 @@ func resolve(prefix string) (Vault, []Vault, error) {
 	if prefix == "" {
 		return "", nil, errors.New("vault name cannot be empty")
 	}
-	vs, err := findVaults(prefix)
+	vs, err := findVaults(true, prefix)
 	if err != nil {
 		return "", nil, err
 	}
@@ -343,7 +351,10 @@ func Exact(name string) (Vault, error) {
 // findVaults returns vaults that match the vault name prefix.
 // If prefix is empty, then it return all vaults.
 // Returns a slice with at least one vault or nil.
-func findVaults(prefix string) ([]Vault, error) {
+//
+// A vault mrs cannot read is listed either way; warn says whether the reason is
+// reported, which a shell completion does not want.
+func findVaults(warn bool, prefix string) ([]Vault, error) {
 	if prefix != "" {
 		if err := ValidateName(prefix); err != nil {
 			return nil, err
@@ -368,7 +379,7 @@ func findVaults(prefix string) ([]Vault, error) {
 		// (.DS_Store, editor swap files) are never vaults, so they are skipped
 		// quietly.
 		if err := validateFilename(base); err != nil {
-			if !strings.HasPrefix(base, ".") {
+			if warn && !strings.HasPrefix(base, ".") {
 				warnf("ignoring %q, because a vault file is named <name>.<salt>", p)
 			}
 			continue
@@ -393,9 +404,11 @@ func findVaults(prefix string) ([]Vault, error) {
 				if _, lstatErr := os.Lstat(p); lstatErr != nil {
 					continue
 				}
-				warnf("vault %s is a symlink to a file that is not there, so it cannot be read",
-					Vault(p).Name())
-			} else {
+				if warn {
+					warnf("vault %s is a symlink to a file that is not there, so it cannot be read",
+						Vault(p).Name())
+				}
+			} else if warn {
 				warnf("vault %s cannot be read: %s", Vault(p).Name(), err)
 			}
 			vs = append(vs, Vault(p))

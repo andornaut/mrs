@@ -796,6 +796,35 @@ func TestCompletionOffersVaultNames(t *testing.T) {
 		AssertStderr("ShellCompDirectiveDefault")
 }
 
+func TestCompletionDoesNotWarnAboutAVaultItCannotRead(t *testing.T) {
+	l := newLab(t)
+	l.createVault("personal", "a password")
+	broken := filepath.Join(l.VaultDir(), "broken."+strings.Repeat("B", 32))
+	if err := os.Mkdir(broken, 0700); err != nil {
+		t.Fatalf("failed to create the directory: %s", err)
+	}
+	if err := os.WriteFile(filepath.Join(l.VaultDir(), "notavault.txt"), []byte("x"), 0600); err != nil {
+		t.Fatalf("failed to write the stray file: %s", err)
+	}
+
+	// A shell asks what to offer on every Tab, and a warning there lands in the
+	// middle of the line being typed. The entry is still offered, because
+	// delete and rename can reach it.
+	l.Run("__complete", "vault", "delete", "").
+		AssertOK().
+		AssertStdout("broken\npersonal").
+		AssertNoOutput("Warning")
+	l.Run("__complete", "edit", "-v", "").
+		AssertOK().
+		AssertNoOutput("Warning")
+
+	// Asked for the list, mrs says why it cannot read them.
+	l.Run("vault", "list").
+		AssertOK().
+		AssertStderr("vault broken cannot be read").
+		AssertStderr("notavault.txt")
+}
+
 func TestListSortsNamesIgnoringCase(t *testing.T) {
 	l := newLab(t)
 	for _, name := range []string{"zebra", "Apple", "mango", "_under", "Banana"} {
