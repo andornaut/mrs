@@ -1,6 +1,7 @@
 package secret
 
 import (
+	"bytes"
 	"regexp"
 	"slices"
 	"testing"
@@ -195,4 +196,67 @@ func TestEveryTrailingCarriageReturnIsStripped(t *testing.T) {
 			}
 		})
 	}
+}
+
+// What a vault holds is what parseSecrets made of the file the editor saved,
+// written back out by Bytes and parsed again the next time the vault is opened.
+// A first parse may normalise, but the second has to be a fixed point, or a
+// vault would drift every time it was saved.
+func FuzzParseSecretsRoundTripsWhatItAccepts(f *testing.F) {
+	for _, seed := range []string{
+		"",
+		"key\nvalue\n",
+		"key",
+		"\n\n\n",
+		"a\n\n\n\nb\n",
+		"key\r\nvalue\r\n",
+		"  \t \nkey\nvalue\n",
+		"key\nvalue\n\nkey\nanother\n",
+		"Zebra\nv\n\napple\nv\n",
+		"app\nv\n\nApp\nv\n\nAPP\nv\n",
+		"key\n\x00binary\n",
+		"#not a comment\nvalue\n",
+		"  indented\ntrailing   \n",
+	} {
+		f.Add([]byte(seed))
+	}
+
+	f.Fuzz(func(t *testing.T, in []byte) {
+		first, err := parseSecrets(in)
+		if err != nil {
+			// The only refusal is a line past the limit, which needs an input
+			// at least that long.
+			if len(in) > maxLineLen {
+				t.Skip()
+			}
+			t.Fatalf("parseSecrets(%q) = %v", in, err)
+		}
+		out := first.Bytes()
+
+		second, err := parseSecrets(out)
+		if err != nil {
+			t.Fatalf("parseSecrets() refused what Bytes() wrote for %q: %v", in, err)
+		}
+		if again := second.Bytes(); !bytes.Equal(out, again) {
+			t.Fatalf("parsing is not a fixed point for %q:\n first  %q\n second %q", in, out, again)
+		}
+
+		// The shape that makes the round trip hold: a secret ends in a newline,
+		// so that the blank line Bytes writes between two of them is a
+		// separator, and holds no blank line of its own for the next parse to
+		// split it on.
+		for _, s := range first.secrets {
+			if len(s) == 0 {
+				t.Fatalf("parseSecrets(%q) kept an empty secret", in)
+			}
+			if s[len(s)-1] != '\n' {
+				t.Fatalf("parseSecrets(%q) kept a secret not ending in a newline: %q", in, s)
+			}
+			for line := range bytes.SplitSeq(s[:len(s)-1], []byte{'\n'}) {
+				if len(bytes.TrimSpace(line)) == 0 {
+					t.Fatalf("parseSecrets(%q) kept a blank line inside %q", in, s)
+				}
+			}
+		}
+	})
 }

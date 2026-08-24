@@ -73,6 +73,19 @@ jobs:
       - name: Run tests
         run: go test -v -race -coverprofile=coverage.txt -covermode=atomic ./...
 
+      # The suite runs a fuzz target's seed corpus and nothing else, so a
+      # target that found a bug once would never look again. A minute of real
+      # fuzzing per push is enough to keep it working; one platform is enough,
+      # because what it exercises is the parser rather than anything about the
+      # operating system. A failure writes the input under testdata/fuzz, which
+      # the next run replays as an ordinary test case.
+      - name: Fuzz the secrets parser
+        if: matrix.os == 'ubuntu-latest'
+        run: >
+          go test -run '^$'
+          -fuzz FuzzParseSecretsRoundTripsWhatItAccepts
+          -fuzztime 60s ./internal/secret/
+
       - name: Upload coverage
         uses: actions/upload-artifact@v7.0.1
         if: matrix.os == 'ubuntu-latest'
