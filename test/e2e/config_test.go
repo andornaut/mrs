@@ -183,6 +183,9 @@ func TestPlaintextIsEditedUnderMrsTemp(t *testing.T) {
 	if filepath.Dir(s.Path) == l.Temp {
 		t.Fatalf("expected a directory of its own below %s, got %q", l.Temp, s.Path)
 	}
+	// The directory those per-run directories sit in is private too, so that
+	// the names of the sessions mrs has run are not there to be listed.
+	assertDirMode(t, filepath.Join(l.Temp, "mrs"), 0700)
 }
 
 func TestXdgRuntimeDirIsUsedWhenMrsTempIsUnset(t *testing.T) {
