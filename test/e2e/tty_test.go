@@ -287,17 +287,39 @@ func TestASignalAtThePasswordPromptRestoresTheTerminal(t *testing.T) {
 			// Closed here, so that the master sees the child go.
 			_ = tty.Close()
 
+			// Drained in the background, so that mrs cannot block writing to a
+			// terminal nobody is reading, as RunTTY drains it for the same
+			// reason. Reading the settings is an ioctl and does not compete
+			// with the bytes being read here.
+			go func() { _, _ = io.Copy(io.Discard, ptmx) }()
+
 			// Wait for the prompt, which is where the settings change.
 			waitForTerminalState(t, fd, func(s string) bool { return s != before })
 			if err := cmd.Process.Signal(tt.sig); err != nil {
 				t.Fatalf("failed to signal mrs: %s", err)
 			}
-			_ = cmd.Wait()
+			waitForExit(t, cmd)
 			if got := cmd.ProcessState.ExitCode(); got != tt.code {
 				t.Errorf("expected exit %d, got %d", tt.code, got)
 			}
 			waitForTerminalState(t, fd, func(s string) bool { return s == before })
 		})
+	}
+}
+
+// waitForExit waits for a signalled mrs to end. Bounded, so that a run that
+// never ends fails here rather than holding the package until the test binary's
+// own timeout kills it ten minutes later.
+func waitForExit(t *testing.T, cmd *exec.Cmd) {
+	t.Helper()
+	done := make(chan error, 1)
+	go func() { done <- cmd.Wait() }()
+	select {
+	case <-done:
+	case <-time.After(30 * time.Second):
+		_ = cmd.Process.Kill()
+		<-done
+		t.Fatal("mrs did not exit after the signal")
 	}
 }
 
