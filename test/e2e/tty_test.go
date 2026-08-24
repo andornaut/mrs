@@ -86,7 +86,7 @@ func (r *ttyResult) AssertOK() *ttyResult {
 	return r
 }
 
-// AssertOutput asserts that the terminal received the given substring.
+// AssertFailed asserts the status mrs gives a command that ran and failed.
 func (r *ttyResult) AssertFailed() *ttyResult {
 	r.t.Helper()
 	if r.ExitCode != 1 {
@@ -95,6 +95,7 @@ func (r *ttyResult) AssertFailed() *ttyResult {
 	return r
 }
 
+// AssertOutput asserts that the terminal received the given substring.
 func (r *ttyResult) AssertOutput(want string) *ttyResult {
 	r.t.Helper()
 	if !strings.Contains(r.Output, want) {

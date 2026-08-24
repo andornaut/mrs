@@ -126,7 +126,7 @@ func TestAVaultFileWithNoSaltDoesNotBlockANewVault(t *testing.T) {
 }
 
 // oldIterations is the count mrs derived a key with before it was raised. It is
-// written here rather than taken from the crypto package, which no longer names
+// written here rather than taken from the crypto package, which does not export
 // it, so that these fixtures keep pinning the file an old release wrote.
 const oldIterations = 4096
 
