@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"golang.org/x/term"
 
@@ -127,13 +128,61 @@ func Password(msg string) ([]byte, error) {
 	}
 	defer func() { _ = out.Close() }()
 	_, _ = fmt.Fprint(out, msg+": ")
+	// term.ReadPassword switches echo off and back on again when it returns, so
+	// only a run that never returns leaves it off. The state is recorded for
+	// RestoreTerminal, which the signal handler calls.
+	forget := rememberTerminal(fd)
 	b, err := term.ReadPassword(fd)
+	forget()
 	// Since user input is not echoed, we must add a newline manually
 	_, _ = fmt.Fprint(out, "\n")
 	if err != nil {
 		return nil, fmt.Errorf("input error: %w", err)
 	}
 	return b, nil
+}
+
+// terminalState is the state to put the terminal back into, recorded while a
+// prompt has echo switched off. A mutex rather than a channel because
+// RestoreTerminal is called from the signal handler while the prompt may still
+// be reading.
+var (
+	terminalMu    sync.Mutex
+	terminalFd    int
+	terminalState *term.State
+)
+
+// rememberTerminal records the terminal's state so that RestoreTerminal can put
+// it back, and returns the function that forgets it again. A state that could
+// not be read is not recorded, and restoring then does nothing.
+func rememberTerminal(fd int) func() {
+	state, err := term.GetState(fd)
+	if err != nil {
+		return func() {}
+	}
+	terminalMu.Lock()
+	terminalFd, terminalState = fd, state
+	terminalMu.Unlock()
+	return func() {
+		terminalMu.Lock()
+		terminalState = nil
+		terminalMu.Unlock()
+	}
+}
+
+// RestoreTerminal puts the terminal back the way an open password prompt found
+// it, and does nothing when no prompt is open. A prompt switches echo off, and
+// a signal that ends mrs while one is open would otherwise leave the shell it
+// returns to echoing nothing of what is typed.
+func RestoreTerminal() error {
+	terminalMu.Lock()
+	defer terminalMu.Unlock()
+	if terminalState == nil {
+		return nil
+	}
+	state := terminalState
+	terminalState = nil
+	return term.Restore(terminalFd, state)
 }
 
 // TrimmedLine prompts for input and returns the first line of input as a trimmed string

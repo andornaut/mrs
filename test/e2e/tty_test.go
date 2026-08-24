@@ -8,10 +8,12 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
 	"github.com/creack/pty"
+	"golang.org/x/term"
 )
 
 // Capability 11: the questions mrs asks, answered. Every other test drives mrs
@@ -241,4 +243,76 @@ func (l *lab) runTTYWithStderr(stderrPath, answer string, args ...string) *ttyRe
 		l.t.Fatalf("mrs %v timed out on a terminal; it is probably waiting for input\noutput:\n%s", args, <-out)
 	}
 	return &ttyResult{t: l.t, Args: args, Output: <-out, ExitCode: cmd.ProcessState.ExitCode()}
+}
+
+// A password prompt switches echo off, and a signal that ends mrs while one is
+// open must put it back: the shell mrs returns to would otherwise echo nothing
+// of what is typed.
+func TestASignalAtThePasswordPromptRestoresTheTerminal(t *testing.T) {
+	l := newLab(t)
+	l.seedVault("personal", "a password", "a key\na value\n")
+
+	for _, tt := range []struct {
+		name string
+		sig  syscall.Signal
+		code int
+	}{
+		{"SIGINT", syscall.SIGINT, 130},
+		{"SIGTERM", syscall.SIGTERM, 143},
+		{"SIGHUP", syscall.SIGHUP, 129},
+		{"SIGQUIT", syscall.SIGQUIT, 131},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			cmd := exec.Command(mrsBin, "export", "-v", "personal")
+			cmd.Env = l.environ()
+			cmd.Dir = l.UserHome
+			tty, err := pty.Start(cmd)
+			if err != nil {
+				t.Fatalf("failed to start mrs on a terminal: %s", err)
+			}
+			defer func() { _ = tty.Close() }()
+
+			// The two ends of a pty share one set of terminal settings, so the
+			// master sees what mrs does to the terminal from the other side.
+			fd := int(tty.Fd())
+			before := terminalState(t, fd)
+			// Wait for the prompt, which is where the settings change.
+			waitForTerminalState(t, fd, func(s string) bool { return s != before })
+			if err := cmd.Process.Signal(tt.sig); err != nil {
+				t.Fatalf("failed to signal mrs: %s", err)
+			}
+			_ = cmd.Wait()
+			if got := cmd.ProcessState.ExitCode(); got != tt.code {
+				t.Errorf("expected exit %d, got %d", tt.code, got)
+			}
+			waitForTerminalState(t, fd, func(s string) bool { return s == before })
+		})
+	}
+}
+
+// terminalState returns the terminal's settings in a form that can be compared.
+// term.State holds them in an opaque struct, so it is rendered rather than
+// examined: the test asks whether they came back, not which of them changed.
+func terminalState(t *testing.T, fd int) string {
+	t.Helper()
+	state, err := term.GetState(fd)
+	if err != nil {
+		t.Fatalf("failed to read the terminal state: %s", err)
+	}
+	return fmt.Sprintf("%+v", *state)
+}
+
+// waitForTerminalState waits for the terminal's settings to satisfy want.
+// Polled, because mrs changes them in its own time and there is nothing to wait
+// on but the terminal itself.
+func waitForTerminalState(t *testing.T, fd int, want func(string) bool) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		if want(terminalState(t, fd)) {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatal("the terminal settings did not reach the expected state")
 }
