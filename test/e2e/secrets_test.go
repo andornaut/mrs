@@ -243,6 +243,9 @@ func TestSecretsSurviveARoundTrip(t *testing.T) {
 			"# Secrets are separated by blank lines.\n" +
 			"# The first line of each secret is its unique key.\n" +
 			"# These three lines are removed when you save; every other line is kept.\n",
+		// A carriage return inside a value is content. Only a trailing one is
+		// the tail of a CRLF, and only that is stripped.
+		"a carriage return within a line": "cr key\nbefore\rafter\n",
 	}
 	for desc, content := range contents {
 		t.Run(desc, func(t *testing.T) {

@@ -173,3 +173,26 @@ func TestASecretListOwnsAndWipesItsSecrets(t *testing.T) {
 		}
 	}
 }
+
+// A trailing carriage return is the tail of a CRLF, so every one of them goes.
+// A line is re-read after a save with the newline written back on the end of
+// it, so stripping one at a time would shed another from a value ending in one
+// on every save, silently, until none was left.
+func TestEveryTrailingCarriageReturnIsStripped(t *testing.T) {
+	for desc, tt := range map[string]struct{ in, want string }{
+		"a CRLF line ending":       {"key\r\nvalue\r\n", "key\nvalue\n"},
+		"a lone trailing return":   {"key\nvalue\r", "key\nvalue\n"},
+		"several trailing returns": {"key\nvalue\r\r\r\n", "key\nvalue\n"},
+		"one within a line":        {"key\nbefore\rafter\n", "key\nbefore\rafter\n"},
+	} {
+		t.Run(desc, func(t *testing.T) {
+			b, err := parseSecrets([]byte(tt.in))
+			if err != nil {
+				t.Fatalf("parseSecrets() error: %v", err)
+			}
+			if got := string(b.Bytes()); got != tt.want {
+				t.Errorf("parseSecrets(%q) wrote back %q, want %q", tt.in, got, tt.want)
+			}
+		})
+	}
+}

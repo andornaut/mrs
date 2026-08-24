@@ -68,8 +68,11 @@ func parseSecrets(plaintext []byte) (*secretList, error) {
 			line, rest = rest, nil
 		}
 		// A line scanner drops the carriage return of a CRLF, and a vault
-		// edited on Windows has to round-trip like any other.
-		line = bytes.TrimSuffix(line, []byte("\r"))
+		// edited on Windows has to round-trip like any other. Every trailing
+		// carriage return goes, not just one: a line re-read after a save is
+		// terminated by the newline written below, so stripping one at a time
+		// would shed another on each save from a value that ends in one.
+		line = bytes.TrimRight(line, "\r")
 		if len(line) > maxLineLen {
 			return nil, fmt.Errorf("a line of secrets is longer than the %d MiB limit", maxLineLen/(1024*1024))
 		}
