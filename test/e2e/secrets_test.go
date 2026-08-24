@@ -161,40 +161,6 @@ func TestACommentLineIsKeptAsASecret(t *testing.T) {
 		AssertStdout("pin: 4321")
 }
 
-// Nothing is removed from what the editor saved, whatever a line looks like.
-// The lines below are commentary about the format itself, which is the shape a
-// buffer-stripping rule would be most tempted to treat as its own.
-func TestNoLineIsRemovedFromWhatTheEditorSaved(t *testing.T) {
-	l := newLab(t)
-	pwFile := l.createVault("personal", "a password")
-	// One secret, so that what comes back does not depend on how secrets sort.
-	content := "a key\n" +
-		"# Secrets are separated by blank lines.\n" +
-		"# The first line of each secret is its unique key.\n" +
-		"# These three lines are removed when you save; every other line is kept.\n"
-	l.editorWrites(content)
-
-	l.Run("add", "-v", "personal", "-p", pwFile).AssertOK()
-
-	l.Run("export", "-v", "personal", "-p", pwFile).
-		AssertOK().
-		AssertStdoutExactly(content)
-}
-
-func TestWhitespaceWithinASecretIsPreserved(t *testing.T) {
-	l := newLab(t)
-	pwFile := l.createVault("personal", "a password")
-	// A value that is indented, or that ends in a space, must survive intact.
-	content := "ssh config\n    IdentityFile ~/.ssh/id\npassword: trailing  \n"
-	l.editorWrites(content)
-
-	l.Run("add", "-v", "personal", "-p", pwFile).AssertOK()
-
-	l.Run("export", "-v", "personal", "-p", pwFile).
-		AssertOK().
-		AssertStdoutExactly(content)
-}
-
 func TestDuplicateKeysAreReported(t *testing.T) {
 	l := newLab(t)
 	pwFile := l.seedVault("personal", "a password", "shared key\nfirst value\n")
@@ -267,6 +233,16 @@ func TestSecretsSurviveARoundTrip(t *testing.T) {
 		"many lines":         "many lines key\n" + strings.Repeat("a line\n", 500),
 		"tabs within a line": "tab key\nuser\tpassword\n",
 		"control characters": "control key\nbell\aform\ffeed\vvertical\n",
+		// A value that is indented, or that ends in a space, must survive
+		// intact: only the test for a blank line ignores whitespace.
+		"indentation and trailing spaces": "ssh config\n    IdentityFile ~/.ssh/id\npassword: trailing  \n",
+		// Commentary about the format itself is the shape a rule that stripped
+		// lines out of the buffer would be most tempted to treat as its own.
+		// One secret, so that what comes back does not depend on how they sort.
+		"lines that look like instructions": "a key\n" +
+			"# Secrets are separated by blank lines.\n" +
+			"# The first line of each secret is its unique key.\n" +
+			"# These three lines are removed when you save; every other line is kept.\n",
 	}
 	for desc, content := range contents {
 		t.Run(desc, func(t *testing.T) {

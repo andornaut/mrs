@@ -9,23 +9,6 @@ import (
 
 // How mrs launches $EDITOR, exercised by execing a real editor process.
 
-func TestEditorMayCarryArguments(t *testing.T) {
-	l := newLab(t)
-	pwFile := l.createVault("personal", "a password")
-
-	// $EDITOR commonly carries arguments, as in "vim -n" or "code -w".
-	l.Setenv("EDITOR", editorBin+" -n --wait")
-	l.Setenv("FAKE_EDITOR_EXPECT_ARGS", "-n --wait")
-	l.Setenv("FAKE_EDITOR_MODE", "append")
-	l.Setenv("FAKE_EDITOR_CONTENT", "a key\na value\n")
-
-	l.Run("edit", "-v", "personal", "-p", pwFile).AssertOK()
-
-	if got := l.export("personal", pwFile); !strings.Contains(got, "a value") {
-		t.Fatalf("expected the edit to be saved, got %q", got)
-	}
-}
-
 func TestEditorPathMayContainSpaces(t *testing.T) {
 	l := newLab(t)
 	pwFile := l.createVault("personal", "a password")
@@ -43,7 +26,9 @@ func TestEditorPathMayContainSpaces(t *testing.T) {
 		t.Fatalf("failed to write %s: %s", spaced, err)
 	}
 
-	// A path with spaces has to be quoted, as a shell would require.
+	// A path with spaces has to be quoted, as a shell would require, and the
+	// argument after it still reaches the editor. Which strings split into
+	// which argv is the table in internal/config.
 	l.Setenv("EDITOR", `"`+spaced+`" -n`)
 	l.Setenv("FAKE_EDITOR_EXPECT_ARGS", "-n")
 	l.Setenv("FAKE_EDITOR_MODE", "append")
