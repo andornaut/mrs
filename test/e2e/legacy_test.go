@@ -139,9 +139,23 @@ func TestAVaultAtTheOldIterationCountIsNotRead(t *testing.T) {
 	p := l.writeVaultFile("personal."+salt, "a password", "a key\na-value\n", salt, oldIterations)
 	pwFile := l.PasswordFile("pw", "a password")
 
+	// The right password on an old vault and a wrong password on a current one
+	// are the same failure to AES-GCM, so mrs asks whether the old derivation
+	// opens it and says which of the two happened. Being told the wrong one
+	// costs the owner of a recoverable vault their secrets.
 	l.Run("export", "-v", "personal", "-p", pwFile).
 		AssertFailed().
-		AssertStderr("failed to decrypt")
+		AssertStderr("key derivation that mrs no longer reads").
+		AssertStderr("v0.1.7").
+		AssertNoOutput("failed to decrypt")
+
+	// A wrong password on the same vault says nothing about the password,
+	// because nothing here confirmed it.
+	wrongFile := l.PasswordFile("wrong", "a different password")
+	l.Run("export", "-v", "personal", "-p", wrongFile).
+		AssertFailed().
+		AssertStderr("failed to decrypt").
+		AssertNoOutput("key derivation")
 
 	// The file is left exactly as it was, so an older release can still open it
 	// and a newer one can read it once it has been saved by that release.

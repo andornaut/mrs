@@ -212,6 +212,15 @@ func (v *UnlockedVault) Decrypt() ([]byte, error) {
 		}
 	}
 	if err != nil {
+		// Asked only once every derivation has failed, so that an old vault is
+		// not reported as a mistyped password. The two are the same failure to
+		// AES-GCM and nothing else tells them apart.
+		if crypto.SealedAtOldIterations(b, v.password, salt) {
+			return nil, fmt.Errorf(
+				"vault %s was written at a key derivation that mrs no longer reads. "+
+					"Your password is correct: open and save the vault with mrs v0.1.7, "+
+					"which re-encrypts it at the derivation mrs reads now", v)
+		}
 		return nil, fmt.Errorf("failed to decrypt vault %s", v)
 	}
 	return decrypted, nil

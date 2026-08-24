@@ -43,6 +43,34 @@ func Decrypt(data []byte, password []byte, salt string) ([]byte, error) {
 	return open(data, k)
 }
 
+// oldIterations is the count mrs derived a key with before CurrentIterations. A
+// key is derived at it only to tell one failure apart from another, and what it
+// opens is discarded, so no vault is ever read at a derivation weaker than the
+// one mrs writes.
+const oldIterations = 4096
+
+// SealedAtOldIterations reports whether the given password opens the data at
+// the iteration count mrs used before CurrentIterations. A caller asks after a
+// decryption has already failed, so that the owner of an old vault is not told
+// what someone who mistyped a password is told: the password is right and the
+// vault is recoverable, by a release that still reads it.
+//
+// Its argument order matches Decrypt and Encrypt above, which it is asked
+// alongside.
+func SealedAtOldIterations(data []byte, password []byte, salt string) bool {
+	k, err := key(password, salt, oldIterations)
+	if err != nil {
+		return false
+	}
+	defer Wipe(k[:])
+	plaintext, err := open(data, k)
+	if err != nil {
+		return false
+	}
+	Wipe(plaintext)
+	return true
+}
+
 // Encrypt returns encrypted data.
 func Encrypt(data []byte, password []byte, salt string) ([]byte, error) {
 	k, err := key(password, salt, CurrentIterations)

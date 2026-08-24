@@ -57,6 +57,35 @@ func TestDecryptRefusesTheOldIterationCount(t *testing.T) {
 	if _, err := Decrypt(encrypted, password, salt); err == nil {
 		t.Fatal("expected Decrypt() to refuse a vault sealed at the old iteration count")
 	}
+
+	// Refused, but told apart from a wrong password, which is the same failure
+	// to AES-GCM and the wrong thing to tell the owner of a vault they can
+	// still recover.
+	if !SealedAtOldIterations(encrypted, password, salt) {
+		t.Error("expected the old iteration count to be recognised")
+	}
+	if SealedAtOldIterations(encrypted, []byte("a different password"), salt) {
+		t.Error("expected a wrong password to be recognised as nothing of the kind")
+	}
+}
+
+// A vault mrs wrote itself is not mistaken for one at the old count, whatever
+// password is offered for it.
+func TestCurrentCiphertextIsNotTakenForTheOldIterationCount(t *testing.T) {
+	password := []byte("password")
+	defer Wipe(password)
+	salt, _ := Salt()
+
+	encrypted, err := Encrypt([]byte("data"), password, salt)
+	if err != nil {
+		t.Fatalf("Encrypt() failed: %v", err)
+	}
+	if SealedAtOldIterations(encrypted, password, salt) {
+		t.Error("expected a current vault not to be reported as an old one")
+	}
+	if SealedAtOldIterations(encrypted, []byte("a different password"), salt) {
+		t.Error("expected a current vault not to be reported as an old one")
+	}
 }
 
 func TestDecryptWithWrongPassword(t *testing.T) {
