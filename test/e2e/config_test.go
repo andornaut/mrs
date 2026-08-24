@@ -100,7 +100,7 @@ func TestMrsHomeIsCreatedOnDemand(t *testing.T) {
 	home := filepath.Join(l.UserHome, "a", "b", "c", "mrs")
 	l.Setenv("MRS_HOME", home)
 
-	l.Run("vault", "create", "personal", "-p", l.PasswordFile("pw", "a password")).AssertOK()
+	l.Run("vault", "add", "personal", "-p", l.PasswordFile("pw", "a password")).AssertOK()
 
 	assertDirMode(t, filepath.Join(home, "vaults"), 0700)
 }
@@ -111,7 +111,7 @@ func TestXdgDataHomeIsUsedWhenMrsHomeIsUnset(t *testing.T) {
 	l.Unsetenv("MRS_HOME")
 	l.Setenv("XDG_DATA_HOME", xdg)
 
-	l.Run("vault", "create", "personal", "-p", l.PasswordFile("pw", "a password")).AssertOK()
+	l.Run("vault", "add", "personal", "-p", l.PasswordFile("pw", "a password")).AssertOK()
 
 	vaults := filepath.Join(xdg, "mrs", "vaults")
 	assertDirMode(t, vaults, 0700)
@@ -137,7 +137,7 @@ func TestTheHomeDirectoryIsUsedWhenNothingElseIsSet(t *testing.T) {
 	l.Unsetenv("MRS_HOME")
 	l.Unsetenv("XDG_DATA_HOME")
 
-	l.Run("vault", "create", "personal", "-p", l.PasswordFile("pw", "a password")).AssertOK()
+	l.Run("vault", "add", "personal", "-p", l.PasswordFile("pw", "a password")).AssertOK()
 
 	// The documented default, below $HOME rather than anywhere absolute.
 	assertDirMode(t, filepath.Join(l.UserHome, ".local", "share", "mrs", "vaults"), 0700)
@@ -154,7 +154,7 @@ func TestAnUnusableHomeIsReportedByEveryCommand(t *testing.T) {
 	for _, args := range [][]string{
 		{"vault", "ls"},
 		{"vault", "default"},
-		{"vault", "create", "personal", "-p", pwFile},
+		{"vault", "add", "personal", "-p", pwFile},
 		{"export", "-v", "personal", "-p", pwFile},
 		{"search", "-v", "personal", "-p", pwFile, "anything"},
 	} {
@@ -381,9 +381,9 @@ func TestNothingButDataIsEverWrittenToStdout(t *testing.T) {
 		"search without a term": {"search", "-v", "work", "-p", pwFile},
 		"invalid pattern":       {"search", "-v", "work", "-p", pwFile, "["},
 		"search found nothing":  {"search", "-v", "work", "-p", pwFile, "zzz"},
-		"duplicate vault":       {"vault", "create", "work", "-p", pwFile},
-		"invalid vault name":    {"vault", "create", "bad name", "-p", pwFile},
-		"weak password":         {"vault", "create", "new", "-p", l.PasswordFile("short.pw", "short")},
+		"duplicate vault":       {"vault", "add", "work", "-p", pwFile},
+		"invalid vault name":    {"vault", "add", "bad name", "-p", pwFile},
+		"weak password":         {"vault", "add", "new", "-p", l.PasswordFile("short.pw", "short")},
 		"rename missing source": {"vault", "rename", "nope", "other"},
 		"rename too few args":   {"vault", "rename", "onlyone"},
 		"delete missing vault":  {"vault", "rm", "nope"},
@@ -451,7 +451,7 @@ func TestOnlyDataIsWrittenToStdoutWhenACommandSucceeds(t *testing.T) {
 		args []string
 		want string
 	}{
-		{"create", []string{"vault", "create", "second", "-p", pwFile}, ""},
+		{"vault-add", []string{"vault", "add", "second", "-p", pwFile}, ""},
 		{"add", []string{"add", "-v", "second", "-p", pwFile}, ""},
 		{"edit", []string{"edit", "-v", "second", "-p", pwFile}, ""},
 		{"rename", []string{"vault", "rename", "second", "third"}, ""},

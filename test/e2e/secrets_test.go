@@ -402,7 +402,7 @@ func TestDuplicateKeysAreReportedOnImport(t *testing.T) {
 	// about a file the user no longer has in hand.
 	importFile := l.WriteFile("import.txt", "shared key\nfirst value\n\nshared key\nsecond value\n")
 
-	l.Run("vault", "create", "personal", "-p", pwFile, "-i", importFile).
+	l.Run("vault", "add", "personal", "-p", pwFile, "-i", importFile).
 		AssertOK().
 		AssertStderr(`2 secrets share the key "shared key"`)
 
@@ -413,7 +413,7 @@ func TestDuplicateKeysAreReportedOnImport(t *testing.T) {
 
 	// An import without duplicates says nothing.
 	clean := l.WriteFile("clean.txt", "a key\na value\n\nb key\nb value\n")
-	l.Run("vault", "create", "other", "-p", pwFile, "-i", clean).
+	l.Run("vault", "add", "other", "-p", pwFile, "-i", clean).
 		AssertOK().
 		AssertNoOutput("share the key")
 }

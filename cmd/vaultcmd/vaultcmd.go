@@ -131,8 +131,8 @@ func init() {
 	opts := &vaultOptions{}
 
 	create := &cobra.Command{
-		Use:   "create <name>",
-		Short: "Create a vault",
+		Use:   "add <name>",
+		Short: "Add a vault",
 		Args:  cli.RequireArgs(1, 1, "a name for the new vault"),
 		// A vault that does not exist yet has no name to offer, and is not a
 		// file either.

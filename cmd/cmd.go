@@ -20,7 +20,7 @@ import (
 // Cmd implements the root ./mrs command
 var Cmd = &cobra.Command{
 	Use:     "mrs",
-	Example: "  mrs vault create personal\n  mrs edit\n  mrs search secret stuff",
+	Example: "  mrs vault add personal\n  mrs edit\n  mrs search secret stuff",
 	Short:   "Mr. Secretary",
 	Long:    "Mr. Secretary - Organise and secure your secrets",
 	// Cobra reports an unknown command from its own argument validator, which

@@ -159,14 +159,14 @@ func TestEmptyingAVaultIsCancelledByAnAnswerOfNo(t *testing.T) {
 func TestATypedPasswordIsCheckedBeforeItIsConfirmed(t *testing.T) {
 	l := newLab(t)
 
-	l.RunTTY("short\n", "vault", "create", "personal").
+	l.RunTTY("short\n", "vault", "add", "personal").
 		AssertFailed().
 		AssertOutput("password must contain at least 8 characters").
 		AssertNoOutput("Confirm password")
 	l.Run("vault", "ls").AssertOK().AssertStdoutEquals("")
 
 	// The confirmation is still asked for a password that could be accepted.
-	l.RunTTY("a good password\na good password\n", "vault", "create", "personal").
+	l.RunTTY("a good password\na good password\n", "vault", "add", "personal").
 		AssertOK().
 		AssertOutput("Confirm password").
 		AssertOutput("Created vault personal")

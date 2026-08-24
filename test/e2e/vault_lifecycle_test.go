@@ -14,7 +14,7 @@ func TestCreateVaultWritesAnEncryptedFile(t *testing.T) {
 	l := newLab(t)
 	pwFile := l.PasswordFile("pw", "correct horse battery staple")
 
-	l.Run("vault", "create", "personal", "-p", pwFile).
+	l.Run("vault", "add", "personal", "-p", pwFile).
 		AssertOK().
 		AssertStderr("Created vault personal")
 
@@ -65,7 +65,7 @@ func TestCreateRejectsADuplicateName(t *testing.T) {
 	l := newLab(t)
 	pwFile := l.createVault("personal", "a password")
 
-	l.Run("vault", "create", "personal", "-p", pwFile).
+	l.Run("vault", "add", "personal", "-p", pwFile).
 		AssertFailed().
 		AssertStderr("already exists")
 
@@ -92,7 +92,7 @@ func TestCreateRejectsInvalidNames(t *testing.T) {
 			l := newLab(t)
 			pwFile := l.PasswordFile("pw", "a password")
 
-			r := l.Run("vault", "create", name, "-p", pwFile)
+			r := l.Run("vault", "add", name, "-p", pwFile)
 			r.AssertFailed()
 			if names := l.Vaults(); len(names) != 0 {
 				t.Fatalf("expected no files to be created for name %q, found %v\n%s", name, names, r.describe())
@@ -105,7 +105,7 @@ func TestCreateRejectsAShortPassword(t *testing.T) {
 	l := newLab(t)
 	pwFile := l.PasswordFile("pw", "short")
 
-	l.Run("vault", "create", "personal", "-p", pwFile).
+	l.Run("vault", "add", "personal", "-p", pwFile).
 		AssertFailed().
 		AssertStderr("at least 8 characters")
 
@@ -117,7 +117,7 @@ func TestCreateRejectsAShortPassword(t *testing.T) {
 func TestCreateReportsAMissingPasswordFile(t *testing.T) {
 	l := newLab(t)
 
-	l.Run("vault", "create", "personal", "-p", filepath.Join(l.UserHome, "absent")).
+	l.Run("vault", "add", "personal", "-p", filepath.Join(l.UserHome, "absent")).
 		AssertFailed().
 		AssertStderr("could not read from password file")
 }
@@ -126,12 +126,12 @@ func TestCreateRejectsALongName(t *testing.T) {
 	l := newLab(t)
 	pwFile := l.PasswordFile("pw", "a password")
 
-	l.Run("vault", "create", strings.Repeat("a", 201), "-p", pwFile).
+	l.Run("vault", "add", strings.Repeat("a", 201), "-p", pwFile).
 		AssertFailed().
 		AssertStderr("at most 200 characters")
 
 	// A name that fits is still accepted.
-	l.Run("vault", "create", strings.Repeat("a", 200), "-p", pwFile).AssertOK()
+	l.Run("vault", "add", strings.Repeat("a", 200), "-p", pwFile).AssertOK()
 }
 
 // A create that cannot succeed says so before asking for a password, as delete
@@ -141,12 +141,12 @@ func TestCreateChecksWhatItCanBeforeAskingForAPassword(t *testing.T) {
 
 	// No --password-file, so reaching the password prompt at all would fail
 	// with "stdin is not a terminal" and never name the real problem.
-	l.Run("vault", "create", "bad name").
+	l.Run("vault", "add", "bad name").
 		AssertFailed().
 		AssertStderr(`invalid vault name "bad name"`).
 		AssertNoOutput("terminal")
 
-	l.Run("vault", "create", "personal", "-i", filepath.Join(l.UserHome, "absent")).
+	l.Run("vault", "add", "personal", "-i", filepath.Join(l.UserHome, "absent")).
 		AssertFailed().
 		AssertStderr("could not read from import file").
 		AssertNoOutput("terminal")
@@ -158,7 +158,7 @@ func TestCreateChecksWhatItCanBeforeAskingForAPassword(t *testing.T) {
 	// A name already taken is the same case: the create cannot succeed, so
 	// there is no reason to make the user type a password for it first.
 	l.createVault("personal", "a password")
-	l.Run("vault", "create", "personal").
+	l.Run("vault", "add", "personal").
 		AssertFailed().
 		AssertStderr(`a vault named "personal" already exists`).
 		AssertNoOutput("terminal")
@@ -170,7 +170,7 @@ func TestCreateRequiresAName(t *testing.T) {
 	l := newLab(t)
 	pwFile := l.PasswordFile("pw", "a password")
 
-	l.Run("vault", "create", "-p", pwFile).
+	l.Run("vault", "add", "-p", pwFile).
 		AssertUsageError().
 		AssertStderr("requires a name for the new vault")
 }
@@ -259,7 +259,7 @@ func TestAVaultWhoseTargetIsAwayIsStillAVault(t *testing.T) {
 		AssertStderr("symlink to a file that is not there")
 
 	// The name is still taken, by create and by rename alike.
-	l.Run("vault", "create", "away", "-p", pwFile).
+	l.Run("vault", "add", "away", "-p", pwFile).
 		AssertFailed().
 		AssertStderr("already exists")
 	l.Run("vault", "rename", "personal", "away").
@@ -697,7 +697,7 @@ func TestHelpDocumentsEveryCommand(t *testing.T) {
 		root.AssertCommandListed(c)
 	}
 	vaultHelp := l.Run("help", "vault").AssertOK()
-	for _, c := range []string{"change-password", "create", "default", "ls", "rename", "rm"} {
+	for _, c := range []string{"add", "change-password", "default", "ls", "rename", "rm"} {
 		vaultHelp.AssertCommandListed(c)
 	}
 }
@@ -753,7 +753,7 @@ func TestTheFirstRunSaysThereAreNoVaults(t *testing.T) {
 		l.Run(args...).
 			AssertFailed().
 			AssertStderr("no vaults found").
-			AssertStderr("mrs vault create").
+			AssertStderr("mrs vault add").
 			AssertNoOutput("Vault name:")
 	}
 }
@@ -815,7 +815,7 @@ func TestCompletionOffersVaultNames(t *testing.T) {
 	// A name that no vault has yet is neither a vault name nor a file: create's
 	// operand, and rename's target.
 	for _, args := range [][]string{
-		{"__complete", "vault", "create", ""},
+		{"__complete", "vault", "add", ""},
 		{"__complete", "vault", "rename", "work", ""},
 	} {
 		l.Run(args...).
@@ -879,7 +879,7 @@ func TestTooManyOperandsSayHowManyArrived(t *testing.T) {
 	// A name the shell split on a space is the usual way a command is given
 	// more operands than it takes, and a message that only restates what was
 	// wanted does not show that it happened.
-	l.Run("vault", "create", "my", "vault").
+	l.Run("vault", "add", "my", "vault").
 		AssertUsageError().
 		AssertStderr("requires a name for the new vault, but got 2 arguments: \"my\" \"vault\"")
 	l.Run("vault", "rename", "a", "b", "c").
@@ -890,9 +890,9 @@ func TestTooManyOperandsSayHowManyArrived(t *testing.T) {
 		AssertStderr("but got 2 arguments")
 
 	// Too few is unchanged: there is nothing to report back.
-	l.Run("vault", "create").
+	l.Run("vault", "add").
 		AssertUsageError().
-		AssertStderr("mrs vault create requires a name for the new vault").
+		AssertStderr("mrs vault add requires a name for the new vault").
 		AssertNoOutput("arguments")
 }
 
@@ -919,7 +919,7 @@ func TestADirectoryWhereAVaultShouldBeIsStillAVault(t *testing.T) {
 	l.Run("export", "-v", "personal", "-p", pwFile).AssertOK()
 
 	// The name is taken, as a vault's name is.
-	l.Run("vault", "create", "broken", "-p", pwFile).
+	l.Run("vault", "add", "broken", "-p", pwFile).
 		AssertFailed().
 		AssertStderr("already exists")
 

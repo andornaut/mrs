@@ -129,7 +129,7 @@ func TestSearchPrintsEveryMatchSeparatedByABlankLine(t *testing.T) {
 
 	// Matches are printed in key order, in the same shape as the vault itself,
 	// and on stdout alone, so that the output can be fed straight back into
-	// `vault create --import-file`.
+	// `vault add --import-file`.
 	l.Run("search", "-v", "work", "-p", pwFile, "a").
 		AssertOK().
 		AssertStdoutExactly("alpha\nalpha value\n\nbeta\nbeta value\n\ngamma\ngamma value\n"). //nolint:dupword // a fixture is a key line then its value line; the repeat is the data
@@ -182,7 +182,7 @@ func TestSearchOutputCanBeRedirectedOnItsOwn(t *testing.T) {
 	// stdout carries the matched secrets and nothing else, in the same shape a
 	// vault is written in, so a search can be piped or redirected as it stands.
 	r := l.Run("search", "-v", "work", "-p", pwFile, "email", "--full").AssertOK()
-	l.Run("vault", "create", "copy", "-p", pwFile,
+	l.Run("vault", "add", "copy", "-p", pwFile,
 		"-i", l.WriteFile("from-search.txt", r.Stdout)).AssertOK()
 	l.Run("export", "-v", "copy", "-p", pwFile).
 		AssertOK().

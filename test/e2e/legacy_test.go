@@ -121,7 +121,7 @@ func TestAVaultFileWithNoSaltDoesNotBlockANewVault(t *testing.T) {
 	pwFile := l.PasswordFile("pw", "a password")
 
 	// The old file is not a vault, so it does not occupy the name.
-	l.Run("vault", "create", "personal", "-p", pwFile).AssertOK()
+	l.Run("vault", "add", "personal", "-p", pwFile).AssertOK()
 	l.Run("vault", "ls").AssertOK().AssertStdoutEquals("personal")
 }
 
@@ -174,7 +174,7 @@ func TestAVaultAtTheOldIterationCountStillOccupiesItsName(t *testing.T) {
 	pwFile := l.PasswordFile("pw", "a password")
 
 	l.Run("vault", "ls").AssertOK().AssertStdoutEquals("personal")
-	l.Run("vault", "create", "personal", "-p", pwFile).
+	l.Run("vault", "add", "personal", "-p", pwFile).
 		AssertFailed().
 		AssertStderr("already exists")
 	if filepath.Base(l.VaultPath("personal")) != "personal."+salt {

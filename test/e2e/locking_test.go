@@ -231,18 +231,18 @@ func TestCreateIsRefusedWhileTheNameIsHeld(t *testing.T) {
 	// A name that is taken is refused for being taken, whether or not another
 	// process holds its lock: the lock is transient and the collision is not.
 	newPw := l.PasswordFile("new.pw", "another password")
-	l.Run("vault", "create", "work", "-p", newPw).
+	l.Run("vault", "add", "work", "-p", newPw).
 		AssertFailed().
 		AssertStderr("already exists")
 
 	// --force means the same thing here as everywhere: repair a lock file that
 	// cannot be used, never take one. A name that is taken stays taken.
-	l.Run("vault", "create", "--force", "work", "-p", newPw).
+	l.Run("vault", "add", "--force", "work", "-p", newPw).
 		AssertFailed().
 		AssertStderr("already exists")
 
 	// A free name creates normally while another vault's lock is held.
-	l.Run("vault", "create", "other", "-p", newPw).AssertOK()
+	l.Run("vault", "add", "other", "-p", newPw).AssertOK()
 }
 
 // Claiming a name is refused while another process holds that name's lock, and

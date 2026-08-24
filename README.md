@@ -45,7 +45,7 @@ make install
   that begin with a `#`.
 - Secrets are sorted by key, ignoring case, when saved. Two may share a key, and
   `mrs` warns when they do, on import as well as on save.
-- A file given to `vault create --import-file` is stored as it is written, so it
+- A file given to `vault add --import-file` is stored as it is written, so it
   keeps its own order until the vault is next saved.
 - `mrs add` and `mrs edit` open `$VISUAL` or `$EDITOR` on the secrets alone,
   and encrypt whatever the editor saves. `mrs add --help` states the format.
@@ -64,7 +64,7 @@ Command | Does
 `mrs export` | Print every secret
 `mrs vault ls` | Print vault names
 `mrs vault default` | Print the default vault
-`mrs vault create <name>` | Create a vault
+`mrs vault add <name>` | Add a vault
 `mrs vault change-password <name>` | Re-encrypt under a new password
 `mrs vault rename <source> <target>` | Rename a vault
 `mrs vault rm <name>` | Delete a vault, after confirming
@@ -79,12 +79,12 @@ arguments are joined, so `mrs search bank account` matches `bank account`.
 Flag | Commands | Supplies
 --- | --- | ---
 `-v`, `--vault` | `add`, `edit`, `search`, `export` | the vault's name, or the start of it
-`-p`, `--password-file` | `add`, `edit`, `search`, `export`, `vault create`, `vault change-password` | the vault's current password
+`-p`, `--password-file` | `add`, `edit`, `search`, `export`, `vault add`, `vault change-password` | the vault's current password
 `-n`, `--new-password-file` | `vault change-password` | the password to change it to
-`-i`, `--import-file` | `vault create` | unencrypted secrets to seed the vault with
+`-i`, `--import-file` | `vault add` | unencrypted secrets to seed the vault with
 `-f`, `--full` | `search` | match values as well as keys
 `-y`, `--yes` | `edit`, `vault rm` | the answer to the confirmation
-`--force` | `add`, `edit`, `vault create`, `vault change-password`, `vault rm`, `vault rename` | permission to repair a lock file that cannot be used
+`--force` | `add`, `edit`, `vault add`, `vault change-password`, `vault rm`, `vault rename` | permission to repair a lock file that cannot be used
 `--path` | `vault ls`, `vault default` | paths instead of names
 
 A short flag means the same thing on every command. `--force` and `--path` have
@@ -121,7 +121,7 @@ Without `-v`, those four use `$MRS_DEFAULT_VAULT_NAME`, or the only vault if
 there is just one. Unlike `-v`, the configured name has to match exactly. No
 vaults, or several with nothing configured, is an error rather than a guess.
 
-`vault create`, `vault change-password`, `vault rename` and `vault rm` name
+`vault add`, `vault change-password`, `vault rename` and `vault rm` name
 the vault as an argument instead, and take no prefix at all: each one creates,
 re-keys, moves or destroys a vault, so a name short of the whole thing must not
 reach a neighbouring one. They name the closest vault when given a prefix:

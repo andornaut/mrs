@@ -49,7 +49,7 @@ func Default() (Vault, error) {
 	}
 	switch len(vs) {
 	case 0:
-		return "", errors.New("no vaults found. Run \"mrs vault create\" to create one")
+		return "", errors.New("no vaults found. Run \"mrs vault add\" to create one")
 	case 1:
 		return vs[0], nil
 	}
@@ -102,7 +102,7 @@ func resolve(prefix string) (Vault, []Vault, error) {
 		return "", nil, err
 	}
 	if vs == nil {
-		return "", nil, fmt.Errorf("vault %q not found. Run \"mrs vault create\" to create one", prefix)
+		return "", nil, fmt.Errorf("vault %q not found. Run \"mrs vault add\" to create one", prefix)
 	}
 	if v, ok := named(vs, prefix); ok {
 		return v, vs, nil

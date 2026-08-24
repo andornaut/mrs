@@ -6,7 +6,7 @@ import (
 )
 
 // Capability 4: moving secrets and passwords in and out of a vault, with
-// `vault export`, `vault create --import-file` and `vault change-password`.
+// `vault export`, `vault add --import-file` and `vault change-password`.
 
 func TestExportPrintsWhatWasImported(t *testing.T) {
 	l := newLab(t)
@@ -97,14 +97,14 @@ func TestImportReportsAMissingFile(t *testing.T) {
 	l := newLab(t)
 	pwFile := l.PasswordFile("pw", "a password")
 
-	l.Run("vault", "create", "work", "-p", pwFile, "-i", l.UserHome+"/nosuch.txt").
+	l.Run("vault", "add", "work", "-p", pwFile, "-i", l.UserHome+"/nosuch.txt").
 		AssertFailed().
 		AssertStderr("import file")
 
 	// A create that failed must not leave a half-made vault behind, and must
 	// not stand in the way of creating that vault properly afterwards.
 	l.Run("vault", "ls").AssertOK().AssertStdoutEquals("")
-	l.Run("vault", "create", "work", "-p", pwFile).AssertOK()
+	l.Run("vault", "add", "work", "-p", pwFile).AssertOK()
 	l.Run("vault", "ls").AssertOK().AssertStdoutEquals("work")
 }
 
@@ -115,7 +115,7 @@ func TestImportRefusesSecretsThatCannotBeReadBack(t *testing.T) {
 	// vault. Stored unchecked, it would make a vault that only export can read.
 	huge := l.WriteFile("huge.txt", "huge\n"+strings.Repeat("x", 17*1024*1024)+"\n")
 
-	l.Run("vault", "create", "big", "-p", pwFile, "-i", huge).
+	l.Run("vault", "add", "big", "-p", pwFile, "-i", huge).
 		AssertFailed().
 		AssertStderr("longer than the 16 MiB limit")
 
@@ -129,7 +129,7 @@ func TestImportAcceptsALongLineWithinTheLimit(t *testing.T) {
 	// and must still import.
 	long := l.WriteFile("long.txt", "cert\n"+strings.Repeat("x", 1024*1024)+"\n")
 
-	l.Run("vault", "create", "certs", "-p", pwFile, "-i", long).AssertOK()
+	l.Run("vault", "add", "certs", "-p", pwFile, "-i", long).AssertOK()
 
 	// The vault is usable, not merely exportable.
 	l.Run("search", "-v", "certs", "-p", pwFile, "cert").
@@ -245,7 +245,7 @@ func TestAPasswordFileMayEndWithANewline(t *testing.T) {
 	// `echo secret > pw` leaves a trailing newline that is not part of the
 	// password, so a vault created that way is readable with either form.
 	withNewline := l.PasswordFile("pw-newline", "a password\n")
-	l.Run("vault", "create", "work", "-p", withNewline).AssertOK()
+	l.Run("vault", "add", "work", "-p", withNewline).AssertOK()
 
 	bare := l.PasswordFile("pw-bare", "a password")
 	l.Run("export", "-v", "work", "-p", bare).AssertOK()
@@ -255,7 +255,7 @@ func TestAPasswordFileMayContainSpaces(t *testing.T) {
 	l := newLab(t)
 	// Only trailing newlines are trimmed: spaces are part of the password.
 	pwFile := l.PasswordFile("pw", "  a password with spaces  ")
-	l.Run("vault", "create", "work", "-p", pwFile).AssertOK()
+	l.Run("vault", "add", "work", "-p", pwFile).AssertOK()
 
 	trimmed := l.PasswordFile("pw-trimmed", "a password with spaces")
 	l.Run("export", "-v", "work", "-p", trimmed).AssertFailed()

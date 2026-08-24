@@ -325,7 +325,7 @@ func (l *lab) VaultPath(name string) string {
 func (l *lab) createVault(name, password string) string {
 	l.t.Helper()
 	pwFile := l.PasswordFile(name+".pw", password)
-	l.Run("vault", "create", name, "-p", pwFile).AssertOK()
+	l.Run("vault", "add", name, "-p", pwFile).AssertOK()
 	return pwFile
 }
 
@@ -334,7 +334,7 @@ func (l *lab) seedVault(name, password, contents string) string {
 	l.t.Helper()
 	pwFile := l.PasswordFile(name+".pw", password)
 	importFile := l.WriteFile(name+".import", contents)
-	l.Run("vault", "create", name, "-p", pwFile, "-i", importFile).AssertOK()
+	l.Run("vault", "add", name, "-p", pwFile, "-i", importFile).AssertOK()
 	return pwFile
 }
 
