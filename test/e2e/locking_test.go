@@ -62,7 +62,7 @@ func TestDeleteAndRenameAreRefusedWhileAVaultIsOpen(t *testing.T) {
 
 	// Deleting is refused before the confirmation is asked, so answering "y"
 	// cannot get past the lock.
-	l.RunStdin("y\n", "vault", "delete", "work").
+	l.RunStdin("y\n", "vault", "rm", "work").
 		AssertFailed().
 		AssertStderr("locked by another process")
 
@@ -71,7 +71,7 @@ func TestDeleteAndRenameAreRefusedWhileAVaultIsOpen(t *testing.T) {
 		AssertStderr("locked by another process")
 
 	// The vault is still there under its own name.
-	l.Run("vault", "list").AssertOK().AssertStdoutEquals("work")
+	l.Run("vault", "ls").AssertOK().AssertStdoutEquals("work")
 }
 
 func TestReadersAreNotBlockedWhileAVaultIsOpen(t *testing.T) {
@@ -90,7 +90,7 @@ func TestReadersAreNotBlockedWhileAVaultIsOpen(t *testing.T) {
 		AssertOK().
 		AssertStdout("the-secret-value")
 
-	l.Run("vault", "list").AssertOK().AssertStdoutEquals("work")
+	l.Run("vault", "ls").AssertOK().AssertStdoutEquals("work")
 }
 
 func TestAnotherVaultIsUnaffectedByAHeldLock(t *testing.T) {
@@ -122,7 +122,7 @@ func TestForceDoesNotTakeAHeldLock(t *testing.T) {
 		{"add", "--force", "-v", "work", "-p", pwFile},
 		{"edit", "--force", "-v", "work", "-p", pwFile},
 		{"vault", "change-password", "--force", "work", "-p", pwFile, "-n", pwFile},
-		{"vault", "delete", "--force", "work", "--yes"},
+		{"vault", "rm", "--force", "work", "--yes"},
 		{"vault", "rename", "--force", "work", "elsewhere"},
 	} {
 		l.Run(args...).
@@ -264,7 +264,7 @@ func TestANameClaimCannotBeForcedPastAHeldNameLock(t *testing.T) {
 	} {
 		l.Run(args...).AssertFailed()
 	}
-	l.Run("vault", "list").AssertOK().AssertStdoutEquals("other\nwork")
+	l.Run("vault", "ls").AssertOK().AssertStdoutEquals("other\nwork")
 }
 
 func TestAReleasedLockDoesNotBlockLaterWrites(t *testing.T) {
@@ -300,6 +300,6 @@ func TestALockFileIsNotMistakenForAVault(t *testing.T) {
 		t.Fatalf("expected a lock file while the vault is open, got %v", l.Vaults())
 	}
 
-	l.Run("vault", "list").AssertOK().AssertStdoutEquals("work")
+	l.Run("vault", "ls").AssertOK().AssertStdoutEquals("work")
 	l.Run("vault", "default").AssertOK().AssertStdoutEquals("work")
 }

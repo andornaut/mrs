@@ -192,7 +192,7 @@ func init() {
 	}
 
 	deleteCmd := &cobra.Command{
-		Use:                   "delete <name>",
+		Use:                   "rm <name>",
 		Short:                 "Delete a vault",
 		Args:                  cli.RequireArgs(1, 1, "the name of a vault"),
 		ValidArgsFunction:     cli.CompleteVaultNames,
@@ -237,7 +237,7 @@ func init() {
 	}
 
 	list := &cobra.Command{
-		Use:                   "list",
+		Use:                   "ls",
 		Short:                 "List all vaults",
 		Args:                  cli.NoArgs,
 		DisableFlagsInUseLine: true,

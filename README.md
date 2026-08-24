@@ -62,16 +62,16 @@ Command | Does
 `mrs edit` | Edit secrets in an editor
 `mrs search <regular expression>...` | Print matching secrets
 `mrs export` | Print every secret
-`mrs vault list` | Print vault names
+`mrs vault ls` | Print vault names
 `mrs vault default` | Print the default vault
 `mrs vault create <name>` | Create a vault
 `mrs vault change-password <name>` | Re-encrypt under a new password
 `mrs vault rename <source> <target>` | Rename a vault
-`mrs vault delete <name>` | Delete a vault, after confirming
+`mrs vault rm <name>` | Delete a vault, after confirming
 
 `search` matches keys only, unless `--full`. Matching is case insensitive, and
 arguments are joined, so `mrs search bank account` matches `bank account`.
-`vault list` prints names sorted ignoring case, as secrets are sorted by key.
+`vault ls` prints names sorted ignoring case, as secrets are sorted by key.
 `mrs --version` prints the version, and `-h`, `--help` works on every command.
 
 ## Flags
@@ -83,9 +83,9 @@ Flag | Commands | Supplies
 `-n`, `--new-password-file` | `vault change-password` | the password to change it to
 `-i`, `--import-file` | `vault create` | unencrypted secrets to seed the vault with
 `-f`, `--full` | `search` | match values as well as keys
-`-y`, `--yes` | `edit`, `vault delete` | the answer to the confirmation
-`--force` | `add`, `edit`, `vault create`, `vault change-password`, `vault delete`, `vault rename` | permission to repair a lock file that cannot be used
-`--path` | `vault list`, `vault default` | paths instead of names
+`-y`, `--yes` | `edit`, `vault rm` | the answer to the confirmation
+`--force` | `add`, `edit`, `vault create`, `vault change-password`, `vault rm`, `vault rename` | permission to repair a lock file that cannot be used
+`--path` | `vault ls`, `vault default` | paths instead of names
 
 A short flag means the same thing on every command. `--force` and `--path` have
 no short form, because both are worth spelling out.
@@ -97,7 +97,7 @@ lock file, leaving the two processes holding two different files. A held lock is
 refused with or without the flag:
 
 ```console
-$ mrs vault delete work --force --yes
+$ mrs vault rm work --force --yes
 Error: vault work is currently locked by another process. --force repairs a lock
 file that cannot be used, and does not take a lock another process holds
 ```
@@ -121,13 +121,13 @@ Without `-v`, those four use `$MRS_DEFAULT_VAULT_NAME`, or the only vault if
 there is just one. Unlike `-v`, the configured name has to match exactly. No
 vaults, or several with nothing configured, is an error rather than a guess.
 
-`vault create`, `vault change-password`, `vault rename` and `vault delete` name
+`vault create`, `vault change-password`, `vault rename` and `vault rm` name
 the vault as an argument instead, and take no prefix at all: each one creates,
 re-keys, moves or destroys a vault, so a name short of the whole thing must not
 reach a neighbouring one. They name the closest vault when given a prefix:
 
 ```text
-$ mrs vault delete alph
+$ mrs vault rm alph
 Error: vault "alph" not found. Did you mean "alpha"?
 ```
 
@@ -147,18 +147,18 @@ Names may hold ASCII letters, digits, `_` and `-`, up to 200 characters.
 
 ## Confirmations
 
-`mrs edit` that would empty a vault, and `mrs vault delete`, ask first.
+`mrs edit` that would empty a vault, and `mrs vault rm`, ask first.
 `-y`, `--yes` answers in advance. Without a terminal and without `--yes`, `mrs`
 fails rather than assume an answer:
 
 ```text
-$ mrs vault delete old < /dev/null
+$ mrs vault rm old < /dev/null
 Error: cannot ask "Delete vault old?": stdin is not a terminal. Use --yes to answer it
 ```
 
 ## Output and exit codes
 
-stdout carries what a caller consumes: vault names from `vault list` and
+stdout carries what a caller consumes: vault names from `vault ls` and
 `vault default`, secrets from `export` and `search`. Warnings, errors and
 reports go to stderr, so `mrs export > secrets` and `mrs search key | less`
 carry the secrets alone. Prompts go to the terminal itself, so that redirecting

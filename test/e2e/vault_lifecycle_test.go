@@ -34,19 +34,19 @@ func TestCreateVaultIsReportedByList(t *testing.T) {
 	l.createVault("personal", "a password")
 	l.createVault("work", "a password")
 
-	l.Run("vault", "list").AssertOK().AssertStdoutEquals("personal\nwork")
+	l.Run("vault", "ls").AssertOK().AssertStdoutEquals("personal\nwork")
 }
 
 func TestListIsEmptyWhenNoVaultsExist(t *testing.T) {
 	l := newLab(t)
-	l.Run("vault", "list").AssertOK().AssertStdoutEquals("")
+	l.Run("vault", "ls").AssertOK().AssertStdoutEquals("")
 }
 
 func TestListPathsPrintsAbsolutePaths(t *testing.T) {
 	l := newLab(t)
 	l.createVault("personal", "a password")
 
-	r := l.Run("vault", "list", "--path").AssertOK()
+	r := l.Run("vault", "ls", "--path").AssertOK()
 	if got := strings.TrimSpace(r.Stdout); got != l.VaultPath("personal") {
 		t.Fatalf("expected the vault path %q, got %q", l.VaultPath("personal"), got)
 	}
@@ -54,7 +54,7 @@ func TestListPathsPrintsAbsolutePaths(t *testing.T) {
 	// --path has no short form, so that -p means the password file on every
 	// command that takes one.
 	for _, args := range [][]string{
-		{"vault", "list", "-p"},
+		{"vault", "ls", "-p"},
 		{"vault", "default", "-p"},
 	} {
 		l.Run(args...).AssertFailed().AssertStderr("unknown shorthand flag")
@@ -203,7 +203,7 @@ func TestListIgnoresStrayFiles(t *testing.T) {
 			t.Fatalf("failed to write %s: %s", name, err)
 		}
 	}
-	r := l.Run("vault", "list").AssertOK()
+	r := l.Run("vault", "ls").AssertOK()
 	r.AssertStdoutEquals("personal")
 	// Visible files are reported, so that a vault file renamed by hand does not
 	// vanish silently. Hidden files are never vaults, so they stay quiet.
@@ -222,7 +222,7 @@ func TestListWarnsAboutAVaultFileRenamedByHand(t *testing.T) {
 		t.Fatalf("failed to rename the vault file: %s", err)
 	}
 
-	l.Run("vault", "list").
+	l.Run("vault", "ls").
 		AssertOK().
 		AssertStdoutEquals("").
 		AssertStderr("personal.backup")
@@ -245,7 +245,7 @@ func TestAVaultWhoseTargetIsAwayIsStillAVault(t *testing.T) {
 		t.Fatalf("failed to link the moved vault: %s", err)
 	}
 	// Both are readable while the target is in place.
-	l.Run("vault", "list").AssertOK().AssertStdoutEquals("away\npersonal")
+	l.Run("vault", "ls").AssertOK().AssertStdoutEquals("away\npersonal")
 
 	// Take the target away, as unmounting the drive would.
 	if err := os.Rename(moved, moved+".unmounted"); err != nil {
@@ -253,7 +253,7 @@ func TestAVaultWhoseTargetIsAwayIsStillAVault(t *testing.T) {
 	}
 
 	// It is still listed, and the warning says why it cannot be read.
-	l.Run("vault", "list").
+	l.Run("vault", "ls").
 		AssertOK().
 		AssertStdoutEquals("away\npersonal").
 		AssertStderr("symlink to a file that is not there")
@@ -273,15 +273,15 @@ func TestAVaultWhoseTargetIsAwayIsStillAVault(t *testing.T) {
 	if err := os.Rename(moved+".unmounted", moved); err != nil {
 		t.Fatalf("failed to put the target back: %s", err)
 	}
-	l.Run("vault", "list").AssertOK().AssertStdoutEquals("away\npersonal")
+	l.Run("vault", "ls").AssertOK().AssertStdoutEquals("away\npersonal")
 
 	// And while it is away it can be got rid of, which is the way out of a
 	// link whose target is never coming back.
 	if err := os.Rename(moved, moved+".unmounted"); err != nil {
 		t.Fatalf("failed to take the target away again: %s", err)
 	}
-	l.Run("vault", "delete", "away", "--yes").AssertOK()
-	l.Run("vault", "list").AssertOK().AssertStdoutEquals("personal")
+	l.Run("vault", "rm", "away", "--yes").AssertOK()
+	l.Run("vault", "ls").AssertOK().AssertStdoutEquals("personal")
 }
 
 func TestListIgnoresLockBackupAndTempFiles(t *testing.T) {
@@ -303,7 +303,7 @@ func TestListIgnoresLockBackupAndTempFiles(t *testing.T) {
 
 	// And quietly: these are mrs's own files, so warning about them the way a
 	// stray file is warned about would report a problem on every run.
-	r := l.Run("vault", "list").AssertOK()
+	r := l.Run("vault", "ls").AssertOK()
 	r.AssertStdoutEquals("personal")
 	if r.Stderr != "" {
 		t.Fatalf("expected nothing on stderr, got %q", r.Stderr)
@@ -318,7 +318,7 @@ func TestRenamePreservesTheSecrets(t *testing.T) {
 		AssertOK().
 		AssertStderr("Renamed vault personal to renamed")
 
-	l.Run("vault", "list").AssertOK().AssertStdoutEquals("renamed")
+	l.Run("vault", "ls").AssertOK().AssertStdoutEquals("renamed")
 	if got := l.export("renamed", pwFile); !strings.Contains(got, "a value") {
 		t.Fatalf("expected the renamed vault to keep its secrets, got %q", got)
 	}
@@ -332,7 +332,7 @@ func TestRenameRejectsAnExistingTargetName(t *testing.T) {
 	l.Run("vault", "rename", "personal", "work").
 		AssertFailed().
 		AssertStderr("already exists")
-	l.Run("vault", "list").AssertOK().AssertStdoutEquals("personal\nwork")
+	l.Run("vault", "ls").AssertOK().AssertStdoutEquals("personal\nwork")
 }
 
 func TestRenameRejectsAnInvalidTargetName(t *testing.T) {
@@ -342,7 +342,7 @@ func TestRenameRejectsAnInvalidTargetName(t *testing.T) {
 	l.Run("vault", "rename", "personal", "../escape").
 		AssertFailed().
 		AssertStderr("invalid vault name")
-	l.Run("vault", "list").AssertOK().AssertStdoutEquals("personal")
+	l.Run("vault", "ls").AssertOK().AssertStdoutEquals("personal")
 }
 
 func TestRenameRejectsIdenticalNames(t *testing.T) {
@@ -350,7 +350,7 @@ func TestRenameRejectsIdenticalNames(t *testing.T) {
 	l.createVault("personal", "a password")
 
 	l.Run("vault", "rename", "personal", "personal").AssertFailed()
-	l.Run("vault", "list").AssertOK().AssertStdoutEquals("personal")
+	l.Run("vault", "ls").AssertOK().AssertStdoutEquals("personal")
 }
 
 func TestRenameRequiresAnExactSourceName(t *testing.T) {
@@ -360,7 +360,7 @@ func TestRenameRequiresAnExactSourceName(t *testing.T) {
 	l.Run("vault", "rename", "pers", "renamed").
 		AssertFailed().
 		AssertStderr(`Did you mean "personal"`)
-	l.Run("vault", "list").AssertOK().AssertStdoutEquals("personal")
+	l.Run("vault", "ls").AssertOK().AssertStdoutEquals("personal")
 }
 
 func TestRenameReportsAMissingVault(t *testing.T) {
@@ -396,12 +396,12 @@ func TestDeleteRemovesTheVaultWhenConfirmed(t *testing.T) {
 	l.createVault("personal", "a password")
 	vaultPath := l.VaultPath("personal")
 
-	l.Run("vault", "delete", "personal", "--yes").
+	l.Run("vault", "rm", "personal", "--yes").
 		AssertOK().
 		AssertStderr("Deleted vault personal")
 
 	assertNotExists(t, vaultPath)
-	l.Run("vault", "list").AssertOK().AssertStdoutEquals("")
+	l.Run("vault", "ls").AssertOK().AssertStdoutEquals("")
 }
 
 // A pipe cannot answer a question, whatever it holds. Exiting 0 without asking
@@ -412,11 +412,11 @@ func TestDeleteWithoutAnAnswerKeepsTheVault(t *testing.T) {
 	l.createVault("personal", "a password")
 
 	for _, stdin := range []string{"y\n", "n\n", "\n", ""} {
-		l.RunStdin(stdin, "vault", "delete", "personal").
+		l.RunStdin(stdin, "vault", "rm", "personal").
 			AssertFailed().
 			AssertStderr("stdin is not a terminal").
 			AssertStderr("Use --yes")
-		l.Run("vault", "list").AssertOK().AssertStdoutEquals("personal")
+		l.Run("vault", "ls").AssertOK().AssertStdoutEquals("personal")
 	}
 }
 
@@ -432,7 +432,7 @@ func TestDeleteRemovesTheBackupFile(t *testing.T) {
 		t.Fatalf("expected a backup to exist before the delete: %s", err)
 	}
 
-	l.Run("vault", "delete", "personal", "--yes").AssertOK()
+	l.Run("vault", "rm", "personal", "--yes").AssertOK()
 
 	assertNotExists(t, backup)
 }
@@ -446,7 +446,7 @@ func TestALeftoverTemporaryFileThatCannotBeRemovedIsAWarningOnly(t *testing.T) {
 		args []string
 		want string
 	}{
-		{"delete", []string{"vault", "delete", "personal", "--yes"}, ""},
+		{"rm", []string{"vault", "rm", "personal", "--yes"}, ""},
 		{"rename", []string{"vault", "rename", "personal", "renamed"}, "renamed"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
@@ -466,7 +466,7 @@ func TestALeftoverTemporaryFileThatCannotBeRemovedIsAWarningOnly(t *testing.T) {
 				AssertOK().
 				AssertStderr("failed to remove temporary files for vault personal")
 
-			l.Run("vault", "list").AssertOK().AssertStdoutEquals(tt.want)
+			l.Run("vault", "ls").AssertOK().AssertStdoutEquals(tt.want)
 		})
 	}
 }
@@ -477,11 +477,11 @@ func TestDeleteRequiresAnExactName(t *testing.T) {
 
 	// The name is checked before anything is asked, so the user is never made
 	// to confirm deleting something that is not a vault.
-	l.RunStdin("y\n", "vault", "delete", "pers").
+	l.RunStdin("y\n", "vault", "rm", "pers").
 		AssertFailed().
 		AssertStderr(`Did you mean "personal"`).
 		AssertNoOutput("(y/n)")
-	l.Run("vault", "list").AssertOK().AssertStdoutEquals("personal")
+	l.Run("vault", "ls").AssertOK().AssertStdoutEquals("personal")
 }
 
 func TestDeleteConfirmsWithTheVaultsOwnName(t *testing.T) {
@@ -490,10 +490,10 @@ func TestDeleteConfirmsWithTheVaultsOwnName(t *testing.T) {
 
 	// A destructive confirmation names what will be destroyed. Reported here
 	// rather than asked, there being no terminal to ask on.
-	l.Run("vault", "delete", "personal").
+	l.Run("vault", "rm", "personal").
 		AssertFailed().
 		AssertStderr("Delete vault personal?")
-	l.Run("vault", "list").AssertOK().AssertStdoutEquals("personal")
+	l.Run("vault", "ls").AssertOK().AssertStdoutEquals("personal")
 }
 
 // Reading a vault takes a name prefix; changing one takes the whole name, so
@@ -513,7 +513,7 @@ func TestReadingTakesAPrefixAndChangingTakesTheWholeName(t *testing.T) {
 	for _, args := range [][]string{
 		{"vault", "change-password", "pers", "-p", pwFile, "-n", newPw},
 		{"vault", "rename", "pers", "renamed"},
-		{"vault", "delete", "pers"},
+		{"vault", "rm", "pers"},
 	} {
 		l.RunStdin("y\n", args...).
 			AssertFailed().
@@ -521,7 +521,7 @@ func TestReadingTakesAPrefixAndChangingTakesTheWholeName(t *testing.T) {
 	}
 
 	// Nothing was changed by any of them.
-	l.Run("vault", "list").AssertOK().AssertStdoutEquals("personal")
+	l.Run("vault", "ls").AssertOK().AssertStdoutEquals("personal")
 	l.Run("export", "-v", "personal", "-p", pwFile).
 		AssertOK().
 		AssertStdoutExactly("a key\na value\n")
@@ -541,7 +541,7 @@ func TestTheVaultFlagAndOperandAreUsedConsistently(t *testing.T) {
 		{[]string{"add"}, "or the start of one"},
 		{[]string{"edit"}, "or the start of one"},
 		{[]string{"vault", "change-password"}, "change-password <name>"},
-		{[]string{"vault", "delete"}, "delete <name>"},
+		{[]string{"vault", "rm"}, "rm <name>"},
 	} {
 		l.Run(append(c.args, "--help")...).AssertOK().AssertStdout(c.want)
 	}
@@ -562,7 +562,7 @@ func TestRenameChecksTheSourceNameBeforeLocking(t *testing.T) {
 func TestDeleteReportsAMissingVault(t *testing.T) {
 	l := newLab(t)
 
-	l.RunStdin("y\n", "vault", "delete", "absent").
+	l.RunStdin("y\n", "vault", "rm", "absent").
 		AssertFailed().
 		AssertStderr("not found")
 }
@@ -593,7 +593,7 @@ func TestAnAmbiguousPrefixIsRefused(t *testing.T) {
 
 	// The commands that destroy or move a vault refuse a prefix outright, and
 	// say which vault they think was meant.
-	l.RunStdin("y\n", "vault", "delete", "alph").
+	l.RunStdin("y\n", "vault", "rm", "alph").
 		AssertFailed().
 		AssertStderr(`Did you mean "alpha"?`)
 
@@ -654,10 +654,10 @@ func TestAnExactNameIsReachableByEveryCommand(t *testing.T) {
 		AssertStderr("Changed password of vault work")
 
 	l.Run("vault", "rename", "work", "current").AssertOK()
-	l.Run("vault", "list").AssertOK().AssertStdoutEquals("current\nwork-archive")
+	l.Run("vault", "ls").AssertOK().AssertStdoutEquals("current\nwork-archive")
 
-	l.Run("vault", "delete", "work-archive", "--yes").AssertOK()
-	l.Run("vault", "list").AssertOK().AssertStdoutEquals("current")
+	l.Run("vault", "rm", "work-archive", "--yes").AssertOK()
+	l.Run("vault", "ls").AssertOK().AssertStdoutEquals("current")
 	l.Run("export", "-v", "current", "-p", newPw).
 		AssertOK().
 		AssertStdoutExactly("k\nwork-value\n")
@@ -681,7 +681,7 @@ func TestVaultNamesAreCaseSensitive(t *testing.T) {
 	l.seedVault("Personal", "a password", "upper key\nupper value\n")
 	l.seedVault("personal", "a password", "lower key\nlower value\n")
 
-	l.Run("vault", "list").AssertOK().AssertStdoutEquals("Personal\npersonal")
+	l.Run("vault", "ls").AssertOK().AssertStdoutEquals("Personal\npersonal")
 	pwFile := l.PasswordFile("Personal.pw", "a password")
 	l.Run("export", "-v", "Personal", "-p", pwFile).
 		AssertOK().
@@ -694,11 +694,11 @@ func TestHelpDocumentsEveryCommand(t *testing.T) {
 
 	root := l.Run("help").AssertOK()
 	for _, c := range []string{"add", "edit", "export", "search", "vault"} {
-		root.AssertStdout(c)
+		root.AssertCommandListed(c)
 	}
 	vaultHelp := l.Run("help", "vault").AssertOK()
-	for _, c := range []string{"change-password", "create", "default", "delete", "list", "rename"} {
-		vaultHelp.AssertStdout(c)
+	for _, c := range []string{"change-password", "create", "default", "ls", "rename", "rm"} {
+		vaultHelp.AssertCommandListed(c)
 	}
 }
 
@@ -712,7 +712,7 @@ func TestACommandThatTakesNoArgumentsSaysSo(t *testing.T) {
 
 	for _, args := range [][]string{
 		{"export", "-p", pwFile, "personal"},
-		{"vault", "list", "personal"},
+		{"vault", "ls", "personal"},
 	} {
 		l.Run(args...).
 			AssertFailed().
@@ -789,7 +789,7 @@ func TestCompletionOffersVaultNames(t *testing.T) {
 	// Every command that names a vault offers the names there are, whether it
 	// takes the name as an operand or as --vault.
 	for _, args := range [][]string{
-		{"__complete", "vault", "delete", ""},
+		{"__complete", "vault", "rm", ""},
 		{"__complete", "vault", "change-password", ""},
 		{"__complete", "vault", "rename", ""},
 		{"__complete", "edit", "-v", ""},
@@ -802,7 +802,7 @@ func TestCompletionOffersVaultNames(t *testing.T) {
 	}
 
 	// A prefix narrows them, as it does when the command runs.
-	l.Run("__complete", "vault", "delete", "work").
+	l.Run("__complete", "vault", "rm", "work").
 		AssertOK().
 		AssertStdout("work\nwork-archive").
 		AssertNoOutput("personal")
@@ -844,7 +844,7 @@ func TestCompletionDoesNotWarnAboutAVaultItCannotRead(t *testing.T) {
 	// A shell asks what to offer on every Tab, and a warning there lands in the
 	// middle of the line being typed. The entry is still offered, because
 	// delete and rename can reach it.
-	l.Run("__complete", "vault", "delete", "").
+	l.Run("__complete", "vault", "rm", "").
 		AssertOK().
 		AssertStdout("broken\npersonal").
 		AssertNoOutput("Warning")
@@ -853,7 +853,7 @@ func TestCompletionDoesNotWarnAboutAVaultItCannotRead(t *testing.T) {
 		AssertNoOutput("Warning")
 
 	// Asked for the list, mrs says why it cannot read them.
-	l.Run("vault", "list").
+	l.Run("vault", "ls").
 		AssertOK().
 		AssertStderr("vault broken cannot be read").
 		AssertStderr("notavault.txt")
@@ -868,7 +868,7 @@ func TestListSortsNamesIgnoringCase(t *testing.T) {
 	// Sorted as secrets are sorted by key. Filename order would put every
 	// uppercase name ahead of every lowercase one, and "_under" between
 	// "Banana" and "mango".
-	l.Run("vault", "list").
+	l.Run("vault", "ls").
 		AssertOK().
 		AssertStdoutEquals("_under\nApple\nBanana\nmango\nzebra")
 }
@@ -885,7 +885,7 @@ func TestTooManyOperandsSayHowManyArrived(t *testing.T) {
 	l.Run("vault", "rename", "a", "b", "c").
 		AssertUsageError().
 		AssertStderr("but got 3 arguments")
-	l.Run("vault", "delete", "a", "b").
+	l.Run("vault", "rm", "a", "b").
 		AssertUsageError().
 		AssertStderr("but got 2 arguments")
 
@@ -909,7 +909,7 @@ func TestADirectoryWhereAVaultShouldBeIsStillAVault(t *testing.T) {
 		t.Fatalf("failed to create the directory: %s", err)
 	}
 
-	l.Run("vault", "list").
+	l.Run("vault", "ls").
 		AssertOK().
 		AssertStdoutEquals("broken\npersonal").
 		AssertStderr("vault broken cannot be read: a vault is a file, and this is a directory")
@@ -927,6 +927,6 @@ func TestADirectoryWhereAVaultShouldBeIsStillAVault(t *testing.T) {
 	l.Run("export", "-v", "broken", "-p", pwFile).AssertFailed()
 
 	// And it can be removed with mrs, which is the way out.
-	l.Run("vault", "delete", "broken", "--yes").AssertOK()
-	l.Run("vault", "list").AssertOK().AssertStdoutEquals("personal")
+	l.Run("vault", "rm", "broken", "--yes").AssertOK()
+	l.Run("vault", "ls").AssertOK().AssertStdoutEquals("personal")
 }

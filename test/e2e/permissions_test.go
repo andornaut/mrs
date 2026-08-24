@@ -82,7 +82,7 @@ func TestTheVaultDirectoryIsTightenedWhenItIsLoose(t *testing.T) {
 	// the machine what is kept here even though the vaults are encrypted.
 	chmod(t, l.VaultDir(), 0755)
 
-	l.Run("vault", "list").AssertOK().AssertStdoutEquals("personal")
+	l.Run("vault", "ls").AssertOK().AssertStdoutEquals("personal")
 
 	assertDirMode(t, l.VaultDir(), 0700)
 }
@@ -158,10 +158,10 @@ func TestAVaultDirectoryThatCannotBeReadIsReportedRatherThanReadAsEmpty(t *testi
 	t.Cleanup(func() { _ = os.Chmod(dir, 0700) })
 
 	for _, args := range [][]string{
-		{"vault", "list"},
+		{"vault", "ls"},
 		{"vault", "default"},
 		{"export", "-v", "personal", "-p", pwFile},
-		{"vault", "delete", "personal", "--yes"},
+		{"vault", "rm", "personal", "--yes"},
 	} {
 		l.Run(args...).
 			AssertFailed().

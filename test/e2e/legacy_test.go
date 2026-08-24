@@ -97,7 +97,7 @@ func TestAVaultFileWithNoSaltIsReportedAndIgnored(t *testing.T) {
 
 	// It is named on stderr, so that it cannot look as though the vault simply
 	// vanished.
-	l.Run("vault", "list").
+	l.Run("vault", "ls").
 		AssertOK().
 		AssertStdoutEquals("").
 		AssertStderr("ignoring").
@@ -122,7 +122,7 @@ func TestAVaultFileWithNoSaltDoesNotBlockANewVault(t *testing.T) {
 
 	// The old file is not a vault, so it does not occupy the name.
 	l.Run("vault", "create", "personal", "-p", pwFile).AssertOK()
-	l.Run("vault", "list").AssertOK().AssertStdoutEquals("personal")
+	l.Run("vault", "ls").AssertOK().AssertStdoutEquals("personal")
 }
 
 // oldIterations is the count mrs derived a key with before it was raised. It is
@@ -173,7 +173,7 @@ func TestAVaultAtTheOldIterationCountStillOccupiesItsName(t *testing.T) {
 	l.writeVaultFile("personal."+salt, "a password", "a key\na-value\n", salt, oldIterations)
 	pwFile := l.PasswordFile("pw", "a password")
 
-	l.Run("vault", "list").AssertOK().AssertStdoutEquals("personal")
+	l.Run("vault", "ls").AssertOK().AssertStdoutEquals("personal")
 	l.Run("vault", "create", "personal", "-p", pwFile).
 		AssertFailed().
 		AssertStderr("already exists")
@@ -211,7 +211,7 @@ func TestAnOldVaultKeepsItsSaltWhenRenamed(t *testing.T) {
 
 	// Renaming does not decrypt, so the salt has to travel with the file.
 	l.Run("vault", "rename", "personal", "archive").AssertOK()
-	l.Run("vault", "list").AssertOK().AssertStdoutEquals("archive")
+	l.Run("vault", "ls").AssertOK().AssertStdoutEquals("archive")
 	if got := filepath.Base(l.VaultPath("archive")); got != "archive."+salt {
 		t.Fatalf("expected the salt to travel with the vault, got %q", got)
 	}
@@ -219,8 +219,8 @@ func TestAnOldVaultKeepsItsSaltWhenRenamed(t *testing.T) {
 		AssertOK().
 		AssertStdout("old-value")
 
-	l.Run("vault", "delete", "archive", "--yes").AssertOK()
-	l.Run("vault", "list").AssertOK().AssertStdoutEquals("")
+	l.Run("vault", "rm", "archive", "--yes").AssertOK()
+	l.Run("vault", "ls").AssertOK().AssertStdoutEquals("")
 	// Nothing that still holds the secrets may be left behind. Lock files are
 	// left in place by every command and hold nothing, so they do not count.
 	assertNoPlaintextUnder(t, l.VaultDir(), "old-value")
@@ -319,7 +319,7 @@ func TestALeftoverTemporaryFileIsRemovedOnSave(t *testing.T) {
 	l.Run("edit", "-v", "personal", "-p", pwFile).AssertOK()
 
 	assertNotExists(t, stale)
-	l.Run("vault", "list").AssertOK().AssertStdoutEquals("personal")
+	l.Run("vault", "ls").AssertOK().AssertStdoutEquals("personal")
 }
 
 // copyFile copies a file, which is how a user restores a backup.

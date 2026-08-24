@@ -407,6 +407,22 @@ func (r *result) AssertStdout(want string) *result {
 	return r
 }
 
+// AssertCommandListed asserts that a help listing names the given command,
+// anchored to the first field of a line. A substring would match the name
+// wherever it fell: "rm" is inside the "for more information" footer cobra
+// prints under every listing, so `AssertStdout("rm")` passes for a command that
+// is not there at all.
+func (r *result) AssertCommandListed(want string) *result {
+	r.t.Helper()
+	for line := range strings.SplitSeq(r.Stdout, "\n") {
+		if fields := strings.Fields(line); len(fields) > 0 && fields[0] == want {
+			return r
+		}
+	}
+	r.t.Fatalf("expected stdout to list the command %q\n%s", want, r.describe())
+	return r
+}
+
 // AssertStdoutEquals asserts stdout exactly, after trimming a trailing newline.
 func (r *result) AssertStdoutEquals(want string) *result {
 	r.t.Helper()

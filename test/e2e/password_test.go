@@ -103,9 +103,9 @@ func TestImportReportsAMissingFile(t *testing.T) {
 
 	// A create that failed must not leave a half-made vault behind, and must
 	// not stand in the way of creating that vault properly afterwards.
-	l.Run("vault", "list").AssertOK().AssertStdoutEquals("")
+	l.Run("vault", "ls").AssertOK().AssertStdoutEquals("")
 	l.Run("vault", "create", "work", "-p", pwFile).AssertOK()
-	l.Run("vault", "list").AssertOK().AssertStdoutEquals("work")
+	l.Run("vault", "ls").AssertOK().AssertStdoutEquals("work")
 }
 
 func TestImportRefusesSecretsThatCannotBeReadBack(t *testing.T) {
@@ -119,7 +119,7 @@ func TestImportRefusesSecretsThatCannotBeReadBack(t *testing.T) {
 		AssertFailed().
 		AssertStderr("longer than the 16 MiB limit")
 
-	l.Run("vault", "list").AssertOK().AssertStdoutEquals("")
+	l.Run("vault", "ls").AssertOK().AssertStdoutEquals("")
 }
 
 func TestImportAcceptsALongLineWithinTheLimit(t *testing.T) {

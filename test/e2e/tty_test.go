@@ -120,18 +120,18 @@ func TestDeleteIsCancelledByAnAnswerOfNo(t *testing.T) {
 	l := newLab(t)
 	l.createVault("personal", "a password")
 
-	l.RunTTY("n\n", "vault", "delete", "personal").
+	l.RunTTY("n\n", "vault", "rm", "personal").
 		AssertOK().
 		AssertOutput("Delete vault personal? (y/n) [n]: ").
 		AssertOutput("Cancelled").
 		AssertNoOutput("Deleted vault")
-	l.Run("vault", "list").AssertOK().AssertStdoutEquals("personal")
+	l.Run("vault", "ls").AssertOK().AssertStdoutEquals("personal")
 
-	l.RunTTY("y\n", "vault", "delete", "personal").
+	l.RunTTY("y\n", "vault", "rm", "personal").
 		AssertOK().
 		AssertOutput("Deleted vault personal").
 		AssertNoOutput("Cancelled")
-	l.Run("vault", "list").AssertOK().AssertStdoutEquals("")
+	l.Run("vault", "ls").AssertOK().AssertStdoutEquals("")
 }
 
 func TestEmptyingAVaultIsCancelledByAnAnswerOfNo(t *testing.T) {
@@ -163,7 +163,7 @@ func TestATypedPasswordIsCheckedBeforeItIsConfirmed(t *testing.T) {
 		AssertFailed().
 		AssertOutput("password must contain at least 8 characters").
 		AssertNoOutput("Confirm password")
-	l.Run("vault", "list").AssertOK().AssertStdoutEquals("")
+	l.Run("vault", "ls").AssertOK().AssertStdoutEquals("")
 
 	// The confirmation is still asked for a password that could be accepted.
 	l.RunTTY("a good password\na good password\n", "vault", "create", "personal").

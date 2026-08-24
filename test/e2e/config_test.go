@@ -128,7 +128,7 @@ func TestMrsHomeWinsOverXdgDataHome(t *testing.T) {
 	l.createVault("personal", "a password")
 
 	// MRS_HOME is the more specific setting, so it is the one that applies.
-	l.Run("vault", "list").AssertOK().AssertStdoutEquals("personal")
+	l.Run("vault", "ls").AssertOK().AssertStdoutEquals("personal")
 	assertNotExists(t, filepath.Join(xdg, "mrs"))
 }
 
@@ -152,7 +152,7 @@ func TestAnUnusableHomeIsReportedByEveryCommand(t *testing.T) {
 	// Whichever command the user reaches for, the answer names the problem
 	// rather than reporting an empty or missing vault.
 	for _, args := range [][]string{
-		{"vault", "list"},
+		{"vault", "ls"},
 		{"vault", "default"},
 		{"vault", "create", "personal", "-p", pwFile},
 		{"export", "-v", "personal", "-p", pwFile},
@@ -288,7 +288,7 @@ func TestTheVaultSubcommandsRequireANamedVault(t *testing.T) {
 	// configured default is not enough to re-key or delete by.
 	for _, args := range [][]string{
 		{"vault", "change-password", "-p", pwFile},
-		{"vault", "delete"},
+		{"vault", "rm"},
 	} {
 		l.Run(args...).AssertUsageError().AssertStderr("requires the name of a vault")
 	}
@@ -372,11 +372,11 @@ func TestNothingButDataIsEverWrittenToStdout(t *testing.T) {
 	failures := map[string][]string{
 		"unknown command":       {"bogus"},
 		"unknown subcommand":    {"vault", "bogus"},
-		"unknown flag":          {"vault", "list", "--bogus"},
+		"unknown flag":          {"vault", "ls", "--bogus"},
 		"missing vault":         {"export", "-v", "nope", "-p", pwFile},
 		"wrong password":        {"export", "-v", "work", "-p", wrong},
 		"missing password file": {"export", "-v", "work", "-p", absent},
-		"no answer to confirm":  {"vault", "delete", "work"},
+		"no answer to confirm":  {"vault", "rm", "work"},
 		"no password to read":   {"export", "-v", "work"},
 		"search without a term": {"search", "-v", "work", "-p", pwFile},
 		"invalid pattern":       {"search", "-v", "work", "-p", pwFile, "["},
@@ -386,8 +386,8 @@ func TestNothingButDataIsEverWrittenToStdout(t *testing.T) {
 		"weak password":         {"vault", "create", "new", "-p", l.PasswordFile("short.pw", "short")},
 		"rename missing source": {"vault", "rename", "nope", "other"},
 		"rename too few args":   {"vault", "rename", "onlyone"},
-		"delete missing vault":  {"vault", "delete", "nope"},
-		"prefix cannot delete":  {"vault", "delete", "wor"},
+		"delete missing vault":  {"vault", "rm", "nope"},
+		"prefix cannot delete":  {"vault", "rm", "wor"},
 		"prefix cannot re-key":  {"vault", "change-password", "wor", "-p", pwFile},
 	}
 	for desc, args := range failures {
@@ -418,16 +418,16 @@ func TestExitCodesDistinguishUsageFromFailureFromNoMatch(t *testing.T) {
 		want int
 	}{
 		{"a search that matched", []string{"search", "-v", "work", "-p", pwFile, "a key"}, 0},
-		{"a command that worked", []string{"vault", "list"}, 0},
+		{"a command that worked", []string{"vault", "ls"}, 0},
 		{"a vault that is not there", []string{"search", "-v", "nope", "-p", pwFile, "a key"}, 1},
 		{"a password that is wrong", []string{"export", "-v", "work", "-p", l.PasswordFile("wrong.pw", "not the password")}, 1},
-		{"a confirmation nobody can answer", []string{"vault", "delete", "work"}, 1},
-		{"a flag that is not there", []string{"vault", "list", "--bogus"}, 2},
+		{"a confirmation nobody can answer", []string{"vault", "rm", "work"}, 1},
+		{"a flag that is not there", []string{"vault", "ls", "--bogus"}, 2},
 		{"a command that is not there", []string{"bogus"}, 2},
 		{"no command at all", []string{}, 2},
 		{"a command group with no command", []string{"vault"}, 2},
 		{"a subcommand that is not there", []string{"vault", "bogus"}, 2},
-		{"an argument a command does not take", []string{"vault", "list", "extra"}, 2},
+		{"an argument a command does not take", []string{"vault", "ls", "extra"}, 2},
 		{"a search with nothing to search for", []string{"search", "-v", "work", "-p", pwFile}, 2},
 		{"a search that matched nothing", []string{"search", "-v", "work", "-p", pwFile, "zzz"}, 3},
 	} {
@@ -456,8 +456,8 @@ func TestOnlyDataIsWrittenToStdoutWhenACommandSucceeds(t *testing.T) {
 		{"edit", []string{"edit", "-v", "second", "-p", pwFile}, ""},
 		{"rename", []string{"vault", "rename", "second", "third"}, ""},
 		{"change-password", []string{"vault", "change-password", "third", "-p", pwFile, "-n", pwFile}, ""},
-		{"delete", []string{"vault", "delete", "third", "--yes"}, ""},
-		{"list", []string{"vault", "list"}, "work\n"},
+		{"rm", []string{"vault", "rm", "third", "--yes"}, ""},
+		{"ls", []string{"vault", "ls"}, "work\n"},
 		{"get-default", []string{"vault", "default"}, "work\n"},
 		{"export", []string{"export", "-v", "work", "-p", pwFile}, "a key\na value\n"},
 	} {
@@ -511,7 +511,7 @@ func TestUsageIsPrintedForAWrongInvocationOnly(t *testing.T) {
 		{"vault"},
 		{"bogus"},
 		{"vault", "bogus"},
-		{"vault", "list", "--bogus"},
+		{"vault", "ls", "--bogus"},
 		{"vault", "rename", "one"},
 	} {
 		r := l.Run(args...).AssertFailed().AssertStderr("Usage:")
