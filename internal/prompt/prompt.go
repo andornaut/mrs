@@ -90,9 +90,24 @@ func Editor(p string) error {
 	argv := config.Editor()
 	args := append(append([]string{}, argv[1:]...), p)
 	cmd := exec.Command(argv[0], args...)
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+	// An editor a person is going to type into needs the terminal rather than
+	// whatever the streams were redirected to, for the reason a prompt does:
+	// `mrs edit > log` would otherwise draw the editor's screen into the log
+	// and hand the editor a stdout that is not a terminal, which the default
+	// editor refuses outright.
+	//
+	// Only when stdin is a terminal. A run without one is a scripted one, whose
+	// editor is not drawing a screen and may well be reading or writing those
+	// streams on purpose, so it keeps the ones it was given. And a terminal
+	// that cannot be opened leaves them alone too: unlike a prompt, which has
+	// nowhere else to go, an editor still runs on the streams it inherited.
+	if isTerminal(int(os.Stdin.Fd())) {
+		if tty, err := os.OpenFile(ttyPath, os.O_RDWR, 0); err == nil {
+			defer func() { _ = tty.Close() }()
+			cmd.Stdin, cmd.Stdout, cmd.Stderr = tty, tty, tty
+		}
+	}
 	cmd.Dir = filepath.Dir(p)
 	if err := cmd.Run(); err != nil {
 		// Name the editor, because the failure is usually a mistyped or unset

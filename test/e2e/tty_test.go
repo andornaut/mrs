@@ -190,7 +190,7 @@ func TestPromptsGoToTheTerminalNotToStderr(t *testing.T) {
 	l.seedVault("personal", "a password", "a key\na value\n")
 
 	stderr := filepath.Join(l.UserHome, "stderr")
-	r := l.runTTYWithStderr(stderr, "a password\n", "export", "-v", "personal")
+	r := l.runTTYDiverting(divertStderr, stderr, "a password\n", "export", "-v", "personal")
 	r.AssertOK()
 	if !strings.Contains(r.Output, "Vault password") {
 		t.Errorf("expected the prompt on the terminal, got %q", r.describe())
@@ -204,20 +204,21 @@ func TestPromptsGoToTheTerminalNotToStderr(t *testing.T) {
 	}
 }
 
-// runTTYWithStderr is RunTTY with stderr sent to a file instead of the
-// terminal, which is what a caller writing "2> log" does.
-func (l *lab) runTTYWithStderr(stderrPath, answer string, args ...string) *ttyResult {
+// runTTYDiverting runs mrs on a terminal with one of its output streams sent
+// to a file instead, which is what a caller writing "2> log" or "> log" does.
+// divert is handed the command and the file, and wires up the one it is about.
+func (l *lab) runTTYDiverting(divert func(*exec.Cmd, *os.File), path, answer string, args ...string) *ttyResult {
 	l.t.Helper()
-	f, err := os.Create(stderrPath)
+	f, err := os.Create(path)
 	if err != nil {
-		l.t.Fatalf("failed to create %s: %s", stderrPath, err)
+		l.t.Fatalf("failed to create %s: %s", path, err)
 	}
 	defer func() { _ = f.Close() }()
 
 	cmd := exec.Command(mrsBin, args...)
 	cmd.Env = l.environ()
 	cmd.Dir = l.UserHome
-	cmd.Stderr = f
+	divert(cmd, f)
 
 	tty, err := pty.Start(cmd)
 	if err != nil {
@@ -244,6 +245,32 @@ func (l *lab) runTTYWithStderr(stderrPath, answer string, args ...string) *ttyRe
 		l.t.Fatalf("mrs %v timed out on a terminal; it is probably waiting for input\noutput:\n%s", args, <-out)
 	}
 	return &ttyResult{t: l.t, Args: args, Output: <-out, ExitCode: cmd.ProcessState.ExitCode()}
+}
+
+func divertStdout(cmd *exec.Cmd, f *os.File) { cmd.Stdout = f }
+func divertStderr(cmd *exec.Cmd, f *os.File) { cmd.Stderr = f }
+
+// An editor draws its screen on the terminal, not on whatever stdout was
+// redirected to. Without this, `mrs edit > log` puts the editor's screen in the
+// log and hands the editor a stdout that is not a terminal, which the default
+// editor refuses outright.
+func TestTheEditorIsGivenTheTerminalNotARedirectedStdout(t *testing.T) {
+	l := newLab(t)
+	pwFile := l.seedVault("personal", "a password", "a key\na value\n")
+	// An editor that writes to its own stdout and changes nothing, so that
+	// where those bytes land is the whole of what this test is about.
+	l.Setenv("EDITOR", "sh -c 'echo EDITOR-DREW-THIS'")
+
+	log := filepath.Join(l.UserHome, "log")
+	r := l.runTTYDiverting(divertStdout, log, "", "edit", "-v", "personal", "-p", pwFile)
+	r.AssertOK()
+
+	if got := readFile(t, log); strings.Contains(got, "EDITOR-DREW-THIS") {
+		t.Errorf("the editor drew into the redirected stdout: %q", got)
+	}
+	if !strings.Contains(r.Output, "EDITOR-DREW-THIS") {
+		t.Errorf("expected the editor's output on the terminal, got %q", r.Output)
+	}
 }
 
 // A password prompt switches echo off, and a signal that ends mrs while one is
