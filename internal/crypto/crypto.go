@@ -85,10 +85,11 @@ func Encrypt(data []byte, password []byte, salt string) ([]byte, error) {
 // of commit 1f550f6f2f69), whose author dedicated it to the public domain
 // under CC0 with the stated intent that it be copied into a caller rather than
 // imported. It has had no commits since 2017, so it is vendored here instead
-// of depended on. Do not change the construction: 256-bit AES-GCM under a
-// random 96-bit nonce, written as nonce|ciphertext|tag. Every existing vault
-// is in this format, and any replacement belongs in a reviewed library rather
-// than in an edit to these functions.
+// of depended on. The construction is 256-bit AES-GCM under a random 96-bit
+// nonce, written as nonce|ciphertext|tag, and every vault already written is
+// in that format: changing it is a change of file format and needs a way to
+// migrate. A defect in these functions is worth fixing here; a different
+// construction is worth taking from a reviewed library.
 //
 // seal encrypts with 256-bit AES-GCM under a nonce generated per call, which
 // must never repeat under one key. That holds here because a vault is
