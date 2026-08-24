@@ -21,24 +21,45 @@ func GivenOrPromptPassword(passwordFile string) ([]byte, error) {
 }
 
 // GivenOrPromptConfirmedPassword returns the password for a vault being
-// created, from a file or from two prompts that must agree.
-func GivenOrPromptConfirmedPassword(passwordFile string) ([]byte, error) {
-	return givenOrPromptConfirmed(passwordFile, "Vault password", "--password-file")
+// created, from a file or from two prompts that must agree. validate refuses a
+// password the caller will not accept.
+func GivenOrPromptConfirmedPassword(validate func([]byte) error, passwordFile string) ([]byte, error) {
+	return givenOrPromptConfirmed(validate, passwordFile, "Vault password", "--password-file")
 }
 
 // GivenOrPromptNewPassword returns the password a vault is being changed to,
-// from a file or from two prompts that must agree.
-func GivenOrPromptNewPassword(newPasswordFile string) ([]byte, error) {
-	return givenOrPromptConfirmed(newPasswordFile, "New password", "--new-password-file")
+// from a file or from two prompts that must agree. validate refuses a password
+// the caller will not accept.
+func GivenOrPromptNewPassword(validate func([]byte) error, newPasswordFile string) ([]byte, error) {
+	return givenOrPromptConfirmed(validate, newPasswordFile, "New password", "--new-password-file")
 }
 
-func givenOrPromptConfirmed(passwordFile, msg, flag string) ([]byte, error) {
+// givenOrPromptConfirmed takes validate rather than calling into the vault
+// package, which would make prompt depend on it to ask a question.
+//
+// A typed password is checked before it is asked for a second time: a password
+// mrs will not accept is refused after one entry rather than after two. A
+// password read from a file is checked as soon as it is read, before anything
+// else is asked for. The caller checks again, which is the answer that counts.
+func givenOrPromptConfirmed(validate func([]byte) error, passwordFile, msg, flag string) ([]byte, error) {
 	if passwordFile != "" {
-		return readPasswordFile(passwordFile)
+		p, err := readPasswordFile(passwordFile)
+		if err != nil {
+			return nil, err
+		}
+		if validateErr := validate(p); validateErr != nil {
+			crypto.Wipe(p)
+			return nil, validateErr
+		}
+		return p, nil
 	}
 	p, err := Password(msg)
 	if err != nil {
 		return nil, withFlagHint(err, flag)
+	}
+	if validateErr := validate(p); validateErr != nil {
+		crypto.Wipe(p)
+		return nil, validateErr
 	}
 	c, err := Password("Confirm password")
 	if err != nil {

@@ -83,6 +83,14 @@ func (r *ttyResult) AssertOK() *ttyResult {
 }
 
 // AssertOutput asserts that the terminal received the given substring.
+func (r *ttyResult) AssertFailed() *ttyResult {
+	r.t.Helper()
+	if r.ExitCode != 1 {
+		r.t.Fatalf("expected exit 1\n%s", r.describe())
+	}
+	return r
+}
+
 func (r *ttyResult) AssertOutput(want string) *ttyResult {
 	r.t.Helper()
 	if !strings.Contains(r.Output, want) {
@@ -139,4 +147,33 @@ func TestEmptyingAVaultIsCancelledByAnAnswerOfNo(t *testing.T) {
 		AssertOutput("Saved changes to vault personal").
 		AssertNoOutput("Cancelled")
 	l.Run("export", "-v", "personal", "-p", pwFile).AssertOK().AssertStdoutEquals("")
+}
+
+// A password mrs will not accept is refused after one entry rather than after
+// two: nothing asks the user to confirm a password it has already rejected.
+func TestATypedPasswordIsCheckedBeforeItIsConfirmed(t *testing.T) {
+	l := newLab(t)
+
+	l.RunTTY("short\n", "vault", "create", "personal").
+		AssertFailed().
+		AssertOutput("password must contain at least 8 characters").
+		AssertNoOutput("Confirm password")
+	l.Run("vault", "list").AssertOK().AssertStdoutEquals("")
+
+	// The confirmation is still asked for a password that could be accepted.
+	l.RunTTY("a good password\na good password\n", "vault", "create", "personal").
+		AssertOK().
+		AssertOutput("Confirm password").
+		AssertOutput("Created vault personal")
+}
+
+// change-password asks for two passwords, so the one it refused is named.
+func TestARefusedNewPasswordIsNamed(t *testing.T) {
+	l := newLab(t)
+	l.createVault("personal", "a password")
+
+	l.RunTTY("a password\nshort\n", "vault", "change-password", "personal").
+		AssertFailed().
+		AssertOutput("invalid new password: password must contain at least 8 characters").
+		AssertNoOutput("Confirm password")
 }

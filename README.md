@@ -134,7 +134,8 @@ Names may hold ASCII letters, digits, `_` and `-`, up to 200 characters.
 ## Passwords
 
 - Prompted on the terminal with echo off. At least 8 characters, and no
-  newline.
+  newline. A password mrs will not accept is refused before it asks you to
+  confirm it.
 - Without a terminal there is nothing to prompt from, so pass
   `--password-file`. A trailing newline is trimmed, so `echo 'pw' > pw` works;
   other whitespace is part of the password.

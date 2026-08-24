@@ -53,6 +53,16 @@ func (o *vaultOptions) locked(name string) (vault.Vault, func(), error) {
 	return v, unlock, nil
 }
 
+// validateNewPassword names which of the two passwords change-password refused,
+// since it asks for the current one as well. vault.ChangePassword checks again,
+// which is the answer that counts.
+func validateNewPassword(p []byte) error {
+	if err := vault.ValidatePassword(p); err != nil {
+		return fmt.Errorf("invalid new password: %w", err)
+	}
+	return nil
+}
+
 // runChangePassword re-keys a vault. What was given on the command line is
 // checked before anything is asked for, as create checks its name and its
 // import file.
@@ -69,16 +79,11 @@ func (o *vaultOptions) runChangePassword(name string) error {
 	// before it is typed, so that order is unchanged.
 	var newPassword []byte
 	if o.newPasswordFile != "" {
-		newPassword, err = prompt.GivenOrPromptNewPassword(o.newPasswordFile)
+		newPassword, err = prompt.GivenOrPromptNewPassword(validateNewPassword, o.newPasswordFile)
 		if err != nil {
 			return err
 		}
 		defer crypto.Wipe(newPassword)
-		// Advisory: vault.ChangePassword checks again, which is the answer that
-		// counts.
-		if validateErr := vault.ValidatePassword(newPassword); validateErr != nil {
-			return fmt.Errorf("invalid new password: %w", validateErr)
-		}
 	}
 
 	oldPassword, err := prompt.GivenOrPromptPassword(o.passwordFile)
@@ -88,7 +93,7 @@ func (o *vaultOptions) runChangePassword(name string) error {
 	defer crypto.Wipe(oldPassword)
 
 	if newPassword == nil {
-		newPassword, err = prompt.GivenOrPromptNewPassword(o.newPasswordFile)
+		newPassword, err = prompt.GivenOrPromptNewPassword(validateNewPassword, o.newPasswordFile)
 		if err != nil {
 			return err
 		}
@@ -157,7 +162,7 @@ func init() {
 			}
 			defer crypto.Wipe(contents)
 
-			password, err := prompt.GivenOrPromptConfirmedPassword(opts.passwordFile)
+			password, err := prompt.GivenOrPromptConfirmedPassword(vault.ValidatePassword, opts.passwordFile)
 			if err != nil {
 				return err
 			}

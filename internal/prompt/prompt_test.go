@@ -158,6 +158,10 @@ func TestAMissingPasswordFileIsNamed(t *testing.T) {
 	}
 }
 
+// acceptAny stands in for the caller's validator where a test is not about
+// what a password has to be.
+func acceptAny([]byte) error { return nil }
+
 func TestAPasswordFileSkipsThePromptEntirely(t *testing.T) {
 	buf := capturePrompt(t)
 	p := filepath.Join(t.TempDir(), "pw")
@@ -166,7 +170,9 @@ func TestAPasswordFileSkipsThePromptEntirely(t *testing.T) {
 	}
 
 	for _, get := range []func(string) ([]byte, error){
-		GivenOrPromptPassword, GivenOrPromptConfirmedPassword, GivenOrPromptNewPassword,
+		GivenOrPromptPassword,
+		func(f string) ([]byte, error) { return GivenOrPromptConfirmedPassword(acceptAny, f) },
+		func(f string) ([]byte, error) { return GivenOrPromptNewPassword(acceptAny, f) },
 	} {
 		got, err := get(p)
 		if err != nil {
@@ -182,6 +188,23 @@ func TestAPasswordFileSkipsThePromptEntirely(t *testing.T) {
 	}
 }
 
+// A password read from a file is checked as soon as it is read, so a caller
+// that reads one before asking for anything else refuses it before asking.
+func TestAPasswordFileIsCheckedWhenItIsRead(t *testing.T) {
+	capturePrompt(t)
+	p := filepath.Join(t.TempDir(), "pw")
+	if err := os.WriteFile(p, []byte("short"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	refuse := func([]byte) error { return errors.New("password is no good") }
+
+	if _, err := GivenOrPromptNewPassword(refuse, p); err == nil {
+		t.Fatal("expected the password file to be refused")
+	} else if !strings.Contains(err.Error(), "password is no good") {
+		t.Errorf("expected the validator's error, got %q", err)
+	}
+}
+
 func TestTheFlagThatSuppliesAPasswordIsNamed(t *testing.T) {
 	capturePrompt(t)
 	withStdin(t, "")
@@ -194,8 +217,14 @@ func TestTheFlagThatSuppliesAPasswordIsNamed(t *testing.T) {
 		flag string
 	}{
 		"current password": {GivenOrPromptPassword, "--password-file"},
-		"a new vault":      {GivenOrPromptConfirmedPassword, "--password-file"},
-		"changed password": {GivenOrPromptNewPassword, "--new-password-file"},
+		"a new vault": {
+			func(f string) ([]byte, error) { return GivenOrPromptConfirmedPassword(acceptAny, f) },
+			"--password-file",
+		},
+		"changed password": {
+			func(f string) ([]byte, error) { return GivenOrPromptNewPassword(acceptAny, f) },
+			"--new-password-file",
+		},
 	}
 	for desc, tt := range tests {
 		t.Run(desc, func(t *testing.T) {
