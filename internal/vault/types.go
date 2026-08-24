@@ -141,11 +141,13 @@ func (v Vault) repairLock() error {
 		return nil
 	}
 	if fi.Mode()&os.ModeSymlink != 0 {
-		if _, statErr := os.Stat(p); errors.Is(statErr, os.ErrNotExist) {
-			// A chmod would follow the link and fail on the target that is not
-			// there, so the link is removed and the lock file created afresh. A
-			// symlink whose target is there is left to the chmod below, which
-			// reaches the target the lock is taken on.
+		// Any symlink that does not resolve: one whose target is not there, one
+		// that points into a directory nothing may enter, and one that loops.
+		// A chmod would follow the link and fail on the target exactly as the
+		// lock did, so the link is removed and the lock file created afresh.
+		// One that does resolve is left to the chmod below, which reaches the
+		// target the lock is taken on.
+		if _, statErr := os.Stat(p); statErr != nil {
 			if err := os.Remove(p); err != nil {
 				return fmt.Errorf(
 					"could not remove the broken symlink in place of the lock on vault %s: %w", v.Name(), err)

@@ -165,14 +165,40 @@ func TestForceRepairsAnUnusableLockFile(t *testing.T) {
 				t.Fatalf("failed to create the directory: %s", err)
 			}
 		}},
-		// A symlink into a directory that is not there cannot be opened even to
-		// create it, and a chmod would follow the link and fail on the target,
-		// so the link is removed and the lock file created afresh. A symlink
-		// whose target could be created is not this case: taking the lock
-		// creates the target through the link and never asks to repair.
+		// A symlink that does not resolve cannot be opened even to create what
+		// it points at, and a chmod would follow it and fail on the target
+		// exactly as the lock did, so the link is removed and the lock file
+		// created afresh. A symlink whose target could be created is not this
+		// case: taking the lock creates the target through the link and never
+		// asks to repair.
 		{name: "a symlink into a directory that is not there", spoil: func(t *testing.T) {
 			t.Helper()
 			if err := os.Symlink(filepath.Join(l.VaultDir(), "gone", "lock"), lockPath); err != nil {
+				t.Fatalf("failed to create the symlink: %s", err)
+			}
+		}},
+		{name: "a symlink that loops", spoil: func(t *testing.T) {
+			t.Helper()
+			if err := os.Symlink("work.lock", lockPath); err != nil {
+				t.Fatalf("failed to create the symlink: %s", err)
+			}
+		}},
+		// mayLock, because root enters a directory whose mode forbids everyone
+		// else, and so reaches the target and locks it.
+		{name: "a symlink into a directory nothing may enter", mayLock: true, spoil: func(t *testing.T) {
+			t.Helper()
+			shut := filepath.Join(l.VaultDir(), "shut")
+			if err := os.Mkdir(shut, 0700); err != nil {
+				t.Fatalf("failed to create the directory: %s", err)
+			}
+			if err := os.WriteFile(filepath.Join(shut, "lock"), nil, 0600); err != nil {
+				t.Fatalf("failed to write the target: %s", err)
+			}
+			if err := os.Chmod(shut, 0); err != nil {
+				t.Fatalf("failed to shut the directory: %s", err)
+			}
+			t.Cleanup(func() { _ = os.Chmod(shut, 0700) })
+			if err := os.Symlink(filepath.Join(shut, "lock"), lockPath); err != nil {
 				t.Fatalf("failed to create the symlink: %s", err)
 			}
 		}},
