@@ -182,6 +182,27 @@ func TestAVaultAtTheOldIterationCountStillOccupiesItsName(t *testing.T) {
 	}
 }
 
+// currentIterations is the count mrs derives a key with now. It is spelled out
+// here for the same reason oldIterations is: a fixture built from the crypto
+// package's constant follows that constant wherever it goes, so raising the
+// count would keep every test passing while making every vault already written
+// unreadable. The fixtures that are about something else go on using the
+// constant; this one pins the number.
+const currentIterations = 600000
+
+func TestAVaultIsStillReadAtTheIterationCountAlreadyWritten(t *testing.T) {
+	l := newLab(t)
+	salt := strings.Repeat("d", 32)
+	l.writeVaultFile("personal."+salt, "a password", "a key\na-value\n", salt, currentIterations)
+	pwFile := l.PasswordFile("pw", "a password")
+
+	// Raising the count is a change of file format: it has to come with a way
+	// to migrate, as the move from 4,096 did, rather than with this test edited.
+	l.Run("export", "-v", "personal", "-p", pwFile).
+		AssertOK().
+		AssertStdoutExactly("a key\na-value\n")
+}
+
 func TestAnOldVaultKeepsItsSaltWhenRenamed(t *testing.T) {
 	l := newLab(t)
 	salt := strings.Repeat("c", 32)
