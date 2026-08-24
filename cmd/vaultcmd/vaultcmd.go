@@ -166,6 +166,9 @@ func init() {
 			if err != nil {
 				return err
 			}
+			// Wiped here as well as by the vault it goes on to unlock, because
+			// a create that fails never returns one to wipe it.
+			defer crypto.Wipe(password)
 
 			v, err := vault.Create(name, password, contents, opts.repairLock)
 			if err != nil {
