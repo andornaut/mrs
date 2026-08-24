@@ -215,7 +215,7 @@ any other; only the commands that have to read them fail.
 
 Environment variable | Description
 --- | ---
-`EDITOR` | The editor `add` and `edit` open, if `$VISUAL` is unset (default: `nano`). May carry arguments, such as `vim -n`. Quote a path that contains spaces.
+`EDITOR` | The editor `add` and `edit` open, if `$VISUAL` is unset (default: the first of `vim`, `vi`, `nano` that is on `PATH`). May carry arguments, such as `vim -n`. Quote a path that contains spaces.
 `MRS_DEFAULT_VAULT_NAME` | The vault to use when `--vault` is not given. Must name one exactly (default: the only vault, if there is just one).
 `MRS_HOME` | Where vaults are stored (default: `$XDG_DATA_HOME/mrs`, else `$HOME/.local/share/mrs`).
 `MRS_TEMP` | Where decrypted secrets are written while an editor is open (default: `$XDG_RUNTIME_DIR`, else the system temporary directory).

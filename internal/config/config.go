@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"os/exec"
 	"path"
 	"strings"
 	"sync"
@@ -31,10 +32,19 @@ func DefaultVaultName() string {
 	return os.Getenv("MRS_DEFAULT_VAULT_NAME")
 }
 
+// fallbackEditors are the editors to fall back on when neither $VISUAL nor
+// $EDITOR names one, in the order they are tried. The first that is on PATH is
+// the one that runs.
+var fallbackEditors = []string{"vim", "vi", "nano"}
+
+// lookPath is the test seam for finding a fallback editor on PATH.
+var lookPath = exec.LookPath
+
 // Editor returns the command to run to launch a text editor, as a program
-// followed by its arguments: $VISUAL, else $EDITOR, else nano. $VISUAL is read
-// first because that is the order git, crontab and sudoedit read them in, and
-// an editor chosen for one of those is the editor a user expects here.
+// followed by its arguments: $VISUAL, else $EDITOR, else the first of
+// fallbackEditors that is on PATH. $VISUAL is read first because that is the
+// order git, crontab and sudoedit read them in, and an editor chosen for one of
+// those is the editor a user expects here.
 //
 // Either variable commonly carries arguments - "vim -n", "code -w",
 // "emacsclient -t" - so it is split rather than treated as a single program
@@ -48,7 +58,15 @@ func Editor() []string {
 			return argv
 		}
 	}
-	return []string{"nano"}
+	for _, name := range fallbackEditors {
+		if _, err := lookPath(name); err == nil {
+			return []string{name}
+		}
+	}
+	// Nothing on PATH: name the first fallback anyway, so that the failure the
+	// user is shown is an editor that could not be run rather than an empty
+	// command.
+	return []string{fallbackEditors[0]}
 }
 
 func splitArgs(s string) []string {
