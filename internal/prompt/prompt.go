@@ -185,24 +185,6 @@ func RestoreTerminal() error {
 	return term.Restore(terminalFd, state)
 }
 
-// TrimmedLine prompts for input and returns the first line of input as a trimmed string
-func TrimmedLine(msg string) (string, error) {
-	out, err := openPrompt()
-	if err != nil {
-		return "", err
-	}
-	defer func() { _ = out.Close() }()
-	_, _ = fmt.Fprint(out, msg+": ")
-	answer, err := scanTrimmedLine()
-	if !isTerminal(int(os.Stdin.Fd())) {
-		// Input from a pipe is not echoed, so supply the newline that pressing
-		// Enter would have written. Without it, whatever mrs prints next
-		// continues the prompt's line: "Vault name: Error: no vault name given".
-		_, _ = fmt.Fprint(out, "\n")
-	}
-	return answer, err
-}
-
 func scanTrimmedLine() (string, error) {
 	scanner := bufio.NewScanner(os.Stdin)
 	if !scanner.Scan() {
