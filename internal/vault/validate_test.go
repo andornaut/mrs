@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func TestValidateName(t *testing.T) {
+func TestAVaultNameIsAnAsciiWordWithinTheLengthLimit(t *testing.T) {
 	tests := []struct {
 		name    string
 		isValid bool
@@ -34,7 +34,7 @@ func TestValidateName(t *testing.T) {
 	}
 }
 
-func TestValidatePassword(t *testing.T) {
+func TestAPasswordNeedsEightCharactersAndNoNewline(t *testing.T) {
 	tests := []struct {
 		password string
 		isValid  bool
@@ -74,7 +74,7 @@ func TestValidatePasswordNamesANewlineRatherThanTheLength(t *testing.T) {
 	}
 }
 
-func TestValidateFilename(t *testing.T) {
+func TestOnlyAFilenameCarryingASaltNamesAVault(t *testing.T) {
 	const salt = testSalt
 	tests := []struct {
 		name    string

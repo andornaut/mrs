@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func TestWriteTempFile(t *testing.T) {
+func TestATemporaryFileIsWrittenReadableOnlyByItsOwner(t *testing.T) {
 	// Ensure config points to a test-specific temp dir
 	tmpRoot := t.TempDir()
 	t.Setenv("MRS_TEMP", tmpRoot)
@@ -38,7 +38,7 @@ func TestWriteTempFile(t *testing.T) {
 	}
 }
 
-func TestWriteFileAtomic(t *testing.T) {
+func TestAnAtomicWriteLeavesTheContentAndNoTemporaryFile(t *testing.T) {
 	tmpDir := t.TempDir()
 	p := filepath.Join(tmpDir, "target")
 
@@ -73,7 +73,7 @@ func TestWriteFileAtomic(t *testing.T) {
 // An existing file's mode is kept, but only as far as the owner's bits: a
 // vault left readable by everyone would otherwise stay that way through every
 // save, while a stricter mode the user chose is not undone by one.
-func TestWriteFileAtomicMode(t *testing.T) {
+func TestAnExistingFilesModeIsKeptOnlyAsFarAsTheOwnersBits(t *testing.T) {
 	tests := []struct {
 		before, want os.FileMode
 	}{
@@ -173,7 +173,7 @@ func TestAnUnsyncableParentDirectoryIsReportedAsErrDirSync(t *testing.T) {
 	}
 }
 
-func TestWriteFileAtomicWritesThroughSymlink(t *testing.T) {
+func TestAWriteThroughASymlinkReachesItsTargetAndKeepsTheLink(t *testing.T) {
 	tmpDir := t.TempDir()
 	target := filepath.Join(tmpDir, "target")
 	link := filepath.Join(tmpDir, "link")
@@ -203,7 +203,7 @@ func TestWriteFileAtomicWritesThroughSymlink(t *testing.T) {
 	}
 }
 
-func TestCopyFile(t *testing.T) {
+func TestACopyHoldsTheSourcesContent(t *testing.T) {
 	tmpDir := t.TempDir()
 	src := filepath.Join(tmpDir, "src")
 	dst := filepath.Join(tmpDir, "dst")

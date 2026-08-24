@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func TestEditor(t *testing.T) {
+func TestTheEditorCommandIsSplitAsAShellWouldSplitIt(t *testing.T) {
 	tests := []struct {
 		name     string
 		editor   string
@@ -35,7 +35,7 @@ func TestEditor(t *testing.T) {
 	}
 }
 
-func TestEditorPrefersVisual(t *testing.T) {
+func TestVisualIsPreferredToEditorUnlessItIsEmpty(t *testing.T) {
 	tests := []struct {
 		name     string
 		visual   string

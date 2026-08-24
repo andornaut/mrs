@@ -14,7 +14,7 @@ func newTestVault(t *testing.T) Vault {
 	return Vault(filepath.Join(t.TempDir(), "test."+testSalt))
 }
 
-func TestLockPath(t *testing.T) {
+func TestTheLockIsNamedForTheVaultNameNotItsFile(t *testing.T) {
 	v := newTestVault(t)
 	want := filepath.Join(filepath.Dir(v.Path()), "test.lock")
 	if got := v.lockPath(); got != want {
@@ -22,7 +22,7 @@ func TestLockPath(t *testing.T) {
 	}
 }
 
-func TestExclusiveLockAndUnlock(t *testing.T) {
+func TestAnExclusiveLockExcludesASecondUntilItIsReleased(t *testing.T) {
 	v := newTestVault(t)
 
 	unlock, err := v.ExclusiveLock()
@@ -64,7 +64,7 @@ func TestAnUnnamedVaultCannotBeLocked(t *testing.T) {
 // Repairing keeps the lock file's identity, so that whatever holds it goes on
 // holding it. Only a directory in its place, which nothing can be holding, is
 // removed.
-func TestRepairLock(t *testing.T) {
+func TestRepairingKeepsTheLockFileButRemovesADirectoryInItsPlace(t *testing.T) {
 	v := newTestVault(t)
 
 	// Nothing to repair is not an error: taking the lock creates the file.

@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func TestEncryptDecrypt(t *testing.T) {
+func TestWhatEncryptSealsDecryptOpens(t *testing.T) {
 	password := []byte("super-secret-password")
 	defer Wipe(password)
 	salt, err := Salt()
@@ -88,7 +88,7 @@ func TestCurrentCiphertextIsNotTakenForTheOldIterationCount(t *testing.T) {
 	}
 }
 
-func TestDecryptWithWrongPassword(t *testing.T) {
+func TestAWrongPasswordDoesNotDecrypt(t *testing.T) {
 	password := []byte("correct-password")
 	defer Wipe(password)
 	wrongPassword := []byte("wrong-password")
@@ -104,7 +104,7 @@ func TestDecryptWithWrongPassword(t *testing.T) {
 	}
 }
 
-func TestDecryptWithWrongSalt(t *testing.T) {
+func TestAWrongSaltDoesNotDecrypt(t *testing.T) {
 	password := []byte("password")
 	defer Wipe(password)
 	salt1, _ := Salt()
@@ -119,7 +119,7 @@ func TestDecryptWithWrongSalt(t *testing.T) {
 	}
 }
 
-func TestSalt(t *testing.T) {
+func TestEverySaltIsNewAndOfTheLengthAFilenameCarries(t *testing.T) {
 	s1, err := Salt()
 	if err != nil {
 		t.Fatalf("Salt() error: %v", err)
@@ -140,7 +140,7 @@ func TestSalt(t *testing.T) {
 // the only thing standing between a typo and a vault encrypted under a password
 // its owner does not know. Its one job is to say no to everything but an exact
 // match, whatever the two differ by.
-func TestSecureCompare(t *testing.T) {
+func TestOnlyAnExactMatchIsAcceptedAsTheSamePassword(t *testing.T) {
 	tests := map[string]struct {
 		a, b string
 		want bool
@@ -163,7 +163,7 @@ func TestSecureCompare(t *testing.T) {
 	}
 }
 
-func TestWipe(t *testing.T) {
+func TestWipingLeavesEveryByteZero(t *testing.T) {
 	buf := []byte{1, 2, 3, 4, 5}
 	Wipe(buf)
 	for i, b := range buf {

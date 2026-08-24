@@ -33,8 +33,7 @@ func TestAVaultLoosenedByHandIsTightenedWhenItIsSaved(t *testing.T) {
 
 	// A umask, a restored archive or an rsync can leave a vault readable, or
 	// writable, by everyone. Saving must not carry that forward. The mode table
-	// itself is checked in TestWriteFileAtomicMode; this is the one case end to
-	// end.
+	// itself is checked in internal/fs; this is the one case end to end.
 	chmod(t, path, 0644)
 
 	l.Run("edit", "-v", "personal", "-p", pwFile).AssertOK()

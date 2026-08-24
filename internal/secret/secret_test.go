@@ -8,7 +8,7 @@ import (
 	"github.com/andornaut/mrs/internal/crypto"
 )
 
-func TestParseSecrets(t *testing.T) {
+func TestEveryLineIsPartOfASecretIncludingOneThatBeginsWithAHash(t *testing.T) {
 	// Every line is a line of secrets, including one that begins with a "#".
 	input := `
 Key1
@@ -52,7 +52,7 @@ func TestParseSecretsPreservesWhitespaceWithinSecrets(t *testing.T) {
 	}
 }
 
-func TestSecretListSearch(t *testing.T) {
+func TestASearchLooksAtKeysAndAtValuesOnlyWithFull(t *testing.T) {
 	// "red" appears in two values and in no key, so it tells the two searches
 	// apart: without it, a SearchKeys that also matched values would pass.
 	b := newSecretList([]secret{
@@ -109,7 +109,7 @@ func TestSecretsAreSortedIgnoringCase(t *testing.T) {
 	}
 }
 
-func TestSecretListCombined(t *testing.T) {
+func TestCombiningTwoListsKeepsBothInKeyOrder(t *testing.T) {
 	b1 := newSecretList([]secret{secret(`A
 val`)})
 	b2 := newSecretList([]secret{secret(`B
@@ -125,7 +125,7 @@ val`)})
 	}
 }
 
-func TestSecretKey(t *testing.T) {
+func TestTheKeyIsTheFirstLineOfASecret(t *testing.T) {
 	s := secret(`My Key
 My Value
 More Value`)
