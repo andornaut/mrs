@@ -118,7 +118,7 @@ func (v Vault) ExclusiveLockRepair(repair bool) (func(), error) {
 // it. A file is chmod'd rather than removed, so that its identity survives and
 // a lock another process took on it survives with it. Two things are removed
 // instead, because neither can be opened and so neither can be held by anyone:
-// a directory in the lock's place, and a symlink to a file that is not there. A
+// a directory in the lock's place, and a symlink that does not resolve. A
 // platform that locks a directory instead - Darwin does - has already excluded
 // everyone else and never gets here.
 func (v Vault) repairLock() error {
