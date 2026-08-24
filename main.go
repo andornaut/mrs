@@ -23,14 +23,17 @@ func main() {
 func run() int {
 	// Setup cleanup
 	cleanup := func() {
-		// The terminal first: a password prompt switches echo off, and a signal
-		// that arrives while one is open would otherwise leave the shell mrs
-		// returns to echoing nothing of what is typed.
-		if err := prompt.RestoreTerminal(); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: the terminal was not restored: %s\n", err)
-		}
+		// The decrypted secrets first. Restoring the terminal matters to
+		// whoever is at it and nothing else, so it never stands between a
+		// signal and the removal of plaintext from disk.
 		if err := fs.RemoveTempDir(); err != nil {
 			fmt.Fprintf(os.Stderr, "SECURITY WARNING: a directory that contains secrets was not removed: %s\n", err)
+		}
+		// A password prompt switches echo off, and a signal that arrives while
+		// one is open would otherwise leave the shell mrs returns to echoing
+		// nothing of what is typed.
+		if err := prompt.RestoreTerminal(); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: the terminal was not restored: %s\n", err)
 		}
 	}
 	defer cleanup()
