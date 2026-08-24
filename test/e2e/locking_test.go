@@ -165,6 +165,17 @@ func TestForceRepairsAnUnusableLockFile(t *testing.T) {
 				t.Fatalf("failed to create the directory: %s", err)
 			}
 		}},
+		// A symlink into a directory that is not there cannot be opened even to
+		// create it, and a chmod would follow the link and fail on the target,
+		// so the link is removed and the lock file created afresh. A symlink
+		// whose target could be created is not this case: taking the lock
+		// creates the target through the link and never asks to repair.
+		{name: "a symlink into a directory that is not there", spoil: func(t *testing.T) {
+			t.Helper()
+			if err := os.Symlink(filepath.Join(l.VaultDir(), "gone", "lock"), lockPath); err != nil {
+				t.Fatalf("failed to create the symlink: %s", err)
+			}
+		}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			_ = os.RemoveAll(lockPath)

@@ -89,8 +89,9 @@ Flag | Commands | Supplies
 A short flag means the same thing on every command. `--force` and `--path` have
 no short form, because both are worth spelling out.
 
-`--force` repairs a lock file that cannot be opened, because its mode forbids it
-or a directory sits in its place. It never takes a lock another process holds:
+`--force` repairs a lock file that cannot be opened, because its mode forbids
+it, a directory sits in its place, or it is a symlink into a directory that is
+not there. It never takes a lock another process holds:
 taking one would mean deleting the lock file, leaving the two processes holding
 two different files. A held lock is refused with or without the flag:
 

@@ -116,10 +116,11 @@ func (v Vault) ExclusiveLockRepair(repair bool) (func(), error) {
 
 // repairLock makes an unusable lock file usable, without changing what holds
 // it. A file is chmod'd rather than removed, so that its identity survives and
-// a lock another process took on it survives with it. A directory in its place
-// is removed: this is only reached once the platform has refused to lock it, so
-// nothing can be holding it. A platform that locks a directory instead - Darwin
-// does - has already excluded everyone else and never gets here.
+// a lock another process took on it survives with it. Two things are removed
+// instead, because neither can be opened and so neither can be held by anyone:
+// a directory in the lock's place, and a symlink to a file that is not there. A
+// platform that locks a directory instead - Darwin does - has already excluded
+// everyone else and never gets here.
 func (v Vault) repairLock() error {
 	if v == "" {
 		return errors.New("cannot repair the lock on a vault with no name")
@@ -138,6 +139,19 @@ func (v Vault) repairLock() error {
 			return fmt.Errorf("could not remove the directory in place of the lock on vault %s: %w", v.Name(), err)
 		}
 		return nil
+	}
+	if fi.Mode()&os.ModeSymlink != 0 {
+		if _, statErr := os.Stat(p); errors.Is(statErr, os.ErrNotExist) {
+			// A chmod would follow the link and fail on the target that is not
+			// there, so the link is removed and the lock file created afresh. A
+			// symlink whose target is there is left to the chmod below, which
+			// reaches the target the lock is taken on.
+			if err := os.Remove(p); err != nil {
+				return fmt.Errorf(
+					"could not remove the broken symlink in place of the lock on vault %s: %w", v.Name(), err)
+			}
+			return nil
+		}
 	}
 	if err := os.Chmod(p, 0600); err != nil {
 		return fmt.Errorf("could not repair the lock on vault %s: %w", v.Name(), err)
