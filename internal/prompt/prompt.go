@@ -82,12 +82,7 @@ func Confirm(assumeYes bool, msg string) (bool, error) {
 	}
 	defer func() { _ = out.Close() }()
 	_, _ = fmt.Fprintf(out, "%s (y/n) [n]: ", msg)
-	answer, err := scanTrimmedLine()
-	if err != nil {
-		// Nothing readable is not a yes, and is not a failure either.
-		return false, nil
-	}
-	return answer == "y", nil
+	return scanTrimmedLine() == "y", nil
 }
 
 // Editor opens the file at p using a text editor
@@ -185,12 +180,12 @@ func RestoreTerminal() error {
 	return term.Restore(terminalFd, state)
 }
 
-func scanTrimmedLine() (string, error) {
+// scanTrimmedLine reads one line from stdin, trimmed. Nothing readable, whether
+// end of input or a terminal that went away mid-question, reads as an empty
+// answer: Confirm answers "no" to a question it could not hear, which is the
+// safe answer and not a failure, so there is no read error to report.
+func scanTrimmedLine() string {
 	scanner := bufio.NewScanner(os.Stdin)
-	if !scanner.Scan() {
-		if err := scanner.Err(); err != nil {
-			return "", fmt.Errorf("input error: %w", err)
-		}
-	}
-	return strings.TrimSpace(scanner.Text()), nil
+	scanner.Scan()
+	return strings.TrimSpace(scanner.Text())
 }
