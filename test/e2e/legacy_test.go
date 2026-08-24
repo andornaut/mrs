@@ -249,6 +249,28 @@ func TestTheBackupHoldsTheVersionBeforeTheSave(t *testing.T) {
 		AssertStdoutExactly("a key\nfirst-value\n")
 }
 
+// A backup that cannot be written is a warning, not a failed save. The save is
+// what the user asked for; the backup is only the way back from it, and saying
+// nothing would leave them believing they had one.
+func TestASaveWhoseBackupCannotBeWrittenIsStillSaved(t *testing.T) {
+	l := newLab(t)
+	pwFile := l.seedVault("personal", "a password", "a key\nfirst-value\n")
+	// A directory where the backup should be, so that the copy is written and
+	// only the rename onto the backup's name fails.
+	if err := os.Mkdir(l.VaultPath("personal")+".bak", 0700); err != nil {
+		t.Fatalf("failed to create the directory: %s", err)
+	}
+
+	l.editorWrites("a key\nsecond-value\n")
+	l.Run("edit", "-v", "personal", "-p", pwFile).
+		AssertOK().
+		AssertStderr("failed to create backup for vault personal")
+
+	l.Run("export", "-v", "personal", "-p", pwFile).
+		AssertOK().
+		AssertStdoutExactly("a key\nsecond-value\n")
+}
+
 func TestTheBackupIsNotReadableByOthers(t *testing.T) {
 	l := newLab(t)
 	pwFile := l.seedVault("personal", "a password", "a key\na-value\n")

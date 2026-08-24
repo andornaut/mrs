@@ -437,6 +437,40 @@ func TestDeleteRemovesTheBackupFile(t *testing.T) {
 	assertNotExists(t, backup)
 }
 
+// Removing the temporary files an interrupted write left behind is best effort.
+// A command that cannot remove one says so and still does what was asked: the
+// vault file is what holds the secrets, and a stale file beside it does not.
+func TestALeftoverTemporaryFileThatCannotBeRemovedIsAWarningOnly(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		args []string
+		want string
+	}{
+		{"delete", []string{"vault", "delete", "personal", "--yes"}, ""},
+		{"rename", []string{"vault", "rename", "personal", "renamed"}, "renamed"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			l := newLab(t)
+			l.createVault("personal", "a password")
+			// A non-empty directory carrying a temporary file's name: os.Remove
+			// refuses it, which an ordinary temporary file never does.
+			stale := l.VaultPath("personal") + ".1234.tmp"
+			if err := os.Mkdir(stale, 0700); err != nil {
+				t.Fatalf("failed to create the directory: %s", err)
+			}
+			if err := os.WriteFile(filepath.Join(stale, "child"), []byte("x"), 0600); err != nil {
+				t.Fatalf("failed to write into the directory: %s", err)
+			}
+
+			l.Run(tt.args...).
+				AssertOK().
+				AssertStderr("failed to remove temporary files for vault personal")
+
+			l.Run("vault", "list").AssertOK().AssertStdoutEquals(tt.want)
+		})
+	}
+}
+
 func TestDeleteRequiresAnExactName(t *testing.T) {
 	l := newLab(t)
 	l.createVault("personal", "a password")

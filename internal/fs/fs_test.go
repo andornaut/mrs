@@ -1,6 +1,7 @@
 package fs
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -105,6 +106,70 @@ func TestWriteFileAtomicMode(t *testing.T) {
 		if info.Mode().Perm() != tt.want {
 			t.Errorf("mode %04o became %04o, expected %04o", tt.before, info.Mode().Perm(), tt.want)
 		}
+	}
+}
+
+// A write that fails once the temporary file exists must not leave it behind.
+// A stale ".tmp" beside a vault holds whatever was last written to it, and only
+// the write that made it knows it is no longer wanted.
+func TestAFailedWriteLeavesNoTemporaryFileBehind(t *testing.T) {
+	tmpDir := t.TempDir()
+	p := filepath.Join(tmpDir, "target")
+	// A directory where the file should be, so that the temporary file is
+	// created and written and only the rename onto it fails.
+	if err := os.Mkdir(p, 0700); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := WriteFileAtomic(p, []byte("new"), 0600); err == nil {
+		t.Fatal("expected WriteFileAtomic() to fail writing onto a directory")
+	}
+
+	matches, err := filepath.Glob(filepath.Join(tmpDir, "*.tmp"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(matches) != 0 {
+		t.Errorf("leftover temp files: %v", matches)
+	}
+}
+
+// A parent directory that cannot be synced is not a failed write. The file was
+// written and renamed and is already visible; only the hardening of that rename
+// against power loss was missed, so the error wraps ErrDirSync and the callers
+// that know a vault was written go on rather than reporting a failed save.
+func TestAnUnsyncableParentDirectoryIsReportedAsErrDirSync(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("running as root, which permission bits do not restrain")
+	}
+	dir := filepath.Join(t.TempDir(), "write-only")
+	if err := os.Mkdir(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	// Writable and enterable but not readable, so the temporary file is created
+	// and renamed and only opening the directory to sync it fails.
+	if err := os.Chmod(dir, 0300); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dir, 0700) })
+
+	p := filepath.Join(dir, "target")
+	err := WriteFileAtomic(p, []byte("new"), 0600)
+
+	if !errors.Is(err, ErrDirSync) {
+		t.Fatalf("WriteFileAtomic() = %v, want an error wrapping ErrDirSync", err)
+	}
+	// And what stopped the sync, so that the warning a caller prints says which
+	// failure it was rather than only that there was one.
+	if !errors.Is(err, os.ErrPermission) {
+		t.Errorf("WriteFileAtomic() = %v, want it to name the permission failure", err)
+	}
+	got, readErr := os.ReadFile(p)
+	if readErr != nil {
+		t.Fatalf("expected the file to have been written anyway: %v", readErr)
+	}
+	if string(got) != "new" {
+		t.Errorf("content = %q, expected %q", string(got), "new")
 	}
 }
 
