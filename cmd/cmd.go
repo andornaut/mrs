@@ -118,9 +118,11 @@ func init() {
 	opts := &rootOptions{}
 
 	add := &cobra.Command{
-		Use:                   "add",
-		Short:                 "Add secrets to a vault",
-		Long:                  "Use an editor ($VISUAL or $EDITOR) to add secrets to a vault",
+		Use:   "add",
+		Short: "Add secrets to a vault",
+		Long: "Use an editor ($VISUAL or $EDITOR) to add secrets to a vault.\n" +
+			"Secrets are separated by blank lines. The first line of each secret\n" +
+			"is its key; the rest is its value.",
 		Args:                  noEditorArgs,
 		DisableFlagsInUseLine: true,
 		RunE: func(c *cobra.Command, args []string) error {
@@ -140,9 +142,11 @@ func init() {
 	}
 
 	edit := &cobra.Command{
-		Use:                   "edit",
-		Short:                 "Edit secrets in a vault",
-		Long:                  "Use an editor ($VISUAL or $EDITOR) to edit the secrets in a vault",
+		Use:   "edit",
+		Short: "Edit secrets in a vault",
+		Long: "Use an editor ($VISUAL or $EDITOR) to edit the secrets in a vault.\n" +
+			"Secrets are separated by blank lines. The first line of each secret\n" +
+			"is its key; the rest is its value.",
 		Args:                  noEditorArgs,
 		DisableFlagsInUseLine: true,
 		RunE: func(c *cobra.Command, args []string) error {

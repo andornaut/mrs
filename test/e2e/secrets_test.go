@@ -161,18 +161,24 @@ func TestACommentLineIsKeptAsASecret(t *testing.T) {
 		AssertStdout("pin: 4321")
 }
 
-func TestTheInstructionsAreStrippedEvenIfPartlyDeleted(t *testing.T) {
+// Nothing is removed from what the editor saved, whatever a line looks like.
+// The lines below are commentary about the format itself, which is the shape a
+// buffer-stripping rule would be most tempted to treat as its own.
+func TestNoLineIsRemovedFromWhatTheEditorSaved(t *testing.T) {
 	l := newLab(t)
 	pwFile := l.createVault("personal", "a password")
-	// An editor session in which the user deleted one instruction line and
-	// wrote a comment of their own above their first secret.
-	l.editorWrites("# The first line of each secret is its unique key.\n\n# my own note\na key\na value\n")
+	// One secret, so that what comes back does not depend on how secrets sort.
+	content := "a key\n" +
+		"# Secrets are separated by blank lines.\n" +
+		"# The first line of each secret is its unique key.\n" +
+		"# These three lines are removed when you save; every other line is kept.\n"
+	l.editorWrites(content)
 
 	l.Run("add", "-v", "personal", "-p", pwFile).AssertOK()
 
 	l.Run("export", "-v", "personal", "-p", pwFile).
 		AssertOK().
-		AssertStdoutExactly("# my own note\na key\na value\n")
+		AssertStdoutExactly(content)
 }
 
 func TestWhitespaceWithinASecretIsPreserved(t *testing.T) {
@@ -221,34 +227,36 @@ func TestEditSurvivesAnEditorThatRemovesTheFile(t *testing.T) {
 	}
 }
 
-func TestInstructionsAreShownAndNeverSaved(t *testing.T) {
-	l := newLab(t)
-	pwFile := l.createVault("personal", "a password")
-	input := l.captureEditorInput()
-	l.editorAppends("a key\na value\n")
-
-	l.Run("add", "-v", "personal", "-p", pwFile).AssertOK()
-
-	if got := input(); !strings.Contains(got, "# Secrets are separated by blank lines.") {
-		t.Fatalf("expected the editor to be shown the instructions, got %q", got)
-	}
-	l.Run("export", "-v", "personal", "-p", pwFile).
-		AssertOK().
-		AssertStdoutExactly("a key\na value\n")
-}
-
-func TestInstructionsCanBeHidden(t *testing.T) {
+// The editor is given the secrets and nothing else, so what it saves is what
+// is encrypted. The format is in "mrs add --help" rather than in the buffer,
+// where it could be saved into a vault or stripped out of one.
+func TestTheEditorIsShownTheSecretsAlone(t *testing.T) {
 	l := newLab(t)
 	pwFile := l.seedVault("personal", "a password", "a key\na value\n")
-	l.Setenv("MRS_HIDE_EDITOR_INSTRUCTIONS", "1")
 	input := l.captureEditorInput()
 
 	l.Run("edit", "-v", "personal", "-p", pwFile).AssertOK()
 
-	// The secrets alone, with nothing prepended to them.
 	if got := input(); got != "a key\na value\n" {
 		t.Fatalf("expected the editor to be shown the secrets alone, got %q", got)
 	}
+}
+
+// An add session opens on an empty buffer for the same reason.
+func TestAddOpensTheEditorOnAnEmptyBuffer(t *testing.T) {
+	l := newLab(t)
+	pwFile := l.createVault("personal", "a password")
+	input := l.captureEditorInput()
+	l.editorAppends("b key\nb value\n")
+
+	l.Run("add", "-v", "personal", "-p", pwFile).AssertOK()
+
+	if got := input(); got != "" {
+		t.Fatalf("expected the editor to be shown an empty buffer, got %q", got)
+	}
+	l.Run("export", "-v", "personal", "-p", pwFile).
+		AssertOK().
+		AssertStdoutExactly("b key\nb value\n")
 }
 
 func TestSecretsSurviveARoundTrip(t *testing.T) {

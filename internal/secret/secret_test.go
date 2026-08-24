@@ -10,7 +10,6 @@ import (
 
 func TestParseSecrets(t *testing.T) {
 	// Every line is a line of secrets, including one that begins with a "#".
-	// Only mrs's own instructions are removed, and only by stripInstructions.
 	input := `
 Key1
 Value1
@@ -50,70 +49,6 @@ func TestParseSecretsPreservesWhitespaceWithinSecrets(t *testing.T) {
 	}
 	if got, expected := string(b.secrets[0]), "Key1\n  indented\ntrailing   \n"; got != expected {
 		t.Errorf("expected %q, got %q", expected, got)
-	}
-}
-
-func TestStripInstructions(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    string
-		expected string
-	}{
-		{
-			name:     "the instructions mrs prepends",
-			input:    instructions + "Key1\nValue1\n",
-			expected: "Key1\nValue1\n",
-		},
-		{
-			name:     "instructions the user partly deleted",
-			input:    instructionLines[1] + "\n\nKey1\nValue1\n",
-			expected: "Key1\nValue1\n",
-		},
-		{
-			name:     "a comment of the user's own is kept",
-			input:    instructions + "# my own note\nKey1\nValue1\n",
-			expected: "# my own note\nKey1\nValue1\n",
-		},
-		{
-			// An editor opens with the cursor on the first line, so this is
-			// what typing straight into an `mrs add` session produces.
-			name:     "instructions the user typed above",
-			input:    "Key1\nValue1\n" + instructions,
-			expected: "Key1\nValue1\n\n",
-		},
-		{
-			name:     "instructions left in the middle",
-			input:    "Key1\nValue1\n\n" + instructions + "Key2\nValue2\n",
-			expected: "Key1\nValue1\n\n\nKey2\nValue2\n",
-		},
-		{
-			name:     "content that begins with a blank line",
-			input:    instructions + "\n\nKey1\nValue1\n",
-			expected: "Key1\nValue1\n",
-		},
-		{
-			name:     "no instructions at all",
-			input:    "Key1\nValue1\n",
-			expected: "Key1\nValue1\n",
-		},
-		{
-			name:     "nothing but instructions",
-			input:    instructions,
-			expected: "",
-		},
-		{
-			name:     "an empty session",
-			input:    "",
-			expected: "",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := string(stripInstructions([]byte(tt.input))); got != tt.expected {
-				t.Errorf("stripInstructions() = %q, expected %q", got, tt.expected)
-			}
-		})
 	}
 }
 

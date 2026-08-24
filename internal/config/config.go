@@ -94,11 +94,6 @@ func splitArgs(s string) []string {
 	return argv
 }
 
-// HideEditorInstructions indicates that instructions comments should be omitted from the top of editor sessions
-func HideEditorInstructions() bool {
-	return os.Getenv("MRS_HIDE_EDITOR_INSTRUCTIONS") != ""
-}
-
 // GetBaseDir returns the directory where mrs stores its files
 func GetBaseDir() (string, error) {
 	if b := os.Getenv("MRS_HOME"); b != "" {

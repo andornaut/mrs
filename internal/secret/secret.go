@@ -19,7 +19,8 @@ func Add(v vault.UnlockedVault) (int, error) {
 	}
 	defer b.Wipe()
 
-	nb, err := editSecrets([]byte("\n"))
+	// Nothing to edit: an add session opens on an empty buffer.
+	nb, err := editSecrets(nil)
 	if err != nil {
 		return 0, err
 	}

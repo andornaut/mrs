@@ -47,8 +47,8 @@ make install
   `mrs` warns when they do, on import as well as on save.
 - A file given to `vault create --import-file` is stored as it is written, so it
   keeps its own order until the vault is next saved.
-- `mrs add` and `mrs edit` open `$VISUAL` or `$EDITOR` on three instruction
-  lines, which are removed on save wherever they end up in the buffer.
+- `mrs add` and `mrs edit` open `$VISUAL` or `$EDITOR` on the secrets alone,
+  and encrypt whatever the editor saves. `mrs add --help` states the format.
 
 ## Commands
 
@@ -216,7 +216,6 @@ Environment variable | Description
 --- | ---
 `EDITOR` | The editor `add` and `edit` open, if `$VISUAL` is unset (default: `nano`). May carry arguments, such as `vim -n`. Quote a path that contains spaces.
 `MRS_DEFAULT_VAULT_NAME` | The vault to use when `--vault` is not given. Must name one exactly (default: the only vault, if there is just one).
-`MRS_HIDE_EDITOR_INSTRUCTIONS` | If set to a non-empty value, omit the instruction lines from editor sessions.
 `MRS_HOME` | Where vaults are stored (default: `$XDG_DATA_HOME/mrs`, else `$HOME/.local/share/mrs`).
 `MRS_TEMP` | Where decrypted secrets are written while an editor is open (default: `$XDG_RUNTIME_DIR`, else the system temporary directory).
 `VISUAL` | The editor `add` and `edit` open, in preference to `$EDITOR`. Same form.
