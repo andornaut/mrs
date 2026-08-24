@@ -188,6 +188,38 @@ func TestAPasswordFileSkipsThePromptEntirely(t *testing.T) {
 	}
 }
 
+// noTerminalToPromptOn points the prompt at a terminal that cannot be opened,
+// which is what a process with a terminal on stdin but no controlling terminal
+// of its own finds.
+func noTerminalToPromptOn(t *testing.T) {
+	t.Helper()
+	prev := ttyPath
+	ttyPath = filepath.Join(t.TempDir(), "no-such-terminal")
+	t.Cleanup(func() { ttyPath = prev })
+}
+
+// A prompt with nowhere to go is reported, not skipped and not waited on, and
+// names the flag that supplies the answer instead.
+func TestAPromptWithNoTerminalToWriteOnIsReported(t *testing.T) {
+	noTerminalToPromptOn(t)
+	pretendTerminal(t)
+	withStdin(t, "a password\n")
+
+	if _, err := GivenOrPromptPassword(""); err == nil {
+		t.Fatal("expected an error with no terminal to prompt on")
+	} else if !errors.Is(err, ErrNoPrompt) {
+		t.Errorf("expected ErrNoPrompt, got %q", err)
+	} else if !strings.Contains(err.Error(), "--password-file") {
+		t.Errorf("expected the error to name --password-file, got %q", err)
+	}
+
+	if _, err := Confirm(false, "Delete vault work?"); err == nil {
+		t.Fatal("expected an error with no terminal to prompt on")
+	} else if !strings.Contains(err.Error(), "--yes") {
+		t.Errorf("expected the error to name --yes, got %q", err)
+	}
+}
+
 // A password read from a file is checked as soon as it is read, so a caller
 // that reads one before asking for anything else refuses it before asking.
 func TestAPasswordFileIsCheckedWhenItIsRead(t *testing.T) {

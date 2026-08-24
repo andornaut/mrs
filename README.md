@@ -157,9 +157,10 @@ Error: cannot ask "Delete vault old?": stdin is not a terminal. Use --yes to ans
 ## Output and exit codes
 
 stdout carries what a caller consumes: vault names from `vault list` and
-`vault default`, secrets from `export` and `search`. Prompts, warnings, errors
-and reports go to stderr, so `mrs export > secrets` and `mrs search key | less`
-carry the secrets alone.
+`vault default`, secrets from `export` and `search`. Warnings, errors and
+reports go to stderr, so `mrs export > secrets` and `mrs search key | less`
+carry the secrets alone. Prompts go to the terminal itself, so that redirecting
+stderr does not leave `mrs` waiting for an answer nobody can see.
 
 ```text
 $ mrs search bar

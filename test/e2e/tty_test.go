@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -176,4 +178,67 @@ func TestARefusedNewPasswordIsNamed(t *testing.T) {
 		AssertFailed().
 		AssertOutput("invalid new password: password must contain at least 8 characters").
 		AssertNoOutput("Confirm password")
+}
+
+// Prompts go to the terminal, not to stderr: redirecting stderr must not leave
+// mrs waiting for a password with nothing on screen.
+func TestPromptsGoToTheTerminalNotToStderr(t *testing.T) {
+	l := newLab(t)
+	l.seedVault("personal", "a password", "a key\na value\n")
+
+	stderr := filepath.Join(l.UserHome, "stderr")
+	r := l.runTTYWithStderr(stderr, "a password\n", "export", "-v", "personal")
+	r.AssertOK()
+	if !strings.Contains(r.Output, "Vault password") {
+		t.Errorf("expected the prompt on the terminal, got %q", r.describe())
+	}
+	if got := readFile(t, stderr); strings.Contains(got, "Vault password") {
+		t.Errorf("expected no prompt on stderr, got %q", got)
+	}
+	// The secrets still reach stdout, which the terminal carries here.
+	if !strings.Contains(r.Output, "a value") {
+		t.Errorf("expected the secrets on stdout, got %q", r.describe())
+	}
+}
+
+// runTTYWithStderr is RunTTY with stderr sent to a file instead of the
+// terminal, which is what a caller writing "2> log" does.
+func (l *lab) runTTYWithStderr(stderrPath, answer string, args ...string) *ttyResult {
+	l.t.Helper()
+	f, err := os.Create(stderrPath)
+	if err != nil {
+		l.t.Fatalf("failed to create %s: %s", stderrPath, err)
+	}
+	defer func() { _ = f.Close() }()
+
+	cmd := exec.Command(mrsBin, args...)
+	cmd.Env = l.environ()
+	cmd.Dir = l.UserHome
+	cmd.Stderr = f
+
+	tty, err := pty.Start(cmd)
+	if err != nil {
+		l.t.Fatalf("failed to start mrs %v on a terminal: %s", args, err)
+	}
+	defer func() { _ = tty.Close() }()
+
+	if _, err := tty.WriteString(answer); err != nil {
+		l.t.Fatalf("failed to write %q to the terminal: %s", answer, err)
+	}
+	out := make(chan string, 1)
+	go func() {
+		var buf bytes.Buffer
+		_, _ = io.Copy(&buf, tty)
+		out <- buf.String()
+	}()
+	done := make(chan error, 1)
+	go func() { done <- cmd.Wait() }()
+	select {
+	case <-done:
+	case <-time.After(30 * time.Second):
+		_ = cmd.Process.Kill()
+		<-done
+		l.t.Fatalf("mrs %v timed out on a terminal; it is probably waiting for input\noutput:\n%s", args, <-out)
+	}
+	return &ttyResult{t: l.t, Args: args, Output: <-out, ExitCode: cmd.ProcessState.ExitCode()}
 }

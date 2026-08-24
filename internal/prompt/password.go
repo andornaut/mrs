@@ -75,12 +75,13 @@ func givenOrPromptConfirmed(validate func([]byte) error, passwordFile, msg, flag
 	return p, nil
 }
 
-// withFlagHint names the flag that supplies a password without a terminal. The
-// prompt itself cannot name it, because which flag applies depends on which
-// password is being asked for: --password-file supplies a vault's current
-// password and cannot supply the one it is being changed to.
+// withFlagHint names the flag that supplies a password where mrs cannot ask for
+// one, whether because stdin is not a terminal or because there is no terminal
+// to ask on. The prompt itself cannot name it, because which flag applies
+// depends on which password is being asked for: --password-file supplies a
+// vault's current password and cannot supply the one it is being changed to.
 func withFlagHint(err error, flag string) error {
-	if errors.Is(err, ErrNoTerminal) {
+	if errors.Is(err, ErrNoTerminal) || errors.Is(err, ErrNoPrompt) {
 		return fmt.Errorf("%w. Use %s to supply the password", err, flag)
 	}
 	return err
