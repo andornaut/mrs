@@ -91,10 +91,10 @@ A short flag means the same thing on every command. `--force` and `--path` have
 no short form, because both are worth spelling out.
 
 `--force` repairs a lock file that cannot be opened, because its mode forbids
-it, a directory sits in its place, or it is a symlink into a directory that is
-not there. It never takes a lock another process holds:
-taking one would mean deleting the lock file, leaving the two processes holding
-two different files. A held lock is refused with or without the flag:
+it, a directory sits in its place, or it is a symlink that does not resolve. It
+never takes a lock another process holds: taking one would mean deleting the
+lock file, leaving the two processes holding two different files. A held lock is
+refused with or without the flag:
 
 ```console
 $ mrs vault delete work --force --yes
@@ -193,15 +193,16 @@ Path | Holds
 `$MRS_HOME/vaults/<name>.lock` | the lock on the name, empty
 `$MRS_TEMP/mrs/<run>/` | decrypted secrets while an editor is open, mode 0700
 
-The vault directory is mode 0700. `mrs` narrows permissions it finds wider than
-that and never widens them. One process at a time may write a vault or claim its
-name; reads take no lock, and every write is atomic, so a reader never sees a
-half-written vault. A lock file outlives the vault it is named for, because
-removing it would leave two processes holding two different files. The temporary
-directory is created only when secrets are decrypted, and removed when `mrs`
-exits, including on SIGHUP, SIGINT, SIGQUIT and SIGTERM. A SIGKILL or a power
-loss leaves the decrypted file behind, because nothing runs to remove it, and no
-later run sweeps it up; delete it by hand.
+- The vault directory is mode 0700. `mrs` narrows permissions it finds wider
+  than that and never widens them.
+- One process at a time may write a vault or claim its name. Reads take no lock,
+  and every write is atomic, so a reader never sees a half-written vault.
+- A lock file outlives the vault it is named for, because removing it would
+  leave two processes holding two different files.
+- The temporary directory is created only when secrets are decrypted, and
+  removed when `mrs` exits, including on SIGHUP, SIGINT, SIGQUIT and SIGTERM. A
+  SIGKILL or a power loss leaves the decrypted file behind, because nothing runs
+  to remove it and no later run sweeps it up; delete it by hand.
 
 A file in the vault directory that is not shaped like a vault is named on stderr
 and otherwise left alone. A vault that mrs cannot read is a different thing: a
