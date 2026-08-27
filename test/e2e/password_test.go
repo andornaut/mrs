@@ -214,6 +214,20 @@ func TestChangePasswordReportsAMissingNewPasswordFile(t *testing.T) {
 	l.Run("export", "-v", "work", "-p", pwFile).AssertOK()
 }
 
+// A change that cannot succeed must not first make the user type the password
+// they already have, so a new password given as a file is read and checked
+// before the current one is asked for. Without --password-file and with a pipe
+// for stdin, the two orders are told apart by which failure comes back.
+func TestTheNewPasswordFileIsReadBeforeTheCurrentPasswordIsAskedFor(t *testing.T) {
+	l := newLab(t)
+	l.seedVault("work", "a password", "a key\nthe-secret-value\n")
+
+	l.RunStdin("a password\n", "vault", "change-password", "work", "-n", l.UserHome+"/nosuch.pw").
+		AssertFailed().
+		AssertStderr("could not read from password file").
+		AssertNoOutput("stdin is not a terminal")
+}
+
 func TestChangePasswordReportsAMissingVault(t *testing.T) {
 	l := newLab(t)
 	pwFile := l.PasswordFile("pw", "a password")

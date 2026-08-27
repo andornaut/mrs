@@ -46,9 +46,11 @@ func TestAMissingEditorIsReportedClearly(t *testing.T) {
 	pwFile := l.createVault("personal", "a password")
 	l.Setenv("EDITOR", "no-such-editor-exists")
 
+	// In mrs's own wording, because the error exec returns names the command
+	// too, and a bare substring would pass without mrs naming it.
 	l.Run("edit", "-v", "personal", "-p", pwFile).
 		AssertFailed().
-		AssertStderr("no-such-editor-exists")
+		AssertStderr(`editor "no-such-editor-exists" failed`)
 }
 
 func TestAFailingEditorLeavesTheVaultUnchanged(t *testing.T) {

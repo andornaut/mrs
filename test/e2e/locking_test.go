@@ -74,6 +74,27 @@ func TestDeleteAndRenameAreRefusedWhileAVaultIsOpen(t *testing.T) {
 	l.Run("vault", "ls").AssertOK().AssertStdoutEquals("work")
 }
 
+// The lock is taken before the password is asked for, so that nobody types a
+// password for a vault another process is already writing. Run without
+// --password-file and with a pipe for stdin, the two orders are told apart by
+// which failure comes back: the lock, or the terminal that cannot be prompted on.
+func TestTheLockIsTakenBeforeThePasswordIsAskedFor(t *testing.T) {
+	l := newLab(t)
+	pwFile := l.seedVault("work", "a password", "a key\na value\n")
+	release := l.heldVault("work", pwFile)
+	defer release()
+
+	for _, args := range [][]string{
+		{"add", "-v", "work"},
+		{"edit", "-v", "work"},
+	} {
+		l.RunStdin("a password\n", args...).
+			AssertFailed().
+			AssertStderr("locked by another process").
+			AssertNoOutput("stdin is not a terminal")
+	}
+}
+
 func TestReadersAreNotBlockedWhileAVaultIsOpen(t *testing.T) {
 	l := newLab(t)
 	pwFile := l.seedVault("work", "a password", "a key\nthe-secret-value\n")

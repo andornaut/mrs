@@ -172,6 +172,19 @@ func TestATypedPasswordIsCheckedBeforeItIsConfirmed(t *testing.T) {
 		AssertOutput("Created vault personal")
 }
 
+// A password is typed twice and the two must agree: a typo would otherwise
+// encrypt the vault under a password its owner does not know.
+func TestTwoTypedPasswordsThatDisagreeAreRefused(t *testing.T) {
+	l := newLab(t)
+
+	l.RunTTY("a good password\na different password\n", "vault", "add", "personal").
+		AssertFailed().
+		AssertOutput("Confirm password").
+		AssertOutput("password mismatch").
+		AssertNoOutput("Created vault")
+	l.Run("vault", "ls").AssertOK().AssertStdoutEquals("")
+}
+
 // change-password asks for two passwords, so the one it refused is named.
 func TestARefusedNewPasswordIsNamed(t *testing.T) {
 	l := newLab(t)

@@ -3,6 +3,7 @@ package prompt
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -123,9 +124,12 @@ func TestAMissingPasswordFileIsNamed(t *testing.T) {
 		t.Fatal("expected an error for a missing password file")
 	}
 	// The path, not just the phrase: a command may be given two password files,
-	// and the one it could not read is the useful half of the answer.
-	if !strings.Contains(err.Error(), p) {
-		t.Errorf("expected the error to name %q, got %q", p, err)
+	// and the one it could not read is the useful half of the answer. Asserted
+	// in mrs's own wording, because the error the filesystem returns names the
+	// path as well, and a bare substring would pass without mrs naming it.
+	want := fmt.Sprintf("password file %q", p)
+	if !strings.Contains(err.Error(), want) {
+		t.Errorf("expected the error to contain %s, got %q", want, err)
 	}
 }
 

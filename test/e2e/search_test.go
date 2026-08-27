@@ -64,13 +64,17 @@ func TestSearchIsCaseInsensitiveBeyondAscii(t *testing.T) {
 
 func TestSearchJoinsItsArgumentsWithWhitespace(t *testing.T) {
 	l := newLab(t)
-	pwFile := l.seedVault("work", "a password", searchVault)
+	// The key holds a run of whitespace rather than the single space a shell
+	// leaves between two arguments, so that joining them with one space would
+	// not match it.
+	const spaced = "bank \t account\npin: 9999\n"
+	pwFile := l.seedVault("work", "a password", spaced)
 
 	// A shell splits `mrs search bank account` into two arguments and drops the
 	// spacing between them, so mrs matches any run of whitespace instead.
 	l.Run("search", "-v", "work", "-p", pwFile, "bank", "account").
 		AssertOK().
-		AssertStdoutExactly("bank account\npin: 9999\n").
+		AssertStdoutExactly(spaced).
 		AssertStderr("1 secret matched \"bank account\" in vault work")
 
 	// mrs lowercases the match and joins the arguments itself, so the report

@@ -349,7 +349,11 @@ func TestRenameRejectsIdenticalNames(t *testing.T) {
 	l := newLab(t)
 	l.createVault("personal", "a password")
 
-	l.Run("vault", "rename", "personal", "personal").AssertFailed()
+	// Refused for naming one vault twice, not for the target name being taken,
+	// which is the other way a rename onto an existing name fails.
+	l.Run("vault", "rename", "personal", "personal").
+		AssertFailed().
+		AssertStderr(`the source and target vault names cannot both be "personal"`)
 	l.Run("vault", "ls").AssertOK().AssertStdoutEquals("personal")
 }
 

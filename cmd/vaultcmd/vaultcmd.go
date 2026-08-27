@@ -142,13 +142,12 @@ func init() {
 			name := args[0]
 			// The name and the import file are checked before anything is
 			// asked, so that a create that cannot succeed does not first make
-			// the user type a password twice.
-			if err := vault.ValidateName(name); err != nil {
-				return err
-			}
-			// Advisory: vault.Create checks again under the lock, which is the
-			// answer that counts. This one only spares the user from typing a
-			// password for a vault that is already there.
+			// the user type a password twice. Exists validates the name, so it
+			// refuses an invalid one here rather than at the password prompt.
+			//
+			// Advisory: vault.Create checks both again under the lock, which is
+			// the answer that counts. This only spares the user from typing a
+			// password for a vault that cannot be created.
 			taken, err := vault.Exists(name)
 			if err != nil {
 				return err

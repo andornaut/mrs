@@ -419,14 +419,13 @@ func findVaults(warn bool, prefix string) ([]Vault, error) {
 	// Sorted by name ignoring case, as secrets are sorted by key, so that both
 	// listings read the same way. Filename order would put every uppercase name
 	// ahead of every lowercase one, and "_under" between "Banana" and "mango".
-	// Names that differ only in case fall back to byte order, so that the order
-	// is total and a listing does not change between runs.
-	slices.SortFunc(vs, func(a, b Vault) int {
-		an, bn := a.Name(), b.Name()
-		if c := strings.Compare(strings.ToLower(an), strings.ToLower(bn)); c != 0 {
-			return c
-		}
-		return strings.Compare(an, bn)
+	//
+	// Stable, so that names differing only in case keep the order they arrived
+	// in and a listing does not change between runs. An unstable sort would
+	// need a byte-order tiebreak to say the same thing, and that tiebreak can
+	// never fire: os.ReadDir returns filenames in byte order already.
+	slices.SortStableFunc(vs, func(a, b Vault) int {
+		return strings.Compare(strings.ToLower(a.Name()), strings.ToLower(b.Name()))
 	})
 	return vs, nil
 }

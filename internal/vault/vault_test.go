@@ -149,35 +149,12 @@ func TestRenameReportsBackupMoveFailure(t *testing.T) {
 	}
 }
 
-// A rename claims a name, so it takes that name's lock before asking whether
-// the name is free. Without it, a create or another rename could claim the same
-// name between the answer and the rename, leaving two vault files carrying it.
-func TestRenameIsRefusedWhileTheTargetNameIsLocked(t *testing.T) {
-	dir := newVaultDir(t)
-	writeFile(t, dir, "src."+testSalt)
-
-	held, err := Vault(filepath.Join(dir, "dst")).ExclusiveLock()
-	if err != nil {
-		t.Fatalf("failed to hold the target name's lock: %v", err)
-	}
-	defer held()
-
-	src, err := Exact("src")
-	if err != nil {
-		t.Fatalf("Exact() failed: %v", err)
-	}
-	if err = Rename(src, "dst", false); err == nil {
-		t.Fatal("expected Rename() to be refused while the target name is locked")
-	}
-	// The source must be left alone, so that a refused rename changes nothing.
-	if _, statErr := os.Stat(filepath.Join(dir, "src."+testSalt)); statErr != nil {
-		t.Errorf("expected the source vault to be untouched, stat err = %v", statErr)
-	}
-}
-
 // A name lock is never broken, because breaking one deletes the lock file and
 // two processes that each broke it would go on to lock two different files.
-// Nothing that claims a name may be forced past another claim on it.
+// Nothing that claims a name may be forced past another claim on it. A rename
+// takes the target name's lock before asking whether the name is free: without
+// it, a create or another rename could claim the name between the answer and
+// the rename, leaving two vault files carrying it.
 func TestCreateAndRenameDoNotBreakANameLock(t *testing.T) {
 	dir := newVaultDir(t)
 	writeFile(t, dir, "src."+testSalt)
@@ -204,6 +181,10 @@ func TestCreateAndRenameDoNotBreakANameLock(t *testing.T) {
 			t.Errorf("expected no vault file under the locked name, found %q", name)
 		}
 	}
+	// And the source must be left alone, so that a refused rename changes nothing.
+	if _, statErr := os.Stat(filepath.Join(dir, "src."+testSalt)); statErr != nil {
+		t.Errorf("expected the source vault to be untouched, stat err = %v", statErr)
+	}
 }
 
 // Vaults are listed sorted by name ignoring case, as secrets are sorted by key.
@@ -220,30 +201,6 @@ func TestAllSortsNamesIgnoringCase(t *testing.T) {
 		t.Fatalf("All() failed: %v", err)
 	}
 	want := []string{"_under", "App", "Apple", "Banana", "mango", "zebra"}
-	if got := names(vs); !slices.Equal(got, want) {
-		t.Errorf("expected %v, got %v", want, got)
-	}
-}
-
-// Names that differ only in case fall back to byte order, so that a listing is
-// the same on every run.
-func TestAllOrdersNamesThatDifferOnlyInCase(t *testing.T) {
-	dir := newVaultDir(t)
-	for _, name := range []string{"app", "APP", "App"} {
-		writeFile(t, dir, name+"."+testSalt)
-	}
-	if len(entriesIn(t, dir)) != 3 {
-		// A filesystem that does not distinguish the three names holds one file
-		// for them, and there is no order left to check. macOS is one by
-		// default.
-		t.Skip("the filesystem does not distinguish names that differ only in case")
-	}
-
-	vs, err := All()
-	if err != nil {
-		t.Fatalf("All() failed: %v", err)
-	}
-	want := []string{"APP", "App", "app"}
 	if got := names(vs); !slices.Equal(got, want) {
 		t.Errorf("expected %v, got %v", want, got)
 	}

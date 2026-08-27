@@ -3,7 +3,7 @@
 // mrs hands it; its behaviour is scripted through environment variables.
 //
 //	FAKE_EDITOR_MODE     what to do with the file (default: noop)
-//	FAKE_EDITOR_CONTENT  the content used by the replace, append and prepend modes
+//	FAKE_EDITOR_CONTENT  the content used by the replace and append modes
 //	FAKE_EDITOR_CAPTURE  if set, a path to copy the file to before editing it,
 //	                     so that a test can assert on what mrs handed the editor
 //	FAKE_EDITOR_STAT     if set, a path to write the edited file's permissions
@@ -86,9 +86,6 @@ func run() int {
 			updated += "\n"
 		}
 		updated += content
-	case "prepend":
-		// What an editor whose cursor starts on the first line produces.
-		updated = content + original
 	case "clear":
 		updated = ""
 	case "delete":

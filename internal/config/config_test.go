@@ -57,6 +57,7 @@ func TestTheEditorCommandIsSplitAsAShellWouldSplitIt(t *testing.T) {
 		{"Editor with arguments", "vim -n", []string{"vim", "-n"}},
 		{"Surrounding whitespace", "  code -w  ", []string{"code", "-w"}},
 		{"Repeated whitespace", "emacsclient  -t", []string{"emacsclient", "-t"}},
+		{"Tab between arguments", "emacsclient\t-t", []string{"emacsclient", "-t"}},
 		{"Quoted path", `"/opt/my editor/bin" -n`, []string{"/opt/my editor/bin", "-n"}},
 		{"Single quoted argument", `vim '+set noswapfile'`, []string{"vim", "+set noswapfile"}},
 		{"Escaped space", `/opt/my\ editor`, []string{"/opt/my editor"}},
