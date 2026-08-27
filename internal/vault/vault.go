@@ -82,6 +82,47 @@ func Named(prefix string) (Vault, error) {
 	return v, nil
 }
 
+// AtPath returns the vault stored at p, wherever that is: on removable media,
+// in a directory that is synced elsewhere, or anywhere else outside the vault
+// directory. It names one vault outright, so it takes no prefix and has no
+// default to fall back on.
+//
+// The filename still has to be <name>.<salt>, because a vault's key is derived
+// from the salt its filename carries and there is nowhere else to read it
+// from. The lock, the backup and the temporary files of an atomic write are
+// its siblings, so mrs writes in the directory the vault is in.
+func AtPath(p string) (Vault, error) {
+	if p == "" {
+		return "", errors.New("vault path cannot be empty")
+	}
+	// Absolute, so that the vault has one identity in what is reported and in
+	// the lock file, backup and temporary files named after it.
+	abs, err := filepath.Abs(p)
+	if err != nil {
+		return "", fmt.Errorf("could not resolve vault path %q: %w", p, err)
+	}
+	// The filename is checked before the file is looked for, so that a path
+	// that could not name a vault whatever is on disk says so, rather than
+	// being reported as a vault that is missing.
+	if err := validateFilename(filepath.Base(abs)); err != nil {
+		return "", fmt.Errorf("%q does not name a vault: %w. A vault file is named <name>.<salt>", p, err)
+	}
+	if err := validatePath(abs); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			// A symlink that is there and a target that is not, as when the
+			// drive the vault lives on is not mounted, is not a vault that was
+			// never there. findVaults tells the two apart for the same reason.
+			if _, lstatErr := os.Lstat(abs); lstatErr == nil {
+				return "", fmt.Errorf(
+					"vault %q is a symlink to a file that is not there, so it cannot be read", p)
+			}
+			return "", fmt.Errorf("vault %q not found", p)
+		}
+		return "", fmt.Errorf("vault %q cannot be read: %w", p, err)
+	}
+	return Vault(abs), nil
+}
+
 // names returns the vaults' names, in the order they were matched.
 func names(vs []Vault) []string {
 	ns := make([]string, 0, len(vs))

@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/andornaut/mrs/internal/config"
@@ -263,5 +264,85 @@ func TestExistsIgnoresTheFilesBesideAVault(t *testing.T) {
 	}
 	if taken {
 		t.Error("expected a name with only a vault's companion files left behind to be free")
+	}
+}
+
+// A vault named by path is one mrs never looked for: it is read where the user
+// said it is, outside the vault directory altogether.
+func TestAtPathNamesAVaultOutsideTheVaultDirectory(t *testing.T) {
+	newVaultDir(t)
+	elsewhere := t.TempDir()
+	writeFile(t, elsewhere, "work."+testSalt)
+
+	v, err := AtPath(filepath.Join(elsewhere, "work."+testSalt))
+	if err != nil {
+		t.Fatalf("AtPath() failed: %v", err)
+	}
+	if got := v.Path(); got != filepath.Join(elsewhere, "work."+testSalt) {
+		t.Errorf("expected the vault at the given path, got %q", got)
+	}
+	// The name and the salt still come from the filename, because the key is
+	// derived from the salt and there is nowhere else to read it from.
+	if v.Name() != "work" || v.Salt() != testSalt {
+		t.Errorf("expected name %q and salt %q, got %q and %q", "work", testSalt, v.Name(), v.Salt())
+	}
+
+	// A relative path names the same vault, and is resolved to the absolute one
+	// the lock file, the backup and an atomic write are named after.
+	t.Chdir(elsewhere)
+	rel, err := AtPath("work." + testSalt)
+	if err != nil {
+		t.Fatalf("AtPath() failed for a relative path: %v", err)
+	}
+	if rel != v {
+		t.Errorf("expected %q for the relative path, got %q", v, rel)
+	}
+}
+
+// The filename is answered before the file is looked for, so that a path that
+// could not name a vault whatever is on disk is not reported as one that is
+// missing.
+func TestAtPathRefusesAPathThatIsNotAVaultFile(t *testing.T) {
+	newVaultDir(t)
+	dir := t.TempDir()
+	writeFile(t, dir, "notes.txt")
+
+	for _, name := range []string{"notes.txt", "work", "work.short", "never-written"} {
+		_, err := AtPath(filepath.Join(dir, name))
+		if err == nil {
+			t.Errorf("expected %q to be refused as a vault file", name)
+			continue
+		}
+		if !strings.Contains(err.Error(), "<name>.<salt>") {
+			t.Errorf("expected the error for %q to say what a vault file is named, got %v", name, err)
+		}
+	}
+}
+
+// A path shaped like a vault but holding no readable vault fails as the vault
+// it was meant to be, naming the reason.
+func TestAtPathRefusesAVaultItCannotRead(t *testing.T) {
+	newVaultDir(t)
+	dir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dir, "dir."+testSalt), 0700); err != nil {
+		t.Fatalf("failed to create the directory: %v", err)
+	}
+	if err := os.Symlink(filepath.Join(dir, "not-mounted"), filepath.Join(dir, "away."+testSalt)); err != nil {
+		t.Fatalf("failed to create the dangling symlink: %v", err)
+	}
+
+	for name, want := range map[string]string{
+		"gone." + testSalt: "not found",
+		"dir." + testSalt:  "a vault is a file",
+		"away." + testSalt: "symlink",
+	} {
+		_, err := AtPath(filepath.Join(dir, name))
+		if err == nil {
+			t.Errorf("expected %q to be refused", name)
+			continue
+		}
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("expected the error for %q to mention %q, got %v", name, want, err)
+		}
 	}
 }

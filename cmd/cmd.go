@@ -87,7 +87,45 @@ type rootOptions struct {
 	repairLock    bool
 	includeValues bool
 	namePrefix    string
+	path          string
 	passwordFile  string
+}
+
+// vaultArgs wraps a command's argument validator with the check that the
+// command was given one way of naming a vault rather than both. It is checked
+// alongside the arguments, because cobra validates those before usage is
+// silenced: two flags that contradict each other are a wrong invocation, and
+// are answered with the usage and the status that says so.
+func (o *rootOptions) vaultArgs(args cobra.PositionalArgs) cobra.PositionalArgs {
+	return func(c *cobra.Command, a []string) error {
+		if err := args(c, a); err != nil {
+			return err
+		}
+		if o.namePrefix != "" && o.path != "" {
+			return cli.Usagef("--vault and --path both name a vault; use one")
+		}
+		return nil
+	}
+}
+
+// vault returns the vault the command was told to work in: the one --path
+// names, the one --vault names by prefix, or the default vault.
+func (o *rootOptions) vault() (vault.Vault, error) {
+	if o.path != "" {
+		return vault.AtPath(o.path)
+	}
+	return vault.Named(o.namePrefix)
+}
+
+// named returns what a report calls the vault: its path when --path named it,
+// and its name otherwise. A vault named by path may share its name with one in
+// the vault directory, so a report that gave only the name would not say which
+// of the two was read or written.
+func (o *rootOptions) named(v vault.Vault) string {
+	if o.path != "" {
+		return v.Path()
+	}
+	return v.Name()
 }
 
 // unlocked resolves the vault, takes its exclusive lock and unlocks it with the
@@ -95,7 +133,7 @@ type rootOptions struct {
 // taken before the password is asked for, so that a user does not type one for
 // a vault another process is already writing.
 func (o *rootOptions) unlocked(fn func(vault.UnlockedVault) error) error {
-	v, err := vault.Named(o.namePrefix)
+	v, err := o.vault()
 	if err != nil {
 		return err
 	}
@@ -123,7 +161,7 @@ func init() {
 		Long: "Use an editor ($VISUAL or $EDITOR) to add secrets to a vault.\n" +
 			"Secrets are separated by blank lines. The first line of each secret\n" +
 			"is its key; the rest is its value.",
-		Args:                  noEditorArgs,
+		Args:                  opts.vaultArgs(noEditorArgs),
 		DisableFlagsInUseLine: true,
 		RunE: func(c *cobra.Command, args []string) error {
 			return opts.unlocked(func(uv vault.UnlockedVault) error {
@@ -132,9 +170,9 @@ func init() {
 					return err
 				}
 				if n == 0 {
-					fmt.Fprintf(os.Stderr, "No secrets added to vault %s\n", uv.Name())
+					fmt.Fprintf(os.Stderr, "No secrets added to vault %s\n", opts.named(uv.Vault))
 				} else {
-					fmt.Fprintf(os.Stderr, "%d %s added to vault %s\n", n, cli.Plural(n, "secret"), uv)
+					fmt.Fprintf(os.Stderr, "%d %s added to vault %s\n", n, cli.Plural(n, "secret"), opts.named(uv.Vault))
 				}
 				return nil
 			})
@@ -147,7 +185,7 @@ func init() {
 		Long: "Use an editor ($VISUAL or $EDITOR) to edit the secrets in a vault.\n" +
 			"Secrets are separated by blank lines. The first line of each secret\n" +
 			"is its key; the rest is its value.",
-		Args:                  noEditorArgs,
+		Args:                  opts.vaultArgs(noEditorArgs),
 		DisableFlagsInUseLine: true,
 		RunE: func(c *cobra.Command, args []string) error {
 			return opts.unlocked(func(uv vault.UnlockedVault) error {
@@ -159,7 +197,7 @@ func init() {
 					fmt.Fprintln(os.Stderr, "Cancelled")
 					return nil
 				}
-				fmt.Fprintf(os.Stderr, "Saved changes to vault %s\n", uv)
+				fmt.Fprintf(os.Stderr, "Saved changes to vault %s\n", opts.named(uv.Vault))
 				return nil
 			})
 		},
@@ -171,12 +209,12 @@ func init() {
 		Long: "Search a vault for secrets whose key matches a regular expression.\n" +
 			"Several arguments are joined, so \"mrs search aws key\" matches \"aws key\"\n" +
 			"with any amount of whitespace between the words.",
-		Args: func(c *cobra.Command, args []string) error {
+		Args: opts.vaultArgs(func(c *cobra.Command, args []string) error {
 			if len(args) == 0 {
 				return cli.Usagef("%s requires a regular expression, as in \"%s aws\"", c.CommandPath(), c.CommandPath())
 			}
 			return nil
-		},
+		}),
 		RunE: func(c *cobra.Command, args []string) error {
 			return opts.runSearch(c, args)
 		},
@@ -186,12 +224,12 @@ func init() {
 		Use:                   "export",
 		Short:                 "Print every secret in a vault",
 		Long:                  "Print a vault's secrets to stdout, in the shape a vault is written in",
-		Args:                  cli.NoArgs,
+		Args:                  opts.vaultArgs(cli.NoArgs),
 		DisableFlagsInUseLine: true,
 		RunE: func(c *cobra.Command, args []string) error {
 			// Reading, so it takes a prefix and falls back to the default
 			// vault, as search does. The two differ only in what they print.
-			v, err := vault.Named(opts.namePrefix)
+			v, err := opts.vault()
 			if err != nil {
 				return err
 			}
@@ -216,6 +254,11 @@ func init() {
 	// The vault may be named by a prefix, which has to fit exactly one vault.
 	for _, c := range []*cobra.Command{add, edit, search, export} {
 		c.Flags().StringVarP(&opts.namePrefix, "vault", "v", "", "name of a vault, or the start of one")
+		// --path names a vault file wherever it is kept, so it has no short
+		// form: -p is the password file on every command that takes one. It
+		// completes as a filename, which is cobra's default for a flag with no
+		// completion of its own.
+		c.Flags().StringVar(&opts.path, "path", "", "path to a vault file, instead of naming one in the vault directory")
 		c.Flags().StringVarP(&opts.passwordFile, "password-file", "p", "", "path to a file that contains your password")
 		// The only error this returns is a flag that was not registered, which
 		// the line above just registered.
@@ -255,7 +298,7 @@ func (o *rootOptions) runSearch(c *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("invalid regular expression %q: %w", query, err)
 	}
-	v, err := vault.Named(o.namePrefix)
+	v, err := o.vault()
 	if err != nil {
 		return err
 	}
@@ -276,13 +319,13 @@ func (o *rootOptions) runSearch(c *cobra.Command, args []string) error {
 	// `mrs search aws > keys` and `mrs search aws | less` carry the secrets
 	// alone, as `mrs export` already does.
 	if n == 0 {
-		fmt.Fprintf(os.Stderr, "No secrets matched %q in vault %s\n", query, uv)
+		fmt.Fprintf(os.Stderr, "No secrets matched %q in vault %s\n", query, o.named(uv.Vault))
 		// Matching nothing is a result, not a failure, so the error that
 		// carries the exit status is not printed as one.
 		c.SilenceErrors = true
 		return errNoMatch
 	}
-	fmt.Fprintf(os.Stderr, "%d %s matched %q in vault %s\n\n", n, cli.Plural(n, "secret"), query, uv)
+	fmt.Fprintf(os.Stderr, "%d %s matched %q in vault %s\n\n", n, cli.Plural(n, "secret"), query, o.named(uv.Vault))
 	_, err = os.Stdout.Write(secrets)
 	return err
 }

@@ -53,8 +53,9 @@ make install
 ## Commands
 
 Commands that read or write the secrets in a vault name it with `--vault`,
-which accepts a prefix. Commands that create, rename or destroy a vault take
-its whole name as an argument.
+which accepts a prefix, or with `--path`, which names a vault file wherever it
+is kept. Commands that create, rename or destroy a vault take its whole name as
+an argument.
 
 Command | Does
 --- | ---
@@ -79,6 +80,7 @@ arguments are joined, so `mrs search bank account` matches `bank account`.
 Flag | Commands | Supplies
 --- | --- | ---
 `-v`, `--vault` | `add`, `edit`, `search`, `export` | the vault's name, or the start of it
+`--path` | `add`, `edit`, `search`, `export` | the path of a vault file, instead of a name
 `-p`, `--password-file` | `add`, `edit`, `search`, `export`, `vault add`, `vault change-password` | the vault's current password
 `-n`, `--new-password-file` | `vault change-password` | the password to change it to
 `-i`, `--import-file` | `vault add` | unencrypted secrets to seed the vault with
@@ -88,7 +90,10 @@ Flag | Commands | Supplies
 `--path` | `vault ls`, `vault default` | paths instead of names
 
 A short flag means the same thing on every command. `--force` and `--path` have
-no short form, because both are worth spelling out.
+no short form, because `-p` is the password file wherever there is one and
+`--force` is worth spelling out. `--path` names a vault file for the commands
+that read and write secrets, and asks `vault ls` and `vault default` to print
+paths rather than names.
 
 `--force` repairs a lock file that cannot be opened, because its mode forbids
 it, a directory sits in its place, or it is a symlink that does not resolve. It
@@ -132,6 +137,27 @@ Error: vault "alph" not found. Did you mean "alpha"?
 ```
 
 Names may hold ASCII letters, digits, `_` and `-`, up to 200 characters.
+
+## A vault kept elsewhere
+
+`add`, `edit`, `search` and `export` also take `--path`, which names a vault
+file directly: one on removable media, or in a directory that is synced
+elsewhere. Nothing is looked up, so it names no prefix and falls back to no
+default, and it is refused alongside `-v`:
+
+```console
+$ mrs search --path /mnt/usb/work.<salt> aws
+Vault password:
+1 secret matched "aws" in vault /mnt/usb/work.<salt>
+```
+
+The file still has to be named `<name>.<salt>`, because the key is derived from
+the salt the filename carries and there is nowhere else to read it from. Copy or
+move a vault with its salt intact and it opens with the password it always had.
+Its lock file, backup and the temporary file of a save are its siblings, so
+`mrs` writes in the directory the vault is in and needs to be able to write
+there. A vault outside the vault directory is not listed by `vault ls`, and
+`$MRS_DEFAULT_VAULT_NAME` cannot name one.
 
 ## Passwords
 
