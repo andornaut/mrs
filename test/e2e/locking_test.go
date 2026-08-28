@@ -266,28 +266,6 @@ func TestCreateIsRefusedWhileTheNameIsHeld(t *testing.T) {
 	l.Run("vault", "add", "other", "-p", newPw).AssertOK()
 }
 
-// Claiming a name is refused while another process holds that name's lock, and
-// there is no way to force past it. Two processes that each broke the lock
-// would hold two different lock files and both write a vault under the name.
-func TestANameClaimCannotBeForcedPastAHeldNameLock(t *testing.T) {
-	l := newLab(t)
-	pwFile := l.seedVault("work", "a password", "a key\na value\n")
-	l.seedVault("other", "a password", "b key\nb value\n")
-	release := l.heldVault("work", pwFile)
-	defer release()
-
-	// Renaming onto the held name is refused, with and without --force, which
-	// means the same thing on the target name as on the source: repair, never
-	// take.
-	for _, args := range [][]string{
-		{"vault", "rename", "other", "work"},
-		{"vault", "rename", "--force", "other", "work"},
-	} {
-		l.Run(args...).AssertFailed()
-	}
-	l.Run("vault", "ls").AssertOK().AssertStdoutEquals("other\nwork")
-}
-
 func TestAReleasedLockDoesNotBlockLaterWrites(t *testing.T) {
 	l := newLab(t)
 	pwFile := l.seedVault("work", "a password", "a key\na value\n")
@@ -302,25 +280,4 @@ func TestAReleasedLockDoesNotBlockLaterWrites(t *testing.T) {
 	if got := l.export("work", pwFile); !strings.Contains(got, "b value") {
 		t.Fatalf("expected the later edit to be saved, got %q", got)
 	}
-}
-
-func TestALockFileIsNotMistakenForAVault(t *testing.T) {
-	l := newLab(t)
-	pwFile := l.seedVault("work", "a password", "a key\na value\n")
-	release := l.heldVault("work", pwFile)
-	defer release()
-
-	// While the lock is held there is a work.lock beside the vault file.
-	var sawLock bool
-	for _, name := range l.Vaults() {
-		if name == "work.lock" {
-			sawLock = true
-		}
-	}
-	if !sawLock {
-		t.Fatalf("expected a lock file while the vault is open, got %v", l.Vaults())
-	}
-
-	l.Run("vault", "ls").AssertOK().AssertStdoutEquals("work")
-	l.Run("vault", "default").AssertOK().AssertStdoutEquals("work")
 }

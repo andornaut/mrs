@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/andornaut/mrs/internal/config"
 )
 
 func TestATemporaryFileIsWrittenReadableOnlyByItsOwner(t *testing.T) {
@@ -223,5 +225,28 @@ func TestACopyHoldsTheSourcesContent(t *testing.T) {
 	}
 	if string(got) != string(content) {
 		t.Errorf("CopyFile() content = %v, expected %v", string(got), string(content))
+	}
+}
+
+// A run that decrypted nothing created no temporary directory, and its cleanup
+// must not create one either: asking for the directory in order to remove it
+// would make one on every such run, and would report a directory that could not
+// be created as secrets left on disk.
+func TestCleanupOfARunThatDecryptedNothingCreatesNoTempDir(t *testing.T) {
+	config.Reset()
+	t.Cleanup(config.Reset)
+	tmpRoot := t.TempDir()
+	t.Setenv("MRS_TEMP", tmpRoot)
+
+	if err := RemoveTempDir(); err != nil {
+		t.Fatalf("RemoveTempDir() error: %v", err)
+	}
+
+	entries, err := os.ReadDir(tmpRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Errorf("expected the cleanup to create nothing, found %v", entries)
 	}
 }

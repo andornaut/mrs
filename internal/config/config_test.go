@@ -103,3 +103,30 @@ func TestVisualIsPreferredToEditorUnlessItIsEmpty(t *testing.T) {
 		})
 	}
 }
+
+// The temporary directory is created once and remembered: a second caller gets
+// the same directory, and cleanup reads what was created without creating one.
+// A directory per call would be a directory the cleanup on exit never removes.
+func TestTheTempDirIsCreatedOnceAndRememberedForCleanup(t *testing.T) {
+	Reset()
+	t.Cleanup(Reset)
+	t.Setenv("MRS_TEMP", t.TempDir())
+
+	if got := CreatedTempDir(); got != "" {
+		t.Fatalf("CreatedTempDir() before any GetTempDir() = %q, want \"\"", got)
+	}
+	first, err := GetTempDir()
+	if err != nil {
+		t.Fatalf("GetTempDir() error: %v", err)
+	}
+	second, err := GetTempDir()
+	if err != nil {
+		t.Fatalf("GetTempDir() error: %v", err)
+	}
+	if first != second {
+		t.Errorf("GetTempDir() = %q then %q, want the same directory", first, second)
+	}
+	if got := CreatedTempDir(); got != first {
+		t.Errorf("CreatedTempDir() = %q, want the created directory %q", got, first)
+	}
+}
