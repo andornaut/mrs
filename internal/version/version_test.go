@@ -2,6 +2,7 @@ package version
 
 import (
 	"os"
+	"runtime/debug"
 	"strings"
 	"testing"
 )
@@ -78,4 +79,35 @@ func modulePath(t *testing.T) string {
 	}
 	t.Fatal("go.mod names no module")
 	return ""
+}
+
+// An unstamped binary claims a version only when the module system recorded a
+// release and no VCS settings: a working-tree build records vcs.revision and is
+// a local build whatever tag the tree is sitting on, so it keeps "dev".
+func TestOnlyAVcsFreeModuleBuildClaimsTheRecordedVersion(t *testing.T) {
+	release := func(settings ...debug.BuildSetting) *debug.BuildInfo {
+		return &debug.BuildInfo{
+			Main:     debug.Module{Version: "v1.3.4"},
+			Settings: settings,
+		}
+	}
+	for _, tc := range []struct {
+		name    string
+		current string
+		info    *debug.BuildInfo
+		want    string
+	}{
+		{"a module build of a release", "dev", release(), "1.3.4"},
+		{"a working-tree build under a tag", "dev",
+			release(debug.BuildSetting{Key: "vcs.revision", Value: "abc"}), "dev"},
+		{"a stamped binary is left alone", "1.2.3", release(), "1.2.3"},
+		{"a build outside the module system", "dev",
+			&debug.BuildInfo{Main: debug.Module{Version: "(devel)"}}, "dev"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := versionFromBuildInfo(tc.current, tc.info); got != tc.want {
+				t.Errorf("versionFromBuildInfo(%q, ...) = %q, want %q", tc.current, got, tc.want)
+			}
+		})
+	}
 }

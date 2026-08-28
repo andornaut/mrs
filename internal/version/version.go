@@ -14,27 +14,32 @@ import (
 // tagged build, and init below decides what an unstamped one reports.
 var Version = "dev"
 
-// A binary the linker did not stamp can still know what it was built from:
-// `go install <module>@v1.2.3` records the version and records no VCS settings,
-// having built from the module cache rather than from a checkout. A build made
-// from a working tree records vcs.revision, and is a local build whatever the
-// tree is sitting on, so it keeps "dev" rather than claiming the tag under it.
 func init() {
-	if Version != "dev" {
-		return
+	if info, ok := debug.ReadBuildInfo(); ok {
+		Version = versionFromBuildInfo(Version, info)
 	}
-	info, ok := debug.ReadBuildInfo()
-	if !ok {
-		return
+}
+
+// versionFromBuildInfo returns what a binary carrying the given build info
+// reports. A binary the linker did not stamp can still know what it was built
+// from: `go install <module>@v1.2.3` records the version and records no VCS
+// settings, having built from the module cache rather than from a checkout. A
+// build made from a working tree records vcs.revision, and is a local build
+// whatever the tree is sitting on, so it keeps "dev" rather than claiming the
+// tag under it.
+func versionFromBuildInfo(current string, info *debug.BuildInfo) string {
+	if current != "dev" {
+		return current
 	}
 	for _, setting := range info.Settings {
 		if strings.HasPrefix(setting.Key, "vcs") {
-			return
+			return current
 		}
 	}
 	if v := releaseVersion(info.Main.Version); v != "" {
-		Version = v
+		return v
 	}
+	return current
 }
 
 // releaseVersion returns what to report for a version the module system
