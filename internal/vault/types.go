@@ -9,6 +9,7 @@ import (
 
 	"github.com/gofrs/flock"
 
+	"github.com/andornaut/mrs/internal/config"
 	"github.com/andornaut/mrs/internal/crypto"
 	"github.com/andornaut/mrs/internal/fs"
 )
@@ -23,21 +24,15 @@ func (v Vault) Name() string {
 	if v == "" {
 		return ""
 	}
-	// basename must contain 0 or 1 "." characters.
-	return strings.SplitN(v.basename(), ".", 2)[0]
+	name, _, _ := strings.Cut(v.basename(), ".")
+	return name
 }
 
-// Salt returns a salt derived from the filename or empty string if one does not exist.
+// Salt returns the salt from the vault's filename, or the empty string if it
+// carries none.
 func (v Vault) Salt() string {
-	if v == "" {
-		return ""
-	}
-	// basename must contain 0 or 1 "." characters.
-	arr := strings.SplitN(v.basename(), ".", 2)
-	if len(arr) == 1 {
-		return ""
-	}
-	return arr[1]
+	_, salt, _ := strings.Cut(v.basename(), ".")
+	return salt
 }
 
 // Path returns the absolute file path to the vault
@@ -45,11 +40,21 @@ func (v Vault) Path() string {
 	return string(v)
 }
 
+// String returns what a report calls the vault: its name when it sits in the
+// vault directory, and its path otherwise. A vault named by path may share its
+// name with one in the vault directory, so a report that gave only the name
+// would not say which of the two was read or written.
 func (v Vault) String() string {
-	return v.Name()
+	if v == "" {
+		return ""
+	}
+	if dir, err := config.VaultDir(); err == nil && filepath.Dir(v.Path()) == dir {
+		return v.Name()
+	}
+	return v.Path()
 }
 
-// Unlocked returns a UnlockedVault
+// Unlocked returns an UnlockedVault
 func (v Vault) Unlocked(password []byte) UnlockedVault {
 	return UnlockedVault{v, password}
 }
@@ -64,25 +69,26 @@ var ErrLockHeld = errors.New("locked by another process")
 // is what --force repairs.
 var ErrLockUnusable = errors.New("the lock file cannot be used")
 
-// ExclusiveLock acquires an exclusive lock on the vault.
+// exclusiveLock acquires an exclusive lock on the vault.
 // It returns an unlock function and any error encountered.
-func (v Vault) ExclusiveLock() (func(), error) {
+func (v Vault) exclusiveLock() (func(), error) {
 	if v == "" {
 		return nil, errors.New("cannot lock a vault with no name")
 	}
 	f := flock.New(v.lockPath())
 	locked, err := f.TryLock()
 	if err != nil {
-		return nil, fmt.Errorf("%w for vault %s: %w", ErrLockUnusable, v.Name(), err)
+		return nil, fmt.Errorf("%w for vault %s: %w", ErrLockUnusable, v, err)
 	}
 	if !locked {
-		return nil, fmt.Errorf("vault %s is currently %w", v.Name(), ErrLockHeld)
+		return nil, fmt.Errorf("vault %s is currently %w", v, ErrLockHeld)
 	}
 	return func() { _ = f.Unlock() }, nil
 }
 
-// ExclusiveLockRepair is ExclusiveLock, and when repair is true it first makes
-// a lock file that cannot be used usable again.
+// ExclusiveLockRepair is the one entry point for taking a vault's lock: it is
+// exclusiveLock, and when repair is true it first makes a lock file that
+// cannot be used usable again.
 //
 // Repairing is not taking. A lock another process holds is refused whether or
 // not repair was asked for, because the only way past a held lock is to remove
@@ -95,9 +101,18 @@ func (v Vault) ExclusiveLock() (func(), error) {
 // Repairing therefore keeps the lock file's identity wherever there is one to
 // keep, so that a process already holding it goes on holding it.
 func (v Vault) ExclusiveLockRepair(repair bool) (func(), error) {
-	unlock, err := v.ExclusiveLock()
-	if err == nil || !repair {
-		return unlock, err
+	unlock, err := v.exclusiveLock()
+	if err == nil {
+		return unlock, nil
+	}
+	if !repair {
+		// The remedy is named here rather than in exclusiveLock, which is
+		// called again after a repair: a second failure must not tell a user
+		// who already typed --force to use it.
+		if errors.Is(err, ErrLockUnusable) {
+			return nil, fmt.Errorf("%w. Use --force to repair it", err)
+		}
+		return nil, err
 	}
 	if errors.Is(err, ErrLockHeld) {
 		// Say why the flag did not help, rather than repeat a refusal that
@@ -111,7 +126,7 @@ func (v Vault) ExclusiveLockRepair(repair bool) (func(), error) {
 	if repairErr := v.repairLock(); repairErr != nil {
 		return nil, repairErr
 	}
-	return v.ExclusiveLock()
+	return v.exclusiveLock()
 }
 
 // repairLock makes an unusable lock file usable, without changing what holds
@@ -122,21 +137,18 @@ func (v Vault) ExclusiveLockRepair(repair bool) (func(), error) {
 // platform that locks a directory instead - Darwin does - has already excluded
 // everyone else and never gets here.
 func (v Vault) repairLock() error {
-	if v == "" {
-		return errors.New("cannot repair the lock on a vault with no name")
-	}
 	p := v.lockPath()
 	fi, err := os.Lstat(p)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, os.ErrNotExist) {
 			// Nothing to repair. The lock file is created by taking the lock.
 			return nil
 		}
-		return fmt.Errorf("could not repair the lock on vault %s: %w", v.Name(), err)
+		return fmt.Errorf("could not repair the lock on vault %s: %w", v, err)
 	}
 	if fi.IsDir() {
 		if err := os.Remove(p); err != nil {
-			return fmt.Errorf("could not remove the directory in place of the lock on vault %s: %w", v.Name(), err)
+			return fmt.Errorf("could not remove the directory in place of the lock on vault %s: %w", v, err)
 		}
 		return nil
 	}
@@ -150,19 +162,32 @@ func (v Vault) repairLock() error {
 		if _, statErr := os.Stat(p); statErr != nil {
 			if err := os.Remove(p); err != nil {
 				return fmt.Errorf(
-					"could not remove the broken symlink in place of the lock on vault %s: %w", v.Name(), err)
+					"could not remove the broken symlink in place of the lock on vault %s: %w", v, err)
 			}
 			return nil
 		}
 	}
 	if err := os.Chmod(p, 0600); err != nil {
-		return fmt.Errorf("could not repair the lock on vault %s: %w", v.Name(), err)
+		return fmt.Errorf("could not repair the lock on vault %s: %w", v, err)
 	}
 	return nil
 }
 
+// lockSuffix and backupSuffix end the names of the two files mrs keeps beside
+// a vault. findVaults skips its siblings by these constants, so renaming one
+// cannot silently turn lock or backup files into stray entries the listing
+// warns about.
+const (
+	lockSuffix   = ".lock"
+	backupSuffix = ".bak"
+)
+
 func (v Vault) lockPath() string {
-	return filepath.Join(filepath.Dir(v.Path()), v.Name()+".lock")
+	return filepath.Join(filepath.Dir(v.Path()), v.Name()+lockSuffix)
+}
+
+func (v Vault) backupPath() string {
+	return v.Path() + backupSuffix
 }
 
 func (v Vault) basename() string {
@@ -190,7 +215,7 @@ func (v *UnlockedVault) Decrypt() ([]byte, error) {
 		// A vault's key is derived from the salt in its filename, so there is
 		// nothing to decrypt with. findVaults rejects such a file, so reaching
 		// here means a Vault was built from a path directly.
-		return nil, fmt.Errorf("vault %s has no salt in its filename", v.Name())
+		return nil, fmt.Errorf("vault %s has no salt in its filename", v)
 	}
 	decrypted, err := crypto.Decrypt(b, v.password, salt)
 	if err != nil {
@@ -200,13 +225,17 @@ func (v *UnlockedVault) Decrypt() ([]byte, error) {
 		// the trimmed password. Removable once every such vault has been saved
 		// at least once, which the warning below asks the user to do.
 		for _, suffix := range []string{"\n", "\r\n"} {
-			legacyPassword := append(append([]byte{}, v.password...), suffix...)
+			// Sized exactly, so that appending the suffix cannot reallocate
+			// and abandon an unwipeable copy of the password.
+			legacyPassword := make([]byte, 0, len(v.password)+len(suffix))
+			legacyPassword = append(legacyPassword, v.password...)
+			legacyPassword = append(legacyPassword, suffix...)
 			decrypted, err = crypto.Decrypt(b, legacyPassword, salt)
 			crypto.Wipe(legacyPassword)
 			if err == nil {
 				warnf("vault %s was encrypted with a password that ends in a newline. "+
 					"It will be re-encrypted with the trimmed password the next time you save it.",
-					v.Name())
+					v)
 				break
 			}
 		}
@@ -236,20 +265,20 @@ func (v *UnlockedVault) Write(plaintext []byte) error {
 
 	// A vault being written for the first time has nothing to back up.
 	if _, statErr := os.Stat(v.Path()); statErr == nil {
-		if copyErr := fs.CopyFile(v.Path(), v.Path()+".bak"); copyErr != nil {
-			warnf("failed to create backup for vault %s: %s", v.Name(), copyErr)
+		if copyErr := fs.CopyFile(v.Path(), v.backupPath()); copyErr != nil {
+			warnf("failed to create backup for vault %s: %s", v, copyErr)
 		}
 	}
 
 	// Remove leftover temporary files from previously interrupted writes.
 	// Callers hold the vault's exclusive lock, so any matching file is stale.
-	_ = removeTempFiles(v.Path())
+	_ = fs.RemoveTempFiles(v.Path())
 
 	if err := fs.WriteFileAtomic(v.Path(), ciphertext, 0600); err != nil {
 		if errors.Is(err, fs.ErrDirSync) {
 			// The vault was written and renamed; only the durability-hardening
 			// directory sync failed, so warn instead of failing the save.
-			warnf("vault %s was saved but %s", v.Name(), err)
+			warnf("vault %s was saved but %s", v, err)
 			return nil
 		}
 		return err

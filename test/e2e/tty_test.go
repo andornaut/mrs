@@ -36,9 +36,17 @@ type ttyResult struct {
 // the terminal holds until it does.
 func (l *lab) RunTTY(answer string, args ...string) *ttyResult {
 	l.t.Helper()
-	cmd := exec.Command(mrsBin, args...)
-	cmd.Env = l.environ()
-	cmd.Dir = l.UserHome
+	return l.runTTY(nil, answer, args...)
+}
+
+// runTTY is the shared core of RunTTY and runTTYDiverting: configure, when not
+// nil, adjusts the command before it is given the terminal.
+func (l *lab) runTTY(configure func(*exec.Cmd), answer string, args ...string) *ttyResult {
+	l.t.Helper()
+	cmd := l.configured(exec.Command(mrsBin, args...))
+	if configure != nil {
+		configure(cmd)
+	}
 
 	f, err := pty.Start(cmd)
 	if err != nil {
@@ -61,16 +69,27 @@ func (l *lab) RunTTY(answer string, args ...string) *ttyResult {
 		out <- buf.String()
 	}()
 
+	if !waitOrKill(cmd) {
+		l.t.Fatalf("mrs %v timed out on a terminal; it is probably waiting for input\noutput:\n%s", args, <-out)
+	}
+	return &ttyResult{t: l.t, Args: args, Output: <-out, ExitCode: cmd.ProcessState.ExitCode()}
+}
+
+// waitOrKill waits for mrs to end, killing it after 30 seconds so that a run
+// that never ends fails in its own test rather than holding the package until
+// the test binary's own timeout kills it ten minutes later. It reports whether
+// mrs ended on its own, so the caller fails with what only it knows.
+func waitOrKill(cmd *exec.Cmd) bool {
 	done := make(chan error, 1)
 	go func() { done <- cmd.Wait() }()
 	select {
 	case <-done:
+		return true
 	case <-time.After(30 * time.Second):
 		_ = cmd.Process.Kill()
 		<-done
-		l.t.Fatalf("mrs %v timed out on a terminal; it is probably waiting for input\noutput:\n%s", args, <-out)
+		return false
 	}
-	return &ttyResult{t: l.t, Args: args, Output: <-out, ExitCode: cmd.ProcessState.ExitCode()}
 }
 
 func (r *ttyResult) describe() string {
@@ -228,36 +247,7 @@ func (l *lab) runTTYDiverting(divert func(*exec.Cmd, *os.File), path, answer str
 	}
 	defer func() { _ = f.Close() }()
 
-	cmd := exec.Command(mrsBin, args...)
-	cmd.Env = l.environ()
-	cmd.Dir = l.UserHome
-	divert(cmd, f)
-
-	tty, err := pty.Start(cmd)
-	if err != nil {
-		l.t.Fatalf("failed to start mrs %v on a terminal: %s", args, err)
-	}
-	defer func() { _ = tty.Close() }()
-
-	if _, err := tty.WriteString(answer); err != nil {
-		l.t.Fatalf("failed to write %q to the terminal: %s", answer, err)
-	}
-	out := make(chan string, 1)
-	go func() {
-		var buf bytes.Buffer
-		_, _ = io.Copy(&buf, tty)
-		out <- buf.String()
-	}()
-	done := make(chan error, 1)
-	go func() { done <- cmd.Wait() }()
-	select {
-	case <-done:
-	case <-time.After(30 * time.Second):
-		_ = cmd.Process.Kill()
-		<-done
-		l.t.Fatalf("mrs %v timed out on a terminal; it is probably waiting for input\noutput:\n%s", args, <-out)
-	}
-	return &ttyResult{t: l.t, Args: args, Output: <-out, ExitCode: cmd.ProcessState.ExitCode()}
+	return l.runTTY(func(cmd *exec.Cmd) { divert(cmd, f) }, answer, args...)
 }
 
 func divertStdout(cmd *exec.Cmd, f *os.File) { cmd.Stdout = f }
@@ -317,9 +307,7 @@ func TestASignalAtThePasswordPromptRestoresTheTerminal(t *testing.T) {
 			fd := int(ptmx.Fd())
 			before := terminalState(t, fd)
 
-			cmd := exec.Command(mrsBin, "export", "-v", "personal")
-			cmd.Env = l.environ()
-			cmd.Dir = l.UserHome
+			cmd := l.configured(exec.Command(mrsBin, "export", "-v", "personal"))
 			cmd.Stdin, cmd.Stdout, cmd.Stderr = tty, tty, tty
 			cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true, Setctty: true}
 			if err := cmd.Start(); err != nil {
@@ -348,18 +336,10 @@ func TestASignalAtThePasswordPromptRestoresTheTerminal(t *testing.T) {
 	}
 }
 
-// waitForExit waits for a signalled mrs to end. Bounded, so that a run that
-// never ends fails here rather than holding the package until the test binary's
-// own timeout kills it ten minutes later.
+// waitForExit waits for a signalled mrs to end.
 func waitForExit(t *testing.T, cmd *exec.Cmd) {
 	t.Helper()
-	done := make(chan error, 1)
-	go func() { done <- cmd.Wait() }()
-	select {
-	case <-done:
-	case <-time.After(30 * time.Second):
-		_ = cmd.Process.Kill()
-		<-done
+	if !waitOrKill(cmd) {
 		t.Fatal("mrs did not exit after the signal")
 	}
 }
@@ -381,12 +361,6 @@ func terminalState(t *testing.T, fd int) string {
 // on but the terminal itself.
 func waitForTerminalState(t *testing.T, fd int, want func(string) bool) {
 	t.Helper()
-	deadline := time.Now().Add(10 * time.Second)
-	for time.Now().Before(deadline) {
-		if want(terminalState(t, fd)) {
-			return
-		}
-		time.Sleep(20 * time.Millisecond)
-	}
-	t.Fatal("the terminal settings did not reach the expected state")
+	waitFor(t, 10*time.Second, func() bool { return want(terminalState(t, fd)) },
+		"the terminal settings did not reach the expected state")
 }

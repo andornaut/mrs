@@ -9,13 +9,21 @@ import (
 	"github.com/andornaut/mrs/internal/crypto"
 )
 
+// GivenOrPromptPassword returns a vault's current password, from a file or
+// from one prompt. The caller is responsible for wiping the returned slice.
 func GivenOrPromptPassword(passwordFile string) ([]byte, error) {
+	return givenOrPrompt(passwordFile, "Vault password", "--password-file")
+}
+
+// givenOrPrompt reads the password from passwordFile when one was given, and
+// otherwise prompts for it, naming flag where there is no terminal to ask on.
+func givenOrPrompt(passwordFile, msg, flag string) ([]byte, error) {
 	if passwordFile != "" {
 		return readPasswordFile(passwordFile)
 	}
-	p, err := Password("Vault password")
+	p, err := Password(msg)
 	if err != nil {
-		return nil, withFlagHint(err, "--password-file")
+		return nil, withFlagHint(err, flag)
 	}
 	return p, nil
 }
@@ -42,24 +50,17 @@ func GivenOrPromptNewPassword(validate func([]byte) error, newPasswordFile strin
 // password read from a file is checked as soon as it is read, before anything
 // else is asked for. The caller checks again, which is the answer that counts.
 func givenOrPromptConfirmed(validate func([]byte) error, passwordFile, msg, flag string) ([]byte, error) {
-	if passwordFile != "" {
-		p, err := readPasswordFile(passwordFile)
-		if err != nil {
-			return nil, err
-		}
-		if validateErr := validate(p); validateErr != nil {
-			crypto.Wipe(p)
-			return nil, validateErr
-		}
-		return p, nil
-	}
-	p, err := Password(msg)
+	p, err := givenOrPrompt(passwordFile, msg, flag)
 	if err != nil {
-		return nil, withFlagHint(err, flag)
+		return nil, err
 	}
 	if validateErr := validate(p); validateErr != nil {
 		crypto.Wipe(p)
 		return nil, validateErr
+	}
+	if passwordFile != "" {
+		// A password from a file needs no confirmation: it was not typed.
+		return p, nil
 	}
 	c, err := Password("Confirm password")
 	if err != nil {

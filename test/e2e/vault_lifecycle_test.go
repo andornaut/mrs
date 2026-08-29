@@ -19,14 +19,20 @@ func TestCreateVaultWritesAnEncryptedFile(t *testing.T) {
 		AssertStderr("Created vault personal")
 
 	p := l.VaultPath("personal")
-	if base := filepath.Base(p); !strings.HasPrefix(base, "personal.") {
-		t.Fatalf("expected the vault file to be named personal.<salt>, got %q", base)
+	salt, ok := strings.CutPrefix(filepath.Base(p), "personal.")
+	if !ok {
+		t.Fatalf("expected the vault file to be named personal.<salt>, got %q", filepath.Base(p))
 	}
-	if salt := strings.TrimPrefix(filepath.Base(p), "personal."); len(salt) != 32 {
+	if len(salt) != 32 {
 		t.Fatalf("expected a 32 character salt in the filename, got %q", salt)
 	}
 	assertFileMode(t, p, 0600)
-	assertFileMode(t, l.VaultDir(), 0700)
+	assertDirMode(t, l.VaultDir(), 0700)
+	// An empty vault's ciphertext is still a nonce and a tag, so even a vault
+	// created with nothing in it is never an empty file.
+	if got := readFile(t, p); len(got) < 28 {
+		t.Fatalf("expected ciphertext in the vault file, got %d bytes", len(got))
+	}
 }
 
 func TestCreateVaultIsReportedByList(t *testing.T) {
@@ -46,10 +52,7 @@ func TestListPathsPrintsAbsolutePaths(t *testing.T) {
 	l := newLab(t)
 	l.createVault("personal", "a password")
 
-	r := l.Run("vault", "ls", "--path").AssertOK()
-	if got := strings.TrimSpace(r.Stdout); got != l.VaultPath("personal") {
-		t.Fatalf("expected the vault path %q, got %q", l.VaultPath("personal"), got)
-	}
+	l.Run("vault", "ls", "--path").AssertOK().AssertStdoutEquals(l.VaultPath("personal"))
 
 	// --path has no short form, so that -p means the password file on every
 	// command that takes one.
@@ -109,7 +112,9 @@ func TestCreateRejectsAShortPassword(t *testing.T) {
 		AssertFailed().
 		AssertStderr("at least 8 characters")
 
-	if names := l.Vaults(); len(names) != 0 {
+	// The claim on the name leaves a lock file, as every command does; no
+	// vault file may be left.
+	if names := vaultFilesIn(t, l.VaultDir()); len(names) != 0 {
 		t.Fatalf("expected no vault to be created, found %v", names)
 	}
 }
@@ -256,7 +261,7 @@ func TestAVaultWhoseTargetIsAwayIsStillAVault(t *testing.T) {
 	l.Run("vault", "ls").
 		AssertOK().
 		AssertStdoutEquals("away\npersonal").
-		AssertStderr("symlink to a file that is not there")
+		AssertStderr("symlink whose target is not there")
 
 	// The name is still taken, by create and by rename alike.
 	l.Run("vault", "add", "away", "-p", pwFile).
@@ -288,8 +293,7 @@ func TestListIgnoresLockBackupAndTempFiles(t *testing.T) {
 	l := newLab(t)
 	pwFile := l.createVault("personal", "a password")
 	// Provoke a real backup by writing to the vault a second time.
-	l.Setenv("FAKE_EDITOR_MODE", "append")
-	l.Setenv("FAKE_EDITOR_CONTENT", "a key\na value\n")
+	l.editorAppends("a key\na value\n")
 	l.Run("edit", "-v", "personal", "-p", pwFile).AssertOK()
 
 	vaultPath := l.VaultPath("personal")
@@ -378,8 +382,7 @@ func TestRenameReportsAMissingVault(t *testing.T) {
 func TestRenameMovesTheBackupFile(t *testing.T) {
 	l := newLab(t)
 	pwFile := l.createVault("personal", "a password")
-	l.Setenv("FAKE_EDITOR_MODE", "append")
-	l.Setenv("FAKE_EDITOR_CONTENT", "a key\na value\n")
+	l.editorAppends("a key\na value\n")
 	l.Run("edit", "-v", "personal", "-p", pwFile).AssertOK()
 
 	oldBackup := l.VaultPath("personal") + ".bak"
@@ -427,8 +430,7 @@ func TestDeleteWithoutAnAnswerKeepsTheVault(t *testing.T) {
 func TestDeleteRemovesTheBackupFile(t *testing.T) {
 	l := newLab(t)
 	pwFile := l.createVault("personal", "a password")
-	l.Setenv("FAKE_EDITOR_MODE", "append")
-	l.Setenv("FAKE_EDITOR_CONTENT", "a key\na value\n")
+	l.editorAppends("a key\na value\n")
 	l.Run("edit", "-v", "personal", "-p", pwFile).AssertOK()
 
 	backup := l.VaultPath("personal") + ".bak"
@@ -612,10 +614,10 @@ func TestAnAmbiguousPrefixIsRefused(t *testing.T) {
 		AssertStderr("added to vault alphabet\n")
 }
 
-// A vault is found by a glob on its name, so a shorter name is matched
-// alongside every longer one beginning with it. A "-" sorts before the "." that
-// separates a name from its salt, so "work-archive" comes first in the glob's
-// order and shadowed "work" everywhere.
+// A vault is looked up by matching its name as a prefix of the vault
+// directory's filenames, so a shorter name is matched alongside every longer
+// one beginning with it, and "work" would be read or written as "work-archive"
+// if the exact match were not preferred.
 func TestAnExactNameIsNeverShadowedByALongerOne(t *testing.T) {
 	l := newLab(t)
 	workPw := l.seedVault("work", "a password", "k\nwork-value\n")
@@ -765,8 +767,9 @@ func TestTheFirstRunSaysThereAreNoVaults(t *testing.T) {
 func TestVersionIsReported(t *testing.T) {
 	l := newLab(t)
 
-	// GoReleaser sets the version at link time; a build made any other way
-	// says "dev".
+	// GoReleaser sets the version at link time, and an unstamped module-cache
+	// build reads the release the module system recorded; a working-tree build
+	// like this one says "dev".
 	l.Run("--version").AssertOK().AssertStdout("mrs version")
 
 	// Not -v. Cobra gives --version that shorthand unless the flag is already

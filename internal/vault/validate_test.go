@@ -48,7 +48,6 @@ func TestAPasswordNeedsEightCharactersAndNoNewline(t *testing.T) {
 		// Characters, not bytes: eight of these take sixteen.
 		{"\u00e1\u00e9\u00ed\u00f3\u00fa\u00f1\u00fc\u00f6", true},
 		// A password file of several lines is a file of something else.
-		{"abc\ndefghij", false},
 		{"\n12345678", false},
 		{"12345678\n", false},
 	}

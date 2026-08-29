@@ -12,7 +12,7 @@ import (
 
 // capturePrompt redirects prompt output to a buffer for the duration of a test
 // and returns it. Prompts must never reach stdout, because stdout carries the
-// secrets that `vault export` and `search` write.
+// secrets that `export` and `search` write.
 func capturePrompt(t *testing.T) *bytes.Buffer {
 	t.Helper()
 	var buf bytes.Buffer
@@ -32,7 +32,7 @@ func pretendTerminal(t *testing.T) {
 	t.Cleanup(func() { isTerminal = prev })
 }
 
-// withStdin replaces os.Stdin with a pipe holding the given input.
+// withStdin replaces os.Stdin with a file holding the given input.
 func withStdin(t *testing.T, input string) {
 	t.Helper()
 	f, err := os.CreateTemp(t.TempDir(), "stdin")

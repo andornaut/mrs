@@ -1,6 +1,7 @@
 package vault
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
@@ -13,6 +14,11 @@ import (
 // testSalt stands in for the salt crypto.Salt() generates: 32 characters of
 // base64url, which is the shape a vault filename must carry.
 const testSalt = "12345678901234567890123456789012"
+
+// givenPassword stands in for the prompt Create asks its password through.
+func givenPassword(p string) func() ([]byte, error) {
+	return func() ([]byte, error) { return []byte(p), nil }
+}
 
 // newVaultDir points mrs at an empty vault directory and returns it.
 func newVaultDir(t *testing.T) string {
@@ -75,7 +81,7 @@ func TestFindVaultsIgnoresEverythingThatIsNotAVault(t *testing.T) {
 	}
 }
 
-func TestDeleteRemovesTheVaultAndItsCompanionFiles(t *testing.T) {
+func TestDeleteLeavesOnlyTheLockFile(t *testing.T) {
 	dir := newVaultDir(t)
 	for _, name := range []string{
 		"test." + testSalt,
@@ -140,7 +146,7 @@ func TestRenameReportsBackupMoveFailure(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Exact() failed: %v", err)
 	}
-	if err = Rename(src, "dst", false); err == nil {
+	if err = Rename("dst", false, src); err == nil {
 		t.Fatal("expected Rename() to return an error when the backup cannot be moved")
 	}
 	// The vault itself must still have been renamed, so that the error names
@@ -160,7 +166,7 @@ func TestCreateAndRenameDoNotBreakANameLock(t *testing.T) {
 	dir := newVaultDir(t)
 	writeFile(t, dir, "src."+testSalt)
 
-	held, err := Vault(filepath.Join(dir, "dst")).ExclusiveLock()
+	held, err := Vault(filepath.Join(dir, "dst")).exclusiveLock()
 	if err != nil {
 		t.Fatalf("failed to hold the target name's lock: %v", err)
 	}
@@ -170,15 +176,21 @@ func TestCreateAndRenameDoNotBreakANameLock(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Exact() failed: %v", err)
 	}
-	if err = Rename(src, "dst", false); err == nil {
-		t.Error("expected Rename() to be refused rather than break the target name's lock")
+	if err = Rename("dst", false, src); !errors.Is(err, ErrLockHeld) {
+		t.Errorf("expected Rename() to be refused by the held lock, got %v", err)
 	}
-	if _, err = Create("dst", []byte("a password"), nil, false); err == nil {
-		t.Error("expected Create() to be refused rather than break the name's lock")
+	// The password must not be asked for while the name's lock is held: the
+	// claim comes first, so a refused claim never prompts.
+	refusePrompt := func() ([]byte, error) {
+		t.Error("password asked for while the name's lock is held")
+		return []byte("a password"), nil
+	}
+	if _, err = Create(nil, false, "dst", refusePrompt); !errors.Is(err, ErrLockHeld) {
+		t.Errorf("expected Create() to be refused by the held lock, got %v", err)
 	}
 	// Neither may have left a file under the locked name.
 	for _, name := range entriesIn(t, dir) {
-		if name == "dst."+testSalt || (len(name) > 4 && name[:4] == "dst." && name != "dst.lock") {
+		if strings.HasPrefix(name, "dst.") && name != "dst.lock" {
 			t.Errorf("expected no vault file under the locked name, found %q", name)
 		}
 	}
@@ -237,10 +249,10 @@ func TestADanglingVaultSymlinkIsAVaultLikeAnyOther(t *testing.T) {
 	if !taken {
 		t.Error("expected the dangling vault to hold its name")
 	}
-	if _, err := Create("away", []byte("a password"), nil, false); err == nil {
+	if _, err := Create(nil, false, "away", givenPassword("a password")); err == nil {
 		t.Error("expected Create() to refuse a name a dangling vault holds")
 	}
-	if err := Rename(Vault(filepath.Join(dir, "here."+testSalt)), "away", false); err == nil {
+	if err := Rename("away", false, Vault(filepath.Join(dir, "here."+testSalt))); err == nil {
 		t.Error("expected Rename() to refuse a name a dangling vault holds")
 	}
 }

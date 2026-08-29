@@ -6,6 +6,7 @@ import (
 )
 
 func TestWhatEncryptSealsDecryptOpens(t *testing.T) {
+	t.Parallel()
 	password := []byte("super-secret-password")
 	defer Wipe(password)
 	salt, err := Salt()
@@ -39,6 +40,7 @@ func TestWhatEncryptSealsDecryptOpens(t *testing.T) {
 // an older release used is not read back, so that no vault is opened at a key
 // derivation weaker than the one mrs writes.
 func TestDecryptRefusesTheOldIterationCount(t *testing.T) {
+	t.Parallel()
 	password := []byte("password")
 	defer Wipe(password)
 	salt, _ := Salt()
@@ -72,6 +74,7 @@ func TestDecryptRefusesTheOldIterationCount(t *testing.T) {
 // A vault mrs wrote itself is not mistaken for one at the old count, whatever
 // password is offered for it.
 func TestCurrentCiphertextIsNotTakenForTheOldIterationCount(t *testing.T) {
+	t.Parallel()
 	password := []byte("password")
 	defer Wipe(password)
 	salt, _ := Salt()
@@ -89,6 +92,7 @@ func TestCurrentCiphertextIsNotTakenForTheOldIterationCount(t *testing.T) {
 }
 
 func TestAWrongPasswordDoesNotDecrypt(t *testing.T) {
+	t.Parallel()
 	password := []byte("correct-password")
 	defer Wipe(password)
 	wrongPassword := []byte("wrong-password")
@@ -105,6 +109,7 @@ func TestAWrongPasswordDoesNotDecrypt(t *testing.T) {
 }
 
 func TestAWrongSaltDoesNotDecrypt(t *testing.T) {
+	t.Parallel()
 	password := []byte("password")
 	defer Wipe(password)
 	salt1, _ := Salt()
@@ -120,6 +125,7 @@ func TestAWrongSaltDoesNotDecrypt(t *testing.T) {
 }
 
 func TestEverySaltIsNewAndOfTheLengthAFilenameCarries(t *testing.T) {
+	t.Parallel()
 	s1, err := Salt()
 	if err != nil {
 		t.Fatalf("Salt() error: %v", err)
@@ -141,6 +147,7 @@ func TestEverySaltIsNewAndOfTheLengthAFilenameCarries(t *testing.T) {
 // its owner does not know. Its one job is to say no to everything but an exact
 // match, whatever the two differ by.
 func TestOnlyAnExactMatchIsAcceptedAsTheSamePassword(t *testing.T) {
+	t.Parallel()
 	tests := map[string]struct {
 		a, b string
 		want bool
@@ -164,6 +171,7 @@ func TestOnlyAnExactMatchIsAcceptedAsTheSamePassword(t *testing.T) {
 }
 
 func TestWipingLeavesEveryByteZero(t *testing.T) {
+	t.Parallel()
 	buf := []byte{1, 2, 3, 4, 5}
 	Wipe(buf)
 	for i, b := range buf {

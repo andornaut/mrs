@@ -11,6 +11,27 @@ import (
 	"github.com/andornaut/mrs/internal/vault"
 )
 
+// AddPasswordFileFlag registers -p/--password-file. One registration shared by
+// every command that takes a password, so that -p spells the same flag on all
+// of them.
+func AddPasswordFileFlag(c *cobra.Command, target *string) {
+	c.Flags().StringVarP(target, "password-file", "p", "", "path to a file that contains your password")
+}
+
+// AddForceFlag registers --force. It has no short form, because it is not the
+// flag a hurried -f is reaching for: it repairs a lock rather than overwriting
+// anything, and is worth spelling out.
+func AddForceFlag(c *cobra.Command, target *bool) {
+	c.Flags().BoolVar(target, "force", false, "repair a lock file that cannot be used")
+}
+
+// AddYesFlag registers -y/--yes, answering the confirmation what names. One
+// registration shared by every command that confirms, so that -y spells the
+// same flag on all of them.
+func AddYesFlag(c *cobra.Command, target *bool, what string) {
+	c.Flags().BoolVarP(target, "yes", "y", false, "answer yes to "+what)
+}
+
 // UsageError marks a wrong invocation: an unknown command, an unknown flag, or
 // an argument a command does not take. mrs exits 2 for these and 1 for a
 // command that ran and failed, so that a script can tell them apart.
@@ -49,14 +70,13 @@ func NoArgs(c *cobra.Command, args []string) error {
 }
 
 // RequireArgs validates an operand count, naming the command and what it
-// wanted. Cobra's own message ("accepts between 1 and 2 arg(s), received 0")
-// names neither. A maxArgs below zero means there is no upper bound.
-func RequireArgs(minArgs, maxArgs int, want string) cobra.PositionalArgs {
+// wanted. Cobra's own message ("accepts 1 arg(s), received 0") names neither.
+func RequireArgs(n int, want string) cobra.PositionalArgs {
 	return func(c *cobra.Command, args []string) error {
-		if len(args) < minArgs {
+		if len(args) < n {
 			return Usagef("%s requires %s", c.CommandPath(), want)
 		}
-		if maxArgs >= 0 && len(args) > maxArgs {
+		if len(args) > n {
 			// Say how many arrived, as NoArgs does. Too many operands is
 			// usually a name the shell split on a space, and a message that
 			// only restates what the command wanted does not show that.

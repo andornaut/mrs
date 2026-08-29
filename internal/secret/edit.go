@@ -53,26 +53,36 @@ func editSecrets(content []byte) (*secretList, error) {
 const maxLineLen = 16 * 1024 * 1024
 
 // parseSecrets parses plaintext into secrets, copying what it keeps so that the
-// caller can wipe what it was given. The secretList owns its copies, and its
-// Wipe method is what clears them.
+// caller can wipe what it was given. Each secret's copy is allocated at its
+// exact size: growing a buffer with append would abandon an unwipeable copy of
+// the lines already appended on every reallocation. The secretList owns its
+// copies, and its Wipe method is what clears them.
 func parseSecrets(plaintext []byte) (*secretList, error) {
 	var (
-		entry   []byte
+		lines   [][]byte // the current secret's lines, aliasing plaintext
+		size    int      // its size once each line is terminated by '\n'
 		secrets []secret
 	)
-	for rest := plaintext; len(rest) > 0; {
-		var line []byte
-		if before, after, ok := bytes.Cut(rest, []byte{'\n'}); ok {
-			line, rest = before, after
-		} else {
-			line, rest = rest, nil
+	flush := func() {
+		if size == 0 {
+			return
 		}
-		// A line scanner drops the carriage return of a CRLF, and a vault
-		// edited on Windows has to round-trip like any other. Every trailing
-		// carriage return goes, not just one: a line re-read after a save is
-		// terminated by the newline written below, so stripping one at a time
-		// would shed another on each save from a value that ends in one.
-		line = bytes.TrimRight(line, "\r")
+		entry := make([]byte, 0, size)
+		for _, line := range lines {
+			entry = append(entry, line...)
+			// The line terminator is stripped below, so re-add one here.
+			entry = append(entry, '\n')
+		}
+		secrets = append(secrets, secret(entry))
+		lines, size = lines[:0], 0
+	}
+	for line := range bytes.Lines(plaintext) {
+		// bytes.Lines keeps the newline, and a vault edited on Windows has to
+		// round-trip like any other, so every trailing carriage return goes
+		// with it. Every one, not just one: a line re-read after a save is
+		// terminated by the newline written in flush, so stripping one at a
+		// time would shed another on each save from a value that ends in one.
+		line = bytes.TrimRight(line, "\r\n")
 		if len(line) > maxLineLen {
 			return nil, fmt.Errorf("a line of secrets is longer than the %d MiB limit", maxLineLen/(1024*1024))
 		}
@@ -80,20 +90,12 @@ func parseSecrets(plaintext []byte) (*secretList, error) {
 		// the separator between secrets - ignores whitespace, so that a value
 		// that is indented, or that ends in a space, survives a round trip.
 		if len(bytes.TrimSpace(line)) == 0 {
-			if len(entry) > 0 {
-				secrets = append(secrets, secret(entry))
-				entry = nil
-			}
+			flush()
 			continue
 		}
-		entry = append(entry, line...)
-		// The line terminator is stripped above, so re-add one here.
-		entry = append(entry, '\n')
+		lines = append(lines, line)
+		size += len(line) + 1
 	}
-	if len(entry) > 0 {
-		// Entries are appended when a blank line is reached, so handle the case
-		// where there are none.
-		secrets = append(secrets, secret(entry))
-	}
+	flush()
 	return newSecretList(secrets), nil
 }

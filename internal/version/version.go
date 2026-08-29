@@ -4,7 +4,9 @@
 package version
 
 import (
+	"regexp"
 	"runtime/debug"
+	"slices"
 	"strings"
 )
 
@@ -31,10 +33,10 @@ func versionFromBuildInfo(current string, info *debug.BuildInfo) string {
 	if current != "dev" {
 		return current
 	}
-	for _, setting := range info.Settings {
-		if strings.HasPrefix(setting.Key, "vcs") {
-			return current
-		}
+	if slices.ContainsFunc(info.Settings, func(s debug.BuildSetting) bool {
+		return strings.HasPrefix(s.Key, "vcs")
+	}) {
+		return current
 	}
 	if v := releaseVersion(info.Main.Version); v != "" {
 		return v
@@ -55,18 +57,13 @@ func versionFromBuildInfo(current string, info *debug.BuildInfo) string {
 // archive and v1.2.3 from `go install` would make the version depend on how the
 // binary arrived.
 func releaseVersion(v string) string {
-	digits, found := strings.CutPrefix(v, "v")
-	if !found {
+	m := releaseRegex.FindStringSubmatch(v)
+	if m == nil {
 		return ""
 	}
-	parts := strings.Split(digits, ".")
-	if len(parts) != 3 {
-		return ""
-	}
-	for _, part := range parts {
-		if part == "" || strings.TrimLeft(part, "0123456789") != "" {
-			return ""
-		}
-	}
-	return digits
+	return m[1]
 }
+
+// releaseRegex is the shape of a release tag as the module system records it;
+// the submatch is the version without the leading v.
+var releaseRegex = regexp.MustCompile(`^v([0-9]+\.[0-9]+\.[0-9]+)$`)

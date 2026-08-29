@@ -53,16 +53,6 @@ func (o *vaultOptions) locked(name string) (vault.Vault, func(), error) {
 	return v, unlock, nil
 }
 
-// validateNewPassword names which of the two passwords change-password refused,
-// since it asks for the current one as well. vault.ChangePassword checks again,
-// which is the answer that counts.
-func validateNewPassword(p []byte) error {
-	if err := vault.ValidatePassword(p); err != nil {
-		return fmt.Errorf("invalid new password: %w", err)
-	}
-	return nil
-}
-
 // runChangePassword re-keys a vault. What was given on the command line is
 // checked before anything is asked for, as create checks its name and its
 // import file.
@@ -78,12 +68,13 @@ func (o *vaultOptions) runChangePassword(name string) error {
 	// type the password they already have. One that is typed cannot be checked
 	// before it is typed, so that order is unchanged.
 	var newPassword []byte
+	defer func() { crypto.Wipe(newPassword) }()
+	// vault.ChangePassword checks the new password again, which is the answer
+	// that counts.
 	if o.newPasswordFile != "" {
-		newPassword, err = prompt.GivenOrPromptNewPassword(validateNewPassword, o.newPasswordFile)
-		if err != nil {
+		if newPassword, err = prompt.GivenOrPromptNewPassword(vault.ValidateNewPassword, o.newPasswordFile); err != nil {
 			return err
 		}
-		defer crypto.Wipe(newPassword)
 	}
 
 	oldPassword, err := prompt.GivenOrPromptPassword(o.passwordFile)
@@ -93,14 +84,12 @@ func (o *vaultOptions) runChangePassword(name string) error {
 	defer crypto.Wipe(oldPassword)
 
 	if newPassword == nil {
-		newPassword, err = prompt.GivenOrPromptNewPassword(validateNewPassword, o.newPasswordFile)
-		if err != nil {
+		if newPassword, err = prompt.GivenOrPromptNewPassword(vault.ValidateNewPassword, o.newPasswordFile); err != nil {
 			return err
 		}
-		defer crypto.Wipe(newPassword)
 	}
 
-	uv, err := vault.ChangePassword(v, oldPassword, newPassword)
+	uv, err := vault.ChangePassword(oldPassword, newPassword, v)
 	if err != nil {
 		return err
 	}
@@ -109,9 +98,9 @@ func (o *vaultOptions) runChangePassword(name string) error {
 	return nil
 }
 
-// named returns what these commands print for a vault: its path when --path was
-// given, and its name otherwise.
-func (o *vaultOptions) named(v vault.Vault) string {
+// display returns what these commands print for a vault: its path when --path
+// was given, and its name otherwise.
+func (o *vaultOptions) display(v vault.Vault) string {
 	if o.isPath {
 		return v.Path()
 	}
@@ -133,43 +122,26 @@ func init() {
 	create := &cobra.Command{
 		Use:   "add <name>",
 		Short: "Add a vault",
-		Args:  cli.RequireArgs(1, 1, "a name for the new vault"),
+		Args:  cli.RequireArgs(1, "a name for the new vault"),
 		// A vault that does not exist yet has no name to offer, and is not a
 		// file either.
 		ValidArgsFunction:     cobra.NoFileCompletions,
 		DisableFlagsInUseLine: true,
 		RunE: func(c *cobra.Command, args []string) error {
 			name := args[0]
-			// The name and the import file are checked before anything is
-			// asked, so that a create that cannot succeed does not first make
-			// the user type a password twice. Exists validates the name, so it
-			// refuses an invalid one here rather than at the password prompt.
-			//
-			// Advisory: vault.Create checks both again under the lock, which is
-			// the answer that counts. This only spares the user from typing a
-			// password for a vault that cannot be created.
-			taken, err := vault.Exists(name)
-			if err != nil {
-				return err
-			}
-			if taken {
-				return fmt.Errorf("a vault named %q already exists", name)
-			}
+			// The import file is checked before anything is asked, so that a
+			// create that cannot succeed does not first make the user type a
+			// password twice. vault.Create checks the name, claims it under
+			// the name's lock, and only then asks for the password.
 			contents, err := readImportFile(opts.importFile)
 			if err != nil {
 				return err
 			}
 			defer crypto.Wipe(contents)
 
-			password, err := prompt.GivenOrPromptConfirmedPassword(vault.ValidatePassword, opts.passwordFile)
-			if err != nil {
-				return err
-			}
-			// Wiped here as well as by the vault it goes on to unlock, because
-			// a create that fails never returns one to wipe it.
-			defer crypto.Wipe(password)
-
-			v, err := vault.Create(name, password, contents, opts.repairLock)
+			v, err := vault.Create(contents, opts.repairLock, name, func() ([]byte, error) {
+				return prompt.GivenOrPromptConfirmedPassword(vault.ValidatePassword, opts.passwordFile)
+			})
 			if err != nil {
 				return err
 			}
@@ -182,7 +154,7 @@ func init() {
 	changePassword := &cobra.Command{
 		Use:                   "change-password <name>",
 		Short:                 "Change a vault's password",
-		Args:                  cli.RequireArgs(1, 1, "the name of a vault"),
+		Args:                  cli.RequireArgs(1, "the name of a vault"),
 		ValidArgsFunction:     cli.CompleteVaultNames,
 		DisableFlagsInUseLine: true,
 		RunE: func(c *cobra.Command, args []string) error {
@@ -193,7 +165,7 @@ func init() {
 	deleteCmd := &cobra.Command{
 		Use:                   "rm <name>",
 		Short:                 "Delete a vault",
-		Args:                  cli.RequireArgs(1, 1, "the name of a vault"),
+		Args:                  cli.RequireArgs(1, "the name of a vault"),
 		ValidArgsFunction:     cli.CompleteVaultNames,
 		DisableFlagsInUseLine: true,
 		RunE: func(c *cobra.Command, args []string) error {
@@ -231,7 +203,7 @@ func init() {
 			if err != nil {
 				return err
 			}
-			return printLine(opts.named(v))
+			return printLine(opts.display(v))
 		},
 	}
 
@@ -246,7 +218,7 @@ func init() {
 				return err
 			}
 			for _, v := range vaults {
-				if err := printLine(opts.named(v)); err != nil {
+				if err := printLine(opts.display(v)); err != nil {
 					return err
 				}
 			}
@@ -257,7 +229,7 @@ func init() {
 	rename := &cobra.Command{
 		Use:   "rename <source-name> <target-name>",
 		Short: "Rename a vault",
-		Args:  cli.RequireArgs(2, 2, "a source name and a target name"),
+		Args:  cli.RequireArgs(2, "a source name and a target name"),
 		// The source names a vault; the target is a name no vault has yet.
 		ValidArgsFunction:     cli.CompleteFirstVaultName,
 		DisableFlagsInUseLine: true,
@@ -269,7 +241,7 @@ func init() {
 			}
 			defer unlock()
 
-			if err := vault.Rename(v, targetName, opts.repairLock); err != nil {
+			if err := vault.Rename(targetName, opts.repairLock, v); err != nil {
 				return err
 			}
 			fmt.Fprintf(os.Stderr, "Renamed vault %s to %s\n", sourceName, targetName)
@@ -278,20 +250,16 @@ func init() {
 	}
 
 	for _, c := range []*cobra.Command{changePassword, create} {
-		c.Flags().StringVarP(&opts.passwordFile, "password-file", "p", "", "path to a file that contains your password")
+		cli.AddPasswordFileFlag(c, &opts.passwordFile)
 	}
-	// --force has no short form, because it is not the flag a hurried -f is
-	// reaching for: it repairs a lock rather than overwriting anything, and is
-	// worth spelling out.
-	//
-	// Every command that takes a lock takes it, and it means one thing on all
-	// of them: make a lock file that cannot be used usable again. It never
+	// Every command that takes a lock takes --force, and it means one thing on
+	// all of them: make a lock file that cannot be used usable again. It never
 	// takes a lock another process holds, so it is as safe on the name create
 	// claims, and on the name rename claims, as it is on a vault being written.
 	for _, c := range []*cobra.Command{changePassword, create, deleteCmd, rename} {
-		c.Flags().BoolVar(&opts.repairLock, "force", false, "repair a lock file that cannot be used")
+		cli.AddForceFlag(c, &opts.repairLock)
 	}
-	deleteCmd.Flags().BoolVarP(&opts.assumeYes, "yes", "y", false, "answer yes to the confirmation")
+	cli.AddYesFlag(deleteCmd, &opts.assumeYes, "the confirmation")
 
 	changePassword.Flags().StringVarP(&opts.newPasswordFile, "new-password-file", "n", "", "path to a file that contains your new password")
 	create.Flags().StringVarP(&opts.importFile, "import-file", "i", "", "path to a file that contains unencrypted secrets")

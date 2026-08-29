@@ -117,15 +117,28 @@ func (o *rootOptions) vault() (vault.Vault, error) {
 	return vault.Named(o.namePrefix)
 }
 
-// named returns what a report calls the vault: its path when --path named it,
-// and its name otherwise. A vault named by path may share its name with one in
-// the vault directory, so a report that gave only the name would not say which
-// of the two was read or written.
-func (o *rootOptions) named(v vault.Vault) string {
-	if o.path != "" {
-		return v.Path()
+// withUnlocked asks for the user's password, unlocks v with it and hands the
+// result to fn, wiping the password once fn returns. It is not named unlock,
+// which in this codebase means releasing a vault's file lock.
+func (o *rootOptions) withUnlocked(v vault.Vault, fn func(vault.UnlockedVault) error) error {
+	password, err := prompt.GivenOrPromptPassword(o.passwordFile)
+	if err != nil {
+		return err
 	}
-	return v.Name()
+	uv := v.Unlocked(password)
+	defer uv.Wipe()
+	return fn(uv)
+}
+
+// readUnlocked resolves the vault and unlocks it without taking the lock, for
+// the commands that only read. Reads need no lock, because every write is
+// atomic.
+func (o *rootOptions) readUnlocked(fn func(vault.UnlockedVault) error) error {
+	v, err := o.vault()
+	if err != nil {
+		return err
+	}
+	return o.withUnlocked(v, fn)
 }
 
 // unlocked resolves the vault, takes its exclusive lock and unlocks it with the
@@ -142,15 +155,17 @@ func (o *rootOptions) unlocked(fn func(vault.UnlockedVault) error) error {
 		return err
 	}
 	defer unlock()
-
-	password, err := prompt.GivenOrPromptPassword(o.passwordFile)
-	if err != nil {
-		return err
-	}
-	uv := v.Unlocked(password)
-	defer uv.Wipe()
-	return fn(uv)
+	return o.withUnlocked(v, fn)
 }
+
+// editorHelp and secretFormatHelp state how the editor is chosen and what the
+// secret format is once for both editor commands, so that add and edit cannot
+// come to describe either differently.
+const (
+	editorHelp       = "Use an editor ($VISUAL, $EDITOR, or the first of vim, vi and nano on PATH) to "
+	secretFormatHelp = "Secrets are separated by blank lines. The first line of each secret\n" +
+		"is its key; the rest is its value."
+)
 
 func init() {
 	opts := &rootOptions{}
@@ -158,9 +173,8 @@ func init() {
 	add := &cobra.Command{
 		Use:   "add",
 		Short: "Add secrets to a vault",
-		Long: "Use an editor ($VISUAL or $EDITOR) to add secrets to a vault.\n" +
-			"Secrets are separated by blank lines. The first line of each secret\n" +
-			"is its key; the rest is its value.",
+		Long: editorHelp + "add secrets to a vault.\n" +
+			secretFormatHelp,
 		Args:                  opts.vaultArgs(noEditorArgs),
 		DisableFlagsInUseLine: true,
 		RunE: func(c *cobra.Command, args []string) error {
@@ -170,9 +184,9 @@ func init() {
 					return err
 				}
 				if n == 0 {
-					fmt.Fprintf(os.Stderr, "No secrets added to vault %s\n", opts.named(uv.Vault))
+					fmt.Fprintf(os.Stderr, "No secrets added to vault %s\n", uv.Vault)
 				} else {
-					fmt.Fprintf(os.Stderr, "%d %s added to vault %s\n", n, cli.Plural(n, "secret"), opts.named(uv.Vault))
+					fmt.Fprintf(os.Stderr, "%d %s added to vault %s\n", n, cli.Plural(n, "secret"), uv.Vault)
 				}
 				return nil
 			})
@@ -182,9 +196,8 @@ func init() {
 	edit := &cobra.Command{
 		Use:   "edit",
 		Short: "Edit secrets in a vault",
-		Long: "Use an editor ($VISUAL or $EDITOR) to edit the secrets in a vault.\n" +
-			"Secrets are separated by blank lines. The first line of each secret\n" +
-			"is its key; the rest is its value.",
+		Long: editorHelp + "edit the secrets in a vault.\n" +
+			secretFormatHelp,
 		Args:                  opts.vaultArgs(noEditorArgs),
 		DisableFlagsInUseLine: true,
 		RunE: func(c *cobra.Command, args []string) error {
@@ -197,7 +210,7 @@ func init() {
 					fmt.Fprintln(os.Stderr, "Cancelled")
 					return nil
 				}
-				fmt.Fprintf(os.Stderr, "Saved changes to vault %s\n", opts.named(uv.Vault))
+				fmt.Fprintf(os.Stderr, "Saved changes to vault %s\n", uv.Vault)
 				return nil
 			})
 		},
@@ -215,9 +228,7 @@ func init() {
 			}
 			return nil
 		}),
-		RunE: func(c *cobra.Command, args []string) error {
-			return opts.runSearch(c, args)
-		},
+		RunE: opts.runSearch,
 	}
 
 	export := &cobra.Command{
@@ -229,28 +240,20 @@ func init() {
 		RunE: func(c *cobra.Command, args []string) error {
 			// Reading, so it takes a prefix and falls back to the default
 			// vault, as search does. The two differ only in what they print.
-			v, err := opts.vault()
-			if err != nil {
+			return opts.readUnlocked(func(uv vault.UnlockedVault) error {
+				secrets, err := uv.Decrypt()
+				if err != nil {
+					return err
+				}
+				defer crypto.Wipe(secrets)
+				_, err = os.Stdout.Write(secrets)
 				return err
-			}
-			password, err := prompt.GivenOrPromptPassword(opts.passwordFile)
-			if err != nil {
-				return err
-			}
-			defer crypto.Wipe(password)
-
-			secrets, err := vault.Export(v, password)
-			if err != nil {
-				return err
-			}
-			defer crypto.Wipe(secrets)
-			_, err = os.Stdout.Write(secrets)
-			return err
+			})
 		},
 	}
 
 	// Every command here reads or writes secrets in a vault it does not create,
-	// destroy or move, so each takes the same two flags with the same meaning.
+	// destroy or move, so each takes the same flags with the same meaning.
 	// The vault may be named by a prefix, which has to fit exactly one vault.
 	for _, c := range []*cobra.Command{add, edit, search, export} {
 		c.Flags().StringVarP(&opts.namePrefix, "vault", "v", "", "name of a vault, or the start of one")
@@ -259,18 +262,15 @@ func init() {
 		// completes as a filename, which is cobra's default for a flag with no
 		// completion of its own.
 		c.Flags().StringVar(&opts.path, "path", "", "path to a vault file, instead of naming one in the vault directory")
-		c.Flags().StringVarP(&opts.passwordFile, "password-file", "p", "", "path to a file that contains your password")
+		cli.AddPasswordFileFlag(c, &opts.passwordFile)
 		// The only error this returns is a flag that was not registered, which
-		// the line above just registered.
+		// the StringVarP for --vault above just registered.
 		_ = c.RegisterFlagCompletionFunc("vault", cli.CompleteVaultNames)
 	}
-	// --force has no short form, because it is not the flag a hurried -f is
-	// reaching for: it repairs a lock rather than overwriting anything, and is
-	// worth spelling out.
 	for _, c := range []*cobra.Command{add, edit} {
-		c.Flags().BoolVar(&opts.repairLock, "force", false, "repair a lock file that cannot be used")
+		cli.AddForceFlag(c, &opts.repairLock)
 	}
-	edit.Flags().BoolVarP(&opts.assumeYes, "yes", "y", false, "answer yes to the confirmation before emptying the vault")
+	cli.AddYesFlag(edit, &opts.assumeYes, "the confirmation before emptying the vault")
 	search.Flags().BoolVarP(&opts.includeValues, "full", "f", false, "search the full contents, instead of the first line of each secret")
 	// Registered here so that cobra does not add it with a "-v" shorthand of
 	// its own, which would make -v mean --version on `mrs` and --vault on
@@ -286,9 +286,9 @@ func init() {
 
 // runSearch compiles the query, reads the vault, and reports what matched.
 func (o *rootOptions) runSearch(c *cobra.Command, args []string) error {
-	// Internal whitespace is stripped by cobra, so we search for any amount of internal whitespace.
-	// Users can surround a single argument with quotation marks for more precise control of internal whitespace.
-	// Additionally, add a "case-insensitive" flag.
+	// The shell split the query into arguments, so they are rejoined to match
+	// any amount of whitespace between the words; quoting one argument keeps
+	// its whitespace exact. (?i) makes the match case-insensitive.
 	rs := "(?i)" + strings.Join(args, "\\s+")
 	// What the user typed, for reporting back. The pattern above adds a
 	// case-insensitivity flag and joins the arguments, so echoing it would show
@@ -298,34 +298,24 @@ func (o *rootOptions) runSearch(c *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("invalid regular expression %q: %w", query, err)
 	}
-	v, err := o.vault()
-	if err != nil {
+	return o.readUnlocked(func(uv vault.UnlockedVault) error {
+		secrets, n, err := secret.Search(r, o.includeValues, uv)
+		if err != nil {
+			return err
+		}
+		defer crypto.Wipe(secrets)
+		// The report goes to stderr and the secrets to stdout, so that
+		// `mrs search aws > keys` and `mrs search aws | less` carry the secrets
+		// alone, as `mrs export` already does.
+		if n == 0 {
+			fmt.Fprintf(os.Stderr, "No secrets matched %q in vault %s\n", query, uv.Vault)
+			// Matching nothing is a result, not a failure, so the error that
+			// carries the exit status is not printed as one.
+			c.SilenceErrors = true
+			return errNoMatch
+		}
+		fmt.Fprintf(os.Stderr, "%d %s matched %q in vault %s\n\n", n, cli.Plural(n, "secret"), query, uv.Vault)
+		_, err = os.Stdout.Write(secrets)
 		return err
-	}
-
-	password, err := prompt.GivenOrPromptPassword(o.passwordFile)
-	if err != nil {
-		return err
-	}
-	uv := v.Unlocked(password)
-	defer uv.Wipe()
-
-	secrets, n, err := secret.Search(uv, *r, o.includeValues)
-	if err != nil {
-		return err
-	}
-	defer crypto.Wipe(secrets)
-	// The report goes to stderr and the secrets to stdout, so that
-	// `mrs search aws > keys` and `mrs search aws | less` carry the secrets
-	// alone, as `mrs export` already does.
-	if n == 0 {
-		fmt.Fprintf(os.Stderr, "No secrets matched %q in vault %s\n", query, o.named(uv.Vault))
-		// Matching nothing is a result, not a failure, so the error that
-		// carries the exit status is not printed as one.
-		c.SilenceErrors = true
-		return errNoMatch
-	}
-	fmt.Fprintf(os.Stderr, "%d %s matched %q in vault %s\n\n", n, cli.Plural(n, "secret"), query, o.named(uv.Vault))
-	_, err = os.Stdout.Write(secrets)
-	return err
+	})
 }

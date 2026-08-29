@@ -67,7 +67,8 @@ func vaultFilesIn(t *testing.T, dir string) []string {
 	return names
 }
 
-// assertDirMode asserts a directory's permission bits.
+// assertDirMode asserts that a path is a directory with the given permission
+// bits.
 func assertDirMode(t *testing.T, p string, want os.FileMode) {
 	t.Helper()
 	fi, err := os.Stat(p)
@@ -77,9 +78,7 @@ func assertDirMode(t *testing.T, p string, want os.FileMode) {
 	if !fi.IsDir() {
 		t.Fatalf("expected %s to be a directory", p)
 	}
-	if got := fi.Mode().Perm(); got != want {
-		t.Fatalf("expected %s to have mode %o, got %o", p, want, got)
-	}
+	assertFileMode(t, p, want)
 }
 
 func TestVaultsAreStoredUnderMrsHome(t *testing.T) {
@@ -392,15 +391,12 @@ func TestNothingButDataIsEverWrittenToStdout(t *testing.T) {
 	}
 	for desc, args := range failures {
 		t.Run(desc, func(t *testing.T) {
-			r := l.Run(args...).AssertFailed()
+			r := l.with(t).Run(args...).AssertFailed()
 			if r.Stdout != "" {
 				t.Errorf("expected nothing on stdout, got %q", r.Stdout)
 			}
 			if r.Stderr == "" {
 				t.Errorf("expected the failure to be explained on stderr, got nothing")
-			}
-			if strings.Contains(r.Stdout, "the-secret-value") {
-				t.Errorf("expected no secret in the output, got %q", r.Stdout)
 			}
 		})
 	}
@@ -432,7 +428,7 @@ func TestExitCodesDistinguishUsageFromFailureFromNoMatch(t *testing.T) {
 		{"a search that matched nothing", []string{"search", "-v", "work", "-p", pwFile, "zzz"}, 3},
 	} {
 		t.Run(c.desc, func(t *testing.T) {
-			if r := l.Run(c.args...); r.ExitCode != c.want {
+			if r := l.with(t).Run(c.args...); r.ExitCode != c.want {
 				t.Errorf("expected exit %d, got %d\n%s", c.want, r.ExitCode, r.describe())
 			}
 		})
@@ -462,7 +458,7 @@ func TestOnlyDataIsWrittenToStdoutWhenACommandSucceeds(t *testing.T) {
 		{"export", []string{"export", "-v", "work", "-p", pwFile}, "a key\na value\n"},
 	} {
 		t.Run(c.desc, func(t *testing.T) {
-			r := l.Run(c.args...).AssertOK()
+			r := l.with(t).Run(c.args...).AssertOK()
 			if r.Stdout != c.want {
 				t.Errorf("expected stdout %q, got %q\n%s", c.want, r.Stdout, r.describe())
 			}

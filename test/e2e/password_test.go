@@ -6,7 +6,7 @@ import (
 )
 
 // Capability 4: moving secrets and passwords in and out of a vault, with
-// `vault export`, `vault add --import-file` and `vault change-password`.
+// `export`, `vault add --import-file` and `vault change-password`.
 
 func TestExportPrintsWhatWasImported(t *testing.T) {
 	l := newLab(t)
@@ -80,7 +80,7 @@ func TestExportNeedsAPasswordItCanRead(t *testing.T) {
 	l := newLab(t)
 	l.seedVault("work", "a password", "a key\nthe-secret-value\n")
 
-	// `mrs vault export > secrets` is the natural way to run this command, so
+	// `mrs export > secrets` is the natural way to run this command, so
 	// nothing but a secret may reach stdout - least of all a password prompt,
 	// which the user would never see.
 	r := l.RunStdin("a password\n", "export", "-v", "work").

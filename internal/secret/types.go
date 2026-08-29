@@ -2,8 +2,9 @@ package secret
 
 import (
 	"bytes"
+	"cmp"
 	"regexp"
-	"sort"
+	"slices"
 	"unicode"
 	"unicode/utf8"
 
@@ -24,32 +25,20 @@ func (s secret) Key() []byte {
 	return s
 }
 
-func (s secret) Less(o secret) bool {
-	return lessFold(s.Key(), o.Key())
-}
-
-// lessFold reports whether a sorts before b, ignoring case. It folds as it
-// reads, rather than lowercasing both first, which would leave an unwipeable
-// copy of two keys behind for every comparison a sort makes.
-func lessFold(a, b []byte) bool {
+// compareFold orders a before b ignoring case. It folds as it reads, rather
+// than lowercasing both first, which would leave an unwipeable copy of two
+// keys behind for every comparison a sort makes.
+func compareFold(a, b []byte) int {
 	for len(a) > 0 && len(b) > 0 {
 		ra, na := utf8.DecodeRune(a)
 		rb, nb := utf8.DecodeRune(b)
 		la, lb := unicode.ToLower(ra), unicode.ToLower(rb)
 		if la != lb {
-			return la < lb
+			return cmp.Compare(la, lb)
 		}
 		a, b = a[na:], b[nb:]
 	}
-	return len(a) < len(b)
-}
-
-func (s secret) MatchKey(r regexp.Regexp) bool {
-	return r.Match(s.Key())
-}
-
-func (s secret) MatchKeyAndValue(r regexp.Regexp) bool {
-	return r.Match(s)
+	return cmp.Compare(len(a), len(b))
 }
 
 // secretList is the secrets of one vault, sorted by key.
@@ -58,9 +47,12 @@ type secretList struct {
 }
 
 func newSecretList(secrets []secret) *secretList {
-	s := &secretList{secrets}
-	sort.Sort(s)
-	return s
+	// Stable, so that secrets sharing a key keep the order they were typed in
+	// rather than being shuffled by each save.
+	slices.SortStableFunc(secrets, func(a, b secret) int {
+		return compareFold(a.Key(), b.Key())
+	})
+	return &secretList{secrets}
 }
 
 // Wipe zeroes every secret in the secretList. A secretList built by a search
@@ -72,36 +64,28 @@ func (s *secretList) Wipe() {
 	}
 }
 
-// Combined returns a new secretList with the given secrets appended
+// Combined returns a new secretList holding both lists' secrets, re-sorted
+// by key
 func (s *secretList) Combined(o *secretList) *secretList {
-	merged := make([]secret, len(s.secrets)+len(o.secrets))
-	copy(merged, s.secrets)
-	copy(merged[len(s.secrets):], o.secrets)
-	return newSecretList(merged)
+	return newSecretList(slices.Concat(s.secrets, o.secrets))
 }
 
-// SearchKeys returns secrets whose keys match the given regular expression
-func (s *secretList) SearchKeys(r regexp.Regexp) *secretList {
-	return s.search(r, func(s secret, r regexp.Regexp) bool {
-		return s.MatchKey(r)
-	})
-}
-
-// SearchKeysAndValues returns secrets whose keys or value match the given regular expression
-func (s *secretList) SearchKeysAndValues(r regexp.Regexp) *secretList {
-	return s.search(r, func(s secret, r regexp.Regexp) bool {
-		return s.MatchKeyAndValue(r)
-	})
-}
-
-func (s *secretList) search(r regexp.Regexp, match func(secret, regexp.Regexp) bool) *secretList {
+// Search returns the secrets whose keys match the given regular expression,
+// or, when includeValues is true, the ones whose whole contents do. The result
+// aliases the receiver's secrets, and is not re-sorted: a subsequence of a
+// sorted list is sorted.
+func (s *secretList) Search(r *regexp.Regexp, includeValues bool) *secretList {
 	var secrets []secret
-	for _, secret := range s.secrets {
-		if match(secret, r) {
-			secrets = append(secrets, secret)
+	for _, sec := range s.secrets {
+		target := []byte(sec)
+		if !includeValues {
+			target = sec.Key()
+		}
+		if r.Match(target) {
+			secrets = append(secrets, sec)
 		}
 	}
-	return newSecretList(secrets)
+	return &secretList{secrets}
 }
 
 // Bytes returns the secrets as a vault is written: each ends in a newline, and
@@ -126,17 +110,7 @@ func (s *secretList) Bytes() []byte {
 	return out
 }
 
-// Len is part of sort.Interface.
+// Len returns the number of secrets.
 func (s *secretList) Len() int {
 	return len(s.secrets)
-}
-
-// Less is part of sort.Interface. It is implemented by calling the "by" closure in the sorter
-func (s *secretList) Less(i, j int) bool {
-	return s.secrets[i].Less(s.secrets[j])
-}
-
-// Swap is part of sort.Interface
-func (s *secretList) Swap(i, j int) {
-	s.secrets[i], s.secrets[j] = s.secrets[j], s.secrets[i]
 }

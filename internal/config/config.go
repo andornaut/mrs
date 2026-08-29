@@ -3,7 +3,7 @@ package config
 import (
 	"os"
 	"os/exec"
-	"path"
+	"path/filepath"
 	"strings"
 	"sync"
 	"unicode"
@@ -11,9 +11,9 @@ import (
 
 // The temporary directory is the only one that has to be remembered:
 // os.MkdirTemp creates a new directory on every call, so a second caller would
-// otherwise get a directory that the cleanup on exit never removes. The other
-// two resolve an environment variable and create a directory that may already
-// exist, which is the same answer every time it is asked for.
+// otherwise get a directory that the cleanup on exit never removes. The others
+// resolve an environment variable (GetVaultDir also creating a directory that
+// may already exist), which is the same answer every time it is asked for.
 //
 // A mutex rather than a sync.Once, because CreatedTempDir has to read what was
 // remembered without asking for a directory to be created. The signal handler
@@ -112,29 +112,39 @@ func splitArgs(s string) []string {
 	return argv
 }
 
-// GetBaseDir returns the directory where mrs stores its files
-func GetBaseDir() (string, error) {
+// baseDir returns the directory where mrs stores its files
+func baseDir() (string, error) {
 	if b := os.Getenv("MRS_HOME"); b != "" {
 		return b, nil
 	}
 	if dataDir := os.Getenv("XDG_DATA_HOME"); dataDir != "" {
-		return path.Join(dataDir, "mrs"), nil
+		return filepath.Join(dataDir, "mrs"), nil
 	}
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
 	}
-	return path.Join(homeDir, ".local/share/mrs"), nil
+	return filepath.Join(homeDir, ".local/share/mrs"), nil
+}
+
+// VaultDir returns the directory where mrs stores vault files, without
+// creating it. For a caller that only asks where the directory is, such as one
+// deciding how to name a vault in a report, creating it would be a side effect.
+func VaultDir() (string, error) {
+	base, err := baseDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(base, "vaults"), nil
 }
 
 // GetVaultDir returns the directory where mrs stores vault files, creating it
 // if it does not exist.
 func GetVaultDir() (string, error) {
-	base, err := GetBaseDir()
+	p, err := VaultDir()
 	if err != nil {
 		return "", err
 	}
-	p := path.Join(base, "vaults")
 	if err := os.MkdirAll(p, 0700); err != nil {
 		return "", err
 	}
@@ -168,7 +178,7 @@ func GetTempDir() (string, error) {
 	if p == "" {
 		p = os.TempDir()
 	}
-	p = path.Join(p, "mrs")
+	p = filepath.Join(p, "mrs")
 	if err := os.MkdirAll(p, 0700); err != nil {
 		errTempDir = err
 		return "", errTempDir

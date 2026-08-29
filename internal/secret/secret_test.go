@@ -55,7 +55,7 @@ func TestParseSecretsPreservesWhitespaceWithinSecrets(t *testing.T) {
 
 func TestASearchLooksAtKeysAndAtValuesOnlyWithFull(t *testing.T) {
 	// "red" appears in two values and in no key, so it tells the two searches
-	// apart: without it, a SearchKeys that also matched values would pass.
+	// apart: without it, a key search that also matched values would pass.
 	b := newSecretList([]secret{
 		secret("Apple\ncolor: red"),
 		secret("Banana\ncolor: yellow"),
@@ -63,20 +63,20 @@ func TestASearchLooksAtKeysAndAtValuesOnlyWithFull(t *testing.T) {
 	})
 
 	tests := []struct {
-		name    string
-		search  func(*secretList, regexp.Regexp) *secretList
-		pattern string
-		want    []string
+		name          string
+		includeValues bool
+		pattern       string
+		want          []string
 	}{
-		{"a key", (*secretList).SearchKeys, "(?i)apple", []string{"Apple"}},
-		{"a value is not a key", (*secretList).SearchKeys, "(?i)red", nil},
-		{"no match at all", (*secretList).SearchKeys, "Grape", nil},
-		{"a value, with --full", (*secretList).SearchKeysAndValues, "(?i)red", []string{"Apple", "Cherry"}},
-		{"a key, with --full", (*secretList).SearchKeysAndValues, "(?i)banana", []string{"Banana"}},
+		{"a key", false, "(?i)apple", []string{"Apple"}},
+		{"a value is not a key", false, "(?i)red", nil},
+		{"no match at all", false, "Grape", nil},
+		{"a value, with --full", true, "(?i)red", []string{"Apple", "Cherry"}},
+		{"a key, with --full", true, "(?i)banana", []string{"Banana"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := tt.search(b, *regexp.MustCompile(tt.pattern))
+			got := b.Search(regexp.MustCompile(tt.pattern), tt.includeValues)
 			keys := make([]string, 0, got.Len())
 			for _, s := range got.secrets {
 				keys = append(keys, string(s.Key()))
@@ -111,9 +111,12 @@ func TestSecretsAreSortedIgnoringCase(t *testing.T) {
 }
 
 func TestCombiningTwoListsKeepsBothInKeyOrder(t *testing.T) {
-	b1 := newSecretList([]secret{secret(`A
+	// The concatenation order differs from key order, and only a
+	// case-insensitive sort puts "A" before "b", so a Combined that stopped
+	// re-sorting, or sorted by bytes, fails here.
+	b1 := newSecretList([]secret{secret(`b
 val`)})
-	b2 := newSecretList([]secret{secret(`B
+	b2 := newSecretList([]secret{secret(`A
 val`)})
 
 	combined := b1.Combined(b2)
@@ -121,7 +124,7 @@ val`)})
 		t.Errorf("Combined expected 2 secrets, got %d", combined.Len())
 	}
 
-	if string(combined.secrets[0].Key()) != "A" || string(combined.secrets[1].Key()) != "B" {
+	if string(combined.secrets[0].Key()) != "A" || string(combined.secrets[1].Key()) != "b" {
 		t.Errorf("Combined secrets out of order or incorrect")
 	}
 }

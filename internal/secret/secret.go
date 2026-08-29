@@ -1,6 +1,7 @@
 package secret
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"regexp"
@@ -27,11 +28,7 @@ func Add(v vault.UnlockedVault) (int, error) {
 	defer nb.Wipe()
 
 	// Combined holds the same secrets as both, so wiping those two wipes it.
-	combined := b.Combined(nb)
-	warnDuplicateKeys(combined)
-	out := combined.Bytes()
-	defer crypto.Wipe(out)
-	if err := v.Write(out); err != nil {
+	if err := save(v, b.Combined(nb)); err != nil {
 		return 0, err
 	}
 	return nb.Len(), nil
@@ -60,7 +57,7 @@ func Edit(assumeYes bool, v vault.UnlockedVault) (bool, error) {
 	// rather than treating it as an ordinary edit.
 	if before > 0 && edited.Len() == 0 {
 		msg := fmt.Sprintf("This will remove all %d %s from vault %s. Continue?",
-			before, cli.Plural(before, "secret"), v.Name())
+			before, cli.Plural(before, "secret"), v)
 		confirmed, err := prompt.Confirm(assumeYes, msg)
 		if err != nil {
 			return false, err
@@ -70,32 +67,63 @@ func Edit(assumeYes bool, v vault.UnlockedVault) (bool, error) {
 		}
 	}
 
-	warnDuplicateKeys(edited)
-	out := edited.Bytes()
-	defer crypto.Wipe(out)
-	if err := v.Write(out); err != nil {
+	if err := save(v, edited); err != nil {
 		return false, err
 	}
 	return true, nil
 }
 
+// save warns about duplicate keys, as every save does, and writes the secrets
+// back to the vault in the shape a vault is written in.
+func save(v vault.UnlockedVault, b *secretList) error {
+	warnDuplicateKeys(b)
+	out := b.Bytes()
+	defer crypto.Wipe(out)
+	return v.Write(out)
+}
+
 // warnDuplicateKeys reports keys that more than one secret shares. mrs does not
 // merge them, and a search returns each of them, so the user is told rather
 // than left to discover it.
+//
+// The list is sorted, so secrets sharing a key sit within a run of fold-equal
+// keys, and only those runs are examined. No key is copied out of its secret:
+// a map keyed by string would leave an unwipeable copy of every key behind,
+// while %q below prints straight from the secret's own memory, which is the
+// exposure the warning itself has.
 func warnDuplicateKeys(b *secretList) {
-	// The keys counted here are the keys printed below, so holding one as a
-	// string adds no exposure that the warning itself does not.
-	counts := make(map[string]int, b.Len())
-	var duplicated []string
-	for _, s := range b.secrets {
-		k := string(s.Key())
-		counts[k]++
-		if counts[k] == 2 {
-			duplicated = append(duplicated, k)
+	for i := 0; i < len(b.secrets); {
+		j := i + 1
+		for j < len(b.secrets) && compareFold(b.secrets[i].Key(), b.secrets[j].Key()) == 0 {
+			j++
 		}
+		warnDuplicateKeysInRun(b.secrets[i:j])
+		i = j
 	}
-	for _, k := range duplicated {
-		fmt.Fprintf(os.Stderr, "Warning: %d secrets share the key %q\n", counts[k], k)
+}
+
+// warnDuplicateKeysInRun warns about the exactly-equal keys within one run of
+// fold-equal keys. The sort is stable, so two exact duplicates need not sit
+// beside each other when a key differing only in case arrived between them.
+func warnDuplicateKeysInRun(run []secret) {
+	if len(run) < 2 {
+		return
+	}
+	counted := make([]bool, len(run))
+	for a, s := range run {
+		if counted[a] {
+			continue
+		}
+		n := 1
+		for c := a + 1; c < len(run); c++ {
+			if !counted[c] && bytes.Equal(s.Key(), run[c].Key()) {
+				counted[c] = true
+				n++
+			}
+		}
+		if n > 1 {
+			fmt.Fprintf(os.Stderr, "Warning: %d secrets share the key %q\n", n, s.Key())
+		}
 	}
 }
 
@@ -120,17 +148,14 @@ func Validate(b []byte) error {
 // Search returns the secrets from a vault that match a regular expression, in
 // the shape a vault is written in, along with how many matched. The caller is
 // responsible for wiping the returned slice.
-func Search(v vault.UnlockedVault, r regexp.Regexp, includeValues bool) ([]byte, int, error) {
+func Search(r *regexp.Regexp, includeValues bool, v vault.UnlockedVault) ([]byte, int, error) {
 	b, err := readSecrets(v)
 	if err != nil {
 		return nil, 0, err
 	}
 	defer b.Wipe()
 
-	matched := b.SearchKeys(r)
-	if includeValues {
-		matched = b.SearchKeysAndValues(r)
-	}
+	matched := b.Search(r, includeValues)
 	// Bytes copies, which has to happen before the deferred wipe: a match holds
 	// the same memory as the secret it was found in.
 	return matched.Bytes(), matched.Len(), nil

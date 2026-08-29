@@ -25,9 +25,9 @@ func TestTheLockIsNamedForTheVaultNameNotItsFile(t *testing.T) {
 func TestAnExclusiveLockExcludesASecondUntilItIsReleased(t *testing.T) {
 	v := newTestVault(t)
 
-	unlock, err := v.ExclusiveLock()
+	unlock, err := v.exclusiveLock()
 	if err != nil {
-		t.Fatalf("ExclusiveLock() error: %v", err)
+		t.Fatalf("exclusiveLock() error: %v", err)
 	}
 
 	// Locking creates the lock file.
@@ -36,16 +36,16 @@ func TestAnExclusiveLockExcludesASecondUntilItIsReleased(t *testing.T) {
 	}
 
 	// A second exclusive lock while the first is held must fail.
-	if _, lockErr := v.ExclusiveLock(); lockErr == nil {
-		t.Error("expected second ExclusiveLock() to fail while lock is held")
+	if _, lockErr := v.exclusiveLock(); lockErr == nil {
+		t.Error("expected second exclusiveLock() to fail while lock is held")
 	}
 
 	unlock()
 
 	// After unlocking, a new exclusive lock must succeed.
-	unlock2, err := v.ExclusiveLock()
+	unlock2, err := v.exclusiveLock()
 	if err != nil {
-		t.Fatalf("ExclusiveLock() after unlock error: %v", err)
+		t.Fatalf("exclusiveLock() after unlock error: %v", err)
 	}
 	unlock2()
 }
@@ -53,17 +53,14 @@ func TestAnExclusiveLockExcludesASecondUntilItIsReleased(t *testing.T) {
 // An unnamed vault has no lock path, so locking it would lock the vault
 // directory itself.
 func TestAnUnnamedVaultCannotBeLocked(t *testing.T) {
-	if _, err := Vault("").ExclusiveLock(); err == nil {
-		t.Error("expected ExclusiveLock() on an unnamed vault to return an error")
-	}
-	if err := Vault("").repairLock(); err == nil {
-		t.Error("expected repairLock() on an unnamed vault to return an error")
+	if _, err := Vault("").exclusiveLock(); err == nil {
+		t.Error("expected exclusiveLock() on an unnamed vault to return an error")
 	}
 }
 
 // Repairing keeps the lock file's identity, so that whatever holds it goes on
-// holding it. Only a directory in its place, which nothing can be holding, is
-// removed.
+// holding it. What is removed instead is a thing nothing can be holding: here,
+// a directory in the lock's place.
 func TestRepairingKeepsTheLockFileButRemovesADirectoryInItsPlace(t *testing.T) {
 	v := newTestVault(t)
 
@@ -118,9 +115,9 @@ func TestRepairingKeepsTheLockFileButRemovesADirectoryInItsPlace(t *testing.T) {
 func TestExclusiveLockRepairDoesNotTakeAHeldLock(t *testing.T) {
 	v := newTestVault(t)
 
-	held, err := v.ExclusiveLock()
+	held, err := v.exclusiveLock()
 	if err != nil {
-		t.Fatalf("ExclusiveLock() error: %v", err)
+		t.Fatalf("exclusiveLock() error: %v", err)
 	}
 	defer held()
 
@@ -182,6 +179,10 @@ func TestExclusiveLockRepairFixesAnUnusableLockFile(t *testing.T) {
 				}
 			case !errors.Is(err, ErrLockUnusable):
 				t.Fatalf("ExclusiveLockRepair(false) = %v, want ErrLockUnusable", err)
+			case !strings.Contains(err.Error(), "Use --force to repair it"):
+				// The refusal without --force is the one place the flag helps,
+				// so it is the one place the flag is named.
+				t.Fatalf("ExclusiveLockRepair(false) = %v, want the --force remedy named", err)
 			}
 
 			unlock, err := v.ExclusiveLockRepair(true)

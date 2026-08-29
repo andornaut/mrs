@@ -77,7 +77,7 @@ func TestSearchJoinsItsArgumentsWithWhitespace(t *testing.T) {
 		AssertStdoutExactly(spaced).
 		AssertStderr("1 secret matched \"bank account\" in vault work")
 
-	// mrs lowercases the match and joins the arguments itself, so the report
+	// mrs makes the match case-insensitive and joins the arguments itself, so the report
 	// quotes what the user typed rather than the pattern mrs built from it.
 	r := l.Run("search", "-v", "work", "-p", pwFile, "BANK", "account").
 		AssertOK().

@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"syscall"
@@ -14,22 +15,17 @@ import (
 
 // interruptedEdit starts an editing session, waits until the decrypted file is
 // on disk, and returns its path along with the running command.
-func (l *lab) interruptedEdit(name, pwFile string) (string, *os.Process) {
+func (l *lab) interruptedEdit(name, pwFile string) (string, *exec.Cmd) {
 	l.t.Helper()
 	ready := filepath.Join(filepath.Dir(l.Home), "editor-ready")
-	l.Setenv("FAKE_EDITOR_MODE", "hang")
-	l.Setenv("FAKE_EDITOR_SLEEP", "60")
-	l.Setenv("FAKE_EDITOR_READY", ready)
-
-	cmd := l.Start("edit", "-v", name, "-p", pwFile)
-	waitForFile(l.t, ready)
+	cmd := l.hangingEdit(ready, name, pwFile)
 	editing := strings.TrimSpace(readFile(l.t, ready))
 
 	// The decrypted secrets are on disk right now, mid-session.
-	if b, err := os.ReadFile(editing); err != nil || !strings.Contains(string(b), "the-secret-value") {
-		l.t.Fatalf("expected the decrypted file at %s to hold the secrets (err: %v)", editing, err)
+	if !strings.Contains(readFile(l.t, editing), "the-secret-value") {
+		l.t.Fatalf("expected the decrypted file at %s to hold the secrets", editing)
 	}
-	return editing, cmd.Process
+	return editing, cmd
 }
 
 func TestAnInterruptedEditingSessionLeavesNoPlaintext(t *testing.T) {
@@ -49,19 +45,16 @@ func TestAnInterruptedEditingSessionLeavesNoPlaintext(t *testing.T) {
 		t.Run(s.name, func(t *testing.T) {
 			l := newLab(t)
 			pwFile := l.seedVault("personal", "a password", "a key\nthe-secret-value\n")
-			editing, proc := l.interruptedEdit("personal", pwFile)
+			editing, cmd := l.interruptedEdit("personal", pwFile)
 
-			if err := proc.Signal(s.sig); err != nil {
+			if err := cmd.Process.Signal(s.sig); err != nil {
 				t.Fatalf("failed to signal mrs: %s", err)
 			}
-			state, err := proc.Wait()
-			if err != nil {
-				t.Fatalf("failed to wait for mrs: %s", err)
-			}
+			waitForExit(t, cmd)
 			// 128+signum, as a shell reports a command its signal killed. A run
 			// cut short must not exit 1, 2 or 3, which each say something
 			// specific about a run that finished.
-			if got, want := state.ExitCode(), 128+int(s.sig); got != want {
+			if got, want := cmd.ProcessState.ExitCode(), 128+int(s.sig); got != want {
 				t.Fatalf("expected mrs to exit %d after %s, got %d", want, s.name, got)
 			}
 			// The editor outlives mrs, but it is holding a file that is
@@ -80,21 +73,18 @@ func TestAnInterruptedEditingSessionLeavesNoPlaintext(t *testing.T) {
 func TestAnInterruptedEditingSessionReleasesTheVault(t *testing.T) {
 	l := newLab(t)
 	pwFile := l.seedVault("personal", "a password", "a key\nthe-secret-value\n")
-	_, proc := l.interruptedEdit("personal", pwFile)
+	_, cmd := l.interruptedEdit("personal", pwFile)
 
-	if err := proc.Signal(syscall.SIGHUP); err != nil {
+	if err := cmd.Process.Signal(syscall.SIGHUP); err != nil {
 		t.Fatalf("failed to signal mrs: %s", err)
 	}
-	if _, err := proc.Wait(); err != nil {
-		t.Fatalf("failed to wait for mrs: %s", err)
-	}
+	waitForExit(t, cmd)
 
 	// A session cut short must not leave the vault locked against the next one,
 	// or the user would need --force to get back in.
-	l.Setenv("FAKE_EDITOR_MODE", "append")
-	l.Setenv("FAKE_EDITOR_CONTENT", "b key\nb-value\n")
-	delete(l.Env, "FAKE_EDITOR_READY")
-	delete(l.Env, "FAKE_EDITOR_SLEEP")
+	l.editorAppends("b key\nb-value\n")
+	l.Unsetenv("FAKE_EDITOR_READY")
+	l.Unsetenv("FAKE_EDITOR_SLEEP")
 
 	l.Run("edit", "-v", "personal", "-p", pwFile).AssertOK()
 	if got := l.export("personal", pwFile); !strings.Contains(got, "b-value") {

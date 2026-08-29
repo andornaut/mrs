@@ -224,10 +224,8 @@ func TestAnOldVaultKeepsItsSaltWhenRenamed(t *testing.T) {
 	// Nothing that still holds the secrets may be left behind. Lock files are
 	// left in place by every command and hold nothing, so they do not count.
 	assertNoPlaintextUnder(t, l.VaultDir(), "old-value")
-	for _, name := range l.Vaults() {
-		if !strings.HasSuffix(name, ".lock") {
-			t.Errorf("expected the deleted vault to leave only lock files, found %q", name)
-		}
+	if got := vaultFilesIn(t, l.VaultDir()); len(got) > 0 {
+		t.Errorf("expected the deleted vault to leave only lock files, found %q", got)
 	}
 }
 

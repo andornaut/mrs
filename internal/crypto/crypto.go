@@ -25,12 +25,7 @@ const (
 
 // Wipe fills the given byte slice with zeros to clear sensitive data from memory.
 func Wipe(buf []byte) {
-	if buf == nil {
-		return
-	}
-	for i := range buf {
-		buf[i] = 0
-	}
+	clear(buf)
 }
 
 // Decrypt returns decrypted data.
@@ -55,7 +50,7 @@ const oldIterations = 4096
 // what someone who mistyped a password is told: the password is right and the
 // vault is recoverable, by a release that still reads it.
 //
-// Its argument order matches Decrypt and Encrypt above, which it is asked
+// Its argument order matches Decrypt and Encrypt, which it is asked
 // alongside.
 func SealedAtOldIterations(data []byte, password []byte, salt string) bool {
 	k, err := key(password, salt, oldIterations)
@@ -131,21 +126,20 @@ func newGCM(k *[32]byte) (cipher.AEAD, error) {
 	return cipher.NewGCM(block)
 }
 
-// Salt returns a randomly generated salt.
-// Derived from: https://github.com/golang/crypto/blob/eec23a3978adcfd26c29f4153eaa3e3d9b2cc53a/bcrypt/bcrypt.go#L144
+// Salt returns a randomly generated salt of minSaltLen base64url characters,
+// which encode minSaltLen*3/4 random bytes exactly, so nothing is truncated.
 func Salt() (string, error) {
-	unencodedSalt := make([]byte, minSaltLen)
+	unencodedSalt := make([]byte, minSaltLen*3/4)
 	_, err := io.ReadFull(rand.Reader, unencodedSalt)
 	if err != nil {
 		return "", err
 	}
-
-	return base64.RawURLEncoding.EncodeToString(unencodedSalt)[:minSaltLen], nil
+	return base64.RawURLEncoding.EncodeToString(unencodedSalt), nil
 }
 
 func key(password []byte, salt string, iterations int) (*[32]byte, error) {
 	if len(salt) < minSaltLen {
-		return nil, fmt.Errorf("salt must be at least %d characters, but was %d", minSaltLen, len(salt))
+		return nil, fmt.Errorf("salt must be at least %d characters, but is %d", minSaltLen, len(salt))
 	}
 	var arr [32]byte
 	k := pbkdf2.Key(password, []byte(salt), iterations, 32, sha256.New)

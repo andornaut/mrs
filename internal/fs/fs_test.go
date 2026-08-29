@@ -63,7 +63,7 @@ func TestAnAtomicWriteLeavesTheContentAndNoTemporaryFile(t *testing.T) {
 	}
 
 	// No temporary files should be left behind
-	matches, err := filepath.Glob(filepath.Join(tmpDir, "*.tmp"))
+	matches, err := filepath.Glob(filepath.Join(tmpDir, "*"+TempSuffix))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -127,7 +127,7 @@ func TestAFailedWriteLeavesNoTemporaryFileBehind(t *testing.T) {
 		t.Fatal("expected WriteFileAtomic() to fail writing onto a directory")
 	}
 
-	matches, err := filepath.Glob(filepath.Join(tmpDir, "*.tmp"))
+	matches, err := filepath.Glob(filepath.Join(tmpDir, "*"+TempSuffix))
 	if err != nil {
 		t.Fatal(err)
 	}

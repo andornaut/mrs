@@ -20,7 +20,7 @@ func tamper(t *testing.T, path string, f func([]byte) []byte) []byte {
 	if err != nil {
 		t.Fatalf("failed to read %s: %s", path, err)
 	}
-	if err := os.WriteFile(path, f(append([]byte{}, before...)), 0600); err != nil {
+	if err := os.WriteFile(path, f(bytes.Clone(before)), 0600); err != nil {
 		t.Fatalf("failed to write %s: %s", path, err)
 	}
 	return before
@@ -31,14 +31,11 @@ func TestTheVaultFileGivesAwayNothing(t *testing.T) {
 	l.seedVault("personal", "a password",
 		"my bank\naccount: 12345678\npin: 4321\n\nmy email\npassword: hunter2\n")
 
-	b, err := os.ReadFile(l.VaultPath("personal"))
-	if err != nil {
-		t.Fatalf("failed to read the vault: %s", err)
-	}
+	b := readFile(t, l.VaultPath("personal"))
 	// Neither the values nor the keys, which are what a search matches on and
 	// would name what the vault holds even without the values.
 	for _, secret := range []string{"12345678", "4321", "hunter2", "my bank", "my email", "a password"} {
-		if bytes.Contains(b, []byte(secret)) {
+		if strings.Contains(b, secret) {
 			t.Errorf("expected the vault file not to contain %q", secret)
 		}
 	}
@@ -51,19 +48,13 @@ func TestSavingTheSameSecretsTwiceWritesDifferentBytes(t *testing.T) {
 
 	// The editor changes nothing, so both saves encrypt identical plaintext
 	// under the same key: the salt is in the filename and does not change.
-	first, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("failed to read the vault: %s", err)
-	}
+	first := readFile(t, path)
 	l.Run("edit", "-v", "personal", "-p", pwFile).AssertOK()
-	second, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("failed to read the vault: %s", err)
-	}
+	second := readFile(t, path)
 
 	// Identical bytes would mean the nonce was reused, which for AES-GCM
 	// leaks the relationship between the two plaintexts.
-	if bytes.Equal(first, second) {
+	if first == second {
 		t.Fatal("expected each save to write different bytes")
 	}
 	if len(first) != len(second) {
@@ -81,15 +72,9 @@ func TestTwoVaultsWithTheSamePasswordAndSecretsDiffer(t *testing.T) {
 
 	// Each vault gets its own salt, so the same password does not derive the
 	// same key, and the two files cannot be told to hold the same secrets.
-	a, err := os.ReadFile(l.VaultPath("first"))
-	if err != nil {
-		t.Fatalf("failed to read the vault: %s", err)
-	}
-	b, err := os.ReadFile(l.VaultPath("second"))
-	if err != nil {
-		t.Fatalf("failed to read the vault: %s", err)
-	}
-	if bytes.Equal(a, b) {
+	a := readFile(t, l.VaultPath("first"))
+	b := readFile(t, l.VaultPath("second"))
+	if a == b {
 		t.Fatal("expected two vaults to differ despite holding the same secrets")
 	}
 }

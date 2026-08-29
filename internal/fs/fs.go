@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/andornaut/mrs/internal/config"
 )
@@ -14,6 +15,38 @@ import (
 // durable; only the rename's durability across power loss is not guaranteed.
 // Callers may treat this as a warning rather than a failed write.
 var ErrDirSync = errors.New("the parent directory could not be synced")
+
+// TempSuffix ends the name of every temporary file WriteFileAtomic creates
+// next to the file it writes. Exported so that a caller listing a directory can
+// recognize a leftover from an interrupted write.
+const TempSuffix = ".tmp"
+
+// RemoveTempFiles removes leftover temporary files from interrupted or failed
+// atomic writes of the file at p. It lives here rather than with a caller,
+// because WriteFileAtomic is what names the files it looks for.
+//
+// The directory is read rather than globbed: a directory whose own path holds
+// a Glob metacharacter would fail the match or reach into siblings, and Glob
+// answers a directory it could not read with no matches.
+func RemoveTempFiles(p string) error {
+	dir := filepath.Dir(p)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return err
+	}
+	prefix := filepath.Base(p) + "."
+	var errs []error
+	for _, e := range entries {
+		name := e.Name()
+		if !strings.HasPrefix(name, prefix) || !strings.HasSuffix(name, TempSuffix) {
+			continue
+		}
+		if err := os.Remove(filepath.Join(dir, name)); err != nil && !errors.Is(err, os.ErrNotExist) {
+			errs = append(errs, err)
+		}
+	}
+	return errors.Join(errs...)
+}
 
 // RemoveTempDir removes the temporary directory if it was created.
 // This should be called via defer in main.go.
@@ -29,9 +62,9 @@ func RemoveTempDir() error {
 	return os.RemoveAll(p)
 }
 
-// WriteTempFile writes the given content to a newly created temp file.
-// The caller is responsible for removing the created file and/or directory,
-// and for wiping content.
+// WriteTempFile writes the given content to a newly created temp file in the
+// per-run temporary directory, which cleanup removes on exit. The caller is
+// responsible for removing the created file and for wiping content.
 func WriteTempFile(content []byte) (string, error) {
 	tempDir, err := config.GetTempDir()
 	if err != nil {
@@ -86,7 +119,7 @@ func WriteFileAtomic(p string, data []byte, defaultPerm os.FileMode) (err error)
 		perm = fi.Mode().Perm() &^ 0077
 	}
 
-	f, err := os.CreateTemp(filepath.Dir(p), filepath.Base(p)+".*.tmp")
+	f, err := os.CreateTemp(filepath.Dir(p), filepath.Base(p)+".*"+TempSuffix)
 	if err != nil {
 		return err
 	}

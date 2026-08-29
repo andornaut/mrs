@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 
@@ -39,6 +40,19 @@ func openPrompt() (io.WriteCloser, error) {
 		return nil, fmt.Errorf("%w: %w", ErrNoPrompt, err)
 	}
 	return f, nil
+}
+
+// promptOutput returns the terminal to write a prompt to, or the error each
+// asking function wraps with its own remedy: ErrNoTerminal when stdin is not a
+// terminal, and openPrompt's ErrNoPrompt-wrapping error otherwise. Stdin is
+// checked first because asking a terminal that is not there makes the driver
+// report EINVAL, which reaches the user as "inappropriate ioctl for device"
+// and names neither the cause nor a remedy.
+func promptOutput() (io.WriteCloser, error) {
+	if !isTerminal(int(os.Stdin.Fd())) {
+		return nil, ErrNoTerminal
+	}
+	return openPrompt()
 }
 
 // ttyPath is the terminal a prompt is written to. A variable so that a test can
@@ -73,10 +87,7 @@ func Confirm(assumeYes bool, msg string) (bool, error) {
 	if assumeYes {
 		return true, nil
 	}
-	if !isTerminal(int(os.Stdin.Fd())) {
-		return false, fmt.Errorf("cannot ask %q: %w. Use --yes to answer it", msg, ErrNoTerminal)
-	}
-	out, err := openPrompt()
+	out, err := promptOutput()
 	if err != nil {
 		return false, fmt.Errorf("cannot ask %q: %w. Use --yes to answer it", msg, err)
 	}
@@ -88,7 +99,7 @@ func Confirm(assumeYes bool, msg string) (bool, error) {
 // Editor opens the file at p using a text editor
 func Editor(p string) error {
 	argv := config.Editor()
-	args := append(append([]string{}, argv[1:]...), p)
+	args := slices.Concat(argv[1:], []string{p})
 	cmd := exec.Command(argv[0], args...)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 	// An editor a person is going to type into needs the terminal rather than
@@ -126,13 +137,7 @@ var ErrNoTerminal = errors.New("stdin is not a terminal")
 // The caller is responsible for wiping the returned slice.
 func Password(msg string) ([]byte, error) {
 	fd := int(os.Stdin.Fd())
-	// Switching off echo needs a terminal. Asking for one that is not there
-	// makes the terminal driver report EINVAL, which reaches the user as
-	// "inappropriate ioctl for device" and names neither the cause nor a remedy.
-	if !isTerminal(fd) {
-		return nil, fmt.Errorf("cannot prompt for %q: %w", msg, ErrNoTerminal)
-	}
-	out, err := openPrompt()
+	out, err := promptOutput()
 	if err != nil {
 		return nil, fmt.Errorf("cannot prompt for %q: %w", msg, err)
 	}

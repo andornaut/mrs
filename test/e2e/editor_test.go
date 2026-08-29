@@ -31,8 +31,7 @@ func TestEditorPathMayContainSpaces(t *testing.T) {
 	// which argv is the table in internal/config.
 	l.Setenv("EDITOR", `"`+spaced+`" -n`)
 	l.Setenv("FAKE_EDITOR_EXPECT_ARGS", "-n")
-	l.Setenv("FAKE_EDITOR_MODE", "append")
-	l.Setenv("FAKE_EDITOR_CONTENT", "a key\na value\n")
+	l.editorAppends("a key\na value\n")
 
 	l.Run("edit", "-v", "personal", "-p", pwFile).AssertOK()
 
@@ -77,8 +76,7 @@ func TestVisualIsPreferredToEditor(t *testing.T) {
 	l.Setenv("VISUAL", editorBin+" --visual")
 	l.Setenv("EDITOR", "no-such-editor-exists")
 	l.Setenv("FAKE_EDITOR_EXPECT_ARGS", "--visual")
-	l.Setenv("FAKE_EDITOR_MODE", "append")
-	l.Setenv("FAKE_EDITOR_CONTENT", "a key\na value\n")
+	l.editorAppends("a key\na value\n")
 
 	l.Run("edit", "-v", "personal", "-p", pwFile).AssertOK()
 
@@ -90,7 +88,7 @@ func TestVisualIsPreferredToEditor(t *testing.T) {
 	l.Setenv("VISUAL", "")
 	l.Setenv("EDITOR", editorBin+" --editor")
 	l.Setenv("FAKE_EDITOR_EXPECT_ARGS", "--editor")
-	l.Setenv("FAKE_EDITOR_CONTENT", "b key\nb value\n")
+	l.editorAppends("b key\nb value\n")
 
 	l.Run("edit", "-v", "personal", "-p", pwFile).AssertOK()
 

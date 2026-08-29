@@ -17,18 +17,13 @@ import (
 func (l *lab) heldVault(name, pwFile string) func() {
 	l.t.Helper()
 	ready := filepath.Join(filepath.Dir(l.Home), "lock-held-"+name)
-	l.Setenv("FAKE_EDITOR_MODE", "hang")
-	l.Setenv("FAKE_EDITOR_SLEEP", "60")
-	l.Setenv("FAKE_EDITOR_READY", ready)
-
-	cmd := l.Start("edit", "-v", name, "-p", pwFile)
-	waitForFile(l.t, ready)
+	cmd := l.hangingEdit(ready, name, pwFile)
 
 	// Later commands in the test are separate processes, so reset the editor
 	// settings that only the held session needed.
 	l.Setenv("FAKE_EDITOR_MODE", "noop")
-	delete(l.Env, "FAKE_EDITOR_READY")
-	delete(l.Env, "FAKE_EDITOR_SLEEP")
+	l.Unsetenv("FAKE_EDITOR_READY")
+	l.Unsetenv("FAKE_EDITOR_SLEEP")
 
 	return func() {
 		_ = cmd.Process.Kill()
@@ -231,14 +226,14 @@ func TestForceRepairsAnUnusableLockFile(t *testing.T) {
 			l.editorAppends("")
 			// Where the platform can lock what was left behind, the vault is
 			// already excluded and there is nothing for --force to repair.
-			if r := l.Run("edit", "-v", "work", "-p", pwFile); r.ExitCode == 0 {
+			if r := l.with(t).Run("edit", "-v", "work", "-p", pwFile); r.ExitCode == 0 {
 				if !tt.mayLock {
 					t.Fatalf("expected the save to be refused\n%s", r.describe())
 				}
 			} else {
 				r.AssertStderr("lock file cannot be used")
 			}
-			l.Run("edit", "--force", "-v", "work", "-p", pwFile).AssertOK()
+			l.with(t).Run("edit", "--force", "-v", "work", "-p", pwFile).AssertOK()
 		})
 	}
 }

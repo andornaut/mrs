@@ -92,10 +92,7 @@ func TestAReadOnlyVaultDirectoryFailsTheSaveAndKeepsTheVault(t *testing.T) {
 	l := newLab(t)
 	pwFile := l.seedVault("personal", "a password", "a key\nthe-secret-value\n")
 	path := l.VaultPath("personal")
-	before, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("failed to read the vault: %s", err)
-	}
+	before := readFile(t, path)
 
 	// A vault directory on a read-only mount, or one whose permissions were
 	// changed underneath mrs. The save cannot happen, and must not damage what
@@ -108,11 +105,7 @@ func TestAReadOnlyVaultDirectoryFailsTheSaveAndKeepsTheVault(t *testing.T) {
 		AssertFailed().
 		AssertStderr("permission denied")
 
-	after, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("failed to read the vault: %s", err)
-	}
-	if string(before) != string(after) {
+	if after := readFile(t, path); before != after {
 		t.Fatal("expected a failed save to leave the vault untouched")
 	}
 	// No half-written file was left beside it either.

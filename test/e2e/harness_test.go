@@ -5,6 +5,7 @@ package e2e
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io/fs"
 	"os"
@@ -76,9 +77,8 @@ func TestTheModuleSourceIsRead(t *testing.T) {
 // readModuleSource opens every source file in the module and reports how many
 // it read.
 func readModuleSource(dir string) (int, error) {
-	// Opened through a root so that each file is reached by a path relative to
-	// the tree being read, rather than by the absolute one the walk hands back
-	// after having already stat'd it.
+	// Walked and opened through a root, so that every path is relative to the
+	// tree being read and every open is recorded against it.
 	root, err := os.OpenRoot(dir)
 	if err != nil {
 		return 0, err
@@ -86,23 +86,18 @@ func readModuleSource(dir string) (int, error) {
 	defer func() { _ = root.Close() }()
 
 	var n int
-	err = filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
+	err = fs.WalkDir(root.FS(), ".", func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 		if d.IsDir() {
 			if name := d.Name(); name == ".git" || name == "dist" {
-				return filepath.SkipDir
+				return fs.SkipDir
 			}
 			return nil
 		}
-		switch {
-		case strings.HasSuffix(p, ".go"), d.Name() == "go.mod", d.Name() == "go.sum":
-			rel, err := filepath.Rel(dir, p)
-			if err != nil {
-				return err
-			}
-			f, err := root.Open(rel)
+		if strings.HasSuffix(p, ".go") || d.Name() == "go.mod" || d.Name() == "go.sum" {
+			f, err := root.Open(p)
 			if err != nil {
 				return err
 			}
@@ -213,6 +208,24 @@ type result struct {
 	ExitCode int
 }
 
+// with returns the lab rebound to a subtest's own *testing.T, so that an
+// assertion failing inside t.Run is charged to the subtest rather than
+// aborting the parent, while the expensive lab is still shared.
+func (l *lab) with(t *testing.T) *lab {
+	t.Helper()
+	c := *l
+	c.t = t
+	return &c
+}
+
+// configured points a command at the lab: its environment and its working
+// directory.
+func (l *lab) configured(cmd *exec.Cmd) *exec.Cmd {
+	cmd.Env = l.environ()
+	cmd.Dir = l.UserHome
+	return cmd
+}
+
 // Run executes mrs with the given arguments and no stdin.
 func (l *lab) Run(args ...string) *result {
 	l.t.Helper()
@@ -223,26 +236,23 @@ func (l *lab) Run(args ...string) *result {
 // A pipe is not a terminal, which is exactly what a scripted caller has.
 func (l *lab) RunStdin(stdin string, args ...string) *result {
 	l.t.Helper()
-	cmd := exec.Command(mrsBin, args...)
-	cmd.Env = l.environ()
-	cmd.Dir = l.UserHome
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	cmd := l.configured(exec.CommandContext(ctx, mrsBin, args...))
 	cmd.Stdin = strings.NewReader(stdin)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
+	// A killed mrs may leave its stdin copy unfinished; WaitDelay unsticks it.
+	cmd.WaitDelay = time.Second
 
-	done := make(chan error, 1)
-	if err := cmd.Start(); err != nil {
-		l.t.Fatalf("failed to start mrs %v: %s", args, err)
-	}
-	go func() { done <- cmd.Wait() }()
-	select {
-	case <-done:
-	case <-time.After(30 * time.Second):
-		_ = cmd.Process.Kill()
-		<-done
+	err := cmd.Run()
+	if ctx.Err() != nil {
 		l.t.Fatalf("mrs %v timed out; it is probably waiting for input\nstdout:\n%s\nstderr:\n%s",
 			args, stdout.String(), stderr.String())
+	}
+	if cmd.ProcessState == nil {
+		l.t.Fatalf("failed to start mrs %v: %s", args, err)
 	}
 	return &result{
 		t:        l.t,
@@ -258,27 +268,48 @@ func (l *lab) RunStdin(stdin string, args ...string) *result {
 // on an editor that outlives it.
 func (l *lab) Start(args ...string) *exec.Cmd {
 	l.t.Helper()
-	cmd := exec.Command(mrsBin, args...)
-	cmd.Env = l.environ()
-	cmd.Dir = l.UserHome
+	cmd := l.configured(exec.Command(mrsBin, args...))
 	if err := cmd.Start(); err != nil {
 		l.t.Fatalf("failed to start mrs %v: %s", args, err)
 	}
 	return cmd
 }
 
-// waitForFile waits for a path to appear, which is how a test knows the fake
-// editor is running.
-func waitForFile(t *testing.T, p string) {
+// hangingEdit starts an editing session that sits in the editor with the
+// decrypted file on disk, and waits until the editor is running. The fake
+// editor writes the path of the file it was given into ready.
+func (l *lab) hangingEdit(ready, name, pwFile string) *exec.Cmd {
+	l.t.Helper()
+	l.Setenv("FAKE_EDITOR_MODE", "hang")
+	l.Setenv("FAKE_EDITOR_SLEEP", "60")
+	l.Setenv("FAKE_EDITOR_READY", ready)
+	cmd := l.Start("edit", "-v", name, "-p", pwFile)
+	waitForFile(l.t, ready)
+	return cmd
+}
+
+// waitFor polls until cond holds, and fails the test with msg when it has not
+// within the timeout.
+func waitFor(t *testing.T, timeout time.Duration, cond func() bool, msg string) {
 	t.Helper()
-	deadline := time.Now().Add(15 * time.Second)
+	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
-		if _, err := os.Stat(p); err == nil {
+		if cond() {
 			return
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	t.Fatalf("timed out waiting for %s", p)
+	t.Fatal(msg)
+}
+
+// waitForFile waits for a path to appear, which is how a test knows the fake
+// editor is running.
+func waitForFile(t *testing.T, p string) {
+	t.Helper()
+	waitFor(t, 15*time.Second, func() bool {
+		_, err := os.Stat(p)
+		return err == nil
+	}, "timed out waiting for "+p)
 }
 
 // Vaults returns the base names of the files in the vault directory, so that

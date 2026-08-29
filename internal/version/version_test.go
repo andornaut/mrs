@@ -68,17 +68,11 @@ func TestReleaseVersionAcceptsOnlyAReleaseAndDropsThePrefix(t *testing.T) {
 
 func modulePath(t *testing.T) string {
 	t.Helper()
-	mod, err := os.ReadFile("../../go.mod")
-	if err != nil {
-		t.Fatalf("reading go.mod: %v", err)
+	info, ok := debug.ReadBuildInfo()
+	if !ok {
+		t.Fatal("the test binary carries no build info")
 	}
-	for line := range strings.SplitSeq(string(mod), "\n") {
-		if rest, ok := strings.CutPrefix(line, "module "); ok {
-			return strings.TrimSpace(rest)
-		}
-	}
-	t.Fatal("go.mod names no module")
-	return ""
+	return info.Main.Path
 }
 
 // An unstamped binary claims a version only when the module system recorded a

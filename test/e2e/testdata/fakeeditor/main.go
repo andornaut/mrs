@@ -12,6 +12,9 @@
 //	FAKE_EDITOR_READY    if set, a path to create once the file has been read,
 //	                     so that a test can wait for the editor to be running
 //	FAKE_EDITOR_SLEEP    seconds to sleep in the hang mode (default: 30)
+//	FAKE_EDITOR_EXPECT_ARGS  if set, the arguments the editor must have been
+//	                     given before the file path, so that a test can check
+//	                     how $VISUAL and $EDITOR are split
 package main
 
 import (

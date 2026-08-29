@@ -51,9 +51,9 @@ func TestTheEditorCommandIsSplitAsAShellWouldSplitIt(t *testing.T) {
 		editor   string
 		expected []string
 	}{
-		{"Default editor", "", []string{"vim"}},
-		{"Only whitespace", "   ", []string{"vim"}},
-		{"Custom editor", "vim", []string{"vim"}},
+		// "ed" is off the stubbed PATH, so this case fails if $EDITOR is
+		// ignored; the fallback would answer "vim".
+		{"Custom editor", "ed", []string{"ed"}},
 		{"Editor with arguments", "vim -n", []string{"vim", "-n"}},
 		{"Surrounding whitespace", "  code -w  ", []string{"code", "-w"}},
 		{"Repeated whitespace", "emacsclient  -t", []string{"emacsclient", "-t"}},
@@ -84,7 +84,9 @@ func TestVisualIsPreferredToEditorUnlessItIsEmpty(t *testing.T) {
 		editor   string
 		expected []string
 	}{
-		{"Visual wins", "vim", "ed", []string{"vim"}},
+		// "emacs" is off the stubbed PATH, so this case fails if both
+		// variables are ignored; the fallback would answer "vim".
+		{"Visual wins", "emacs", "ed", []string{"emacs"}},
 		{"Visual only", "vim -n", "", []string{"vim", "-n"}},
 		{"Empty visual falls through", "", "ed", []string{"ed"}},
 		{"Whitespace visual falls through", "   ", "ed", []string{"ed"}},

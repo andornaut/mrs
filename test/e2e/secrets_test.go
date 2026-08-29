@@ -1,6 +1,7 @@
 package e2e
 
 import (
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -360,30 +361,25 @@ func TestAVaultWithALongLineStaysUsable(t *testing.T) {
 // of the given secrets.
 func assertNoPlaintextUnder(t *testing.T, dir string, secrets ...string) {
 	t.Helper()
-	// Read through a root so that each file is reached by a path relative to
-	// the tree being walked, rather than by the absolute one the walk hands
-	// back after having already stat'd it.
+	// Walked and read through a root, so that every path is relative to the
+	// tree being walked and every read goes through it.
 	root, err := os.OpenRoot(dir)
 	if err != nil {
 		t.Fatalf("failed to open %s: %s", dir, err)
 	}
 	defer func() { _ = root.Close() }()
 
-	err = filepath.Walk(dir, func(p string, info os.FileInfo, err error) error {
-		if err != nil || info.IsDir() {
+	err = fs.WalkDir(root.FS(), ".", func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
 			return err
 		}
-		rel, err := filepath.Rel(dir, p)
-		if err != nil {
-			return err
-		}
-		b, err := root.ReadFile(rel)
+		b, err := root.ReadFile(p)
 		if err != nil {
 			return err
 		}
 		for _, s := range secrets {
 			if strings.Contains(string(b), s) {
-				t.Errorf("found plaintext %q in %s", s, p)
+				t.Errorf("found plaintext %q in %s", s, filepath.Join(dir, p))
 			}
 		}
 		return nil

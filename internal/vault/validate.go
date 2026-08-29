@@ -12,10 +12,10 @@ import (
 
 var (
 	// Avoid hidden files, paths with '../', names with file extensions, and names with special characters, etc.
-	// Names cannot contain the "." character, because it is used as the name/hash separator.
-	nameRegex = regexp.MustCompile(`^[\w-_]+$`)
-	// A salt is base64url encoded and truncated to a fixed length by
-	// crypto.Salt(). Requiring its exact shape keeps unrelated files that a user
+	// Names cannot contain the "." character, because it is used as the name/salt separator.
+	nameRegex = regexp.MustCompile(`^[\w-]+$`)
+	// A salt is 32 base64url characters, as crypto.Salt() writes it.
+	// Requiring its exact shape keeps unrelated files that a user
 	// or another program left in the vault directory - notes.txt, README.md -
 	// from being reported as vaults.
 	saltRegex = regexp.MustCompile(`^[A-Za-z0-9_-]{32}$`)
@@ -65,6 +65,15 @@ func validateFilename(n string) error {
 	return validateSalt(salt)
 }
 
+// ValidateNewPassword is ValidatePassword, naming which of the two passwords
+// a change asks for was refused, since the current one is asked for as well.
+func ValidateNewPassword(p []byte) error {
+	if err := ValidatePassword(p); err != nil {
+		return fmt.Errorf("invalid new password: %w", err)
+	}
+	return nil
+}
+
 // ValidatePassword reports whether a password can be used for a vault. A
 // command may call it to refuse early, as ValidateName is called, so that a
 // password mrs will not accept is refused before anything else is asked for.
@@ -74,7 +83,7 @@ func ValidatePassword(p []byte) error {
 	// a file of several lines, which is nearly always a file of something other
 	// than a password. Counting it would encrypt a vault under that file, and
 	// reporting it as a length is what the character count below is for.
-	if bytes.IndexByte(p, '\n') >= 0 {
+	if bytes.ContainsRune(p, '\n') {
 		return errors.New("password cannot contain a newline")
 	}
 	if utf8.RuneCount(p) < minPasswordLen {
@@ -83,16 +92,21 @@ func ValidatePassword(p []byte) error {
 	return nil
 }
 
-// validatePath reports whether the entry at p is a vault this version of mrs
-// can read. Its errors are phrased as reasons rather than as complete
-// sentences, because findVaults reports them as the reason a vault it lists
-// cannot be read.
+// validatePath reports whether the entry at p, whose filename the caller has
+// already validated, is a vault this version of mrs can read: what only a stat
+// can answer. Its errors are phrased as reasons rather than as complete
+// sentences, because callers report them as the reason a vault cannot be read.
 func validatePath(p string) error {
 	fi, err := os.Stat(p)
 	if err != nil {
-		return err
-	}
-	if err := validateFilename(fi.Name()); err != nil {
+		// A path that is present as a symlink whose target is not, as when
+		// the drive a vault lives on is not mounted, is not a vault that was
+		// never there, so it is not answered with os.ErrNotExist.
+		if errors.Is(err, os.ErrNotExist) {
+			if _, lstatErr := os.Lstat(p); lstatErr == nil {
+				return errors.New("a symlink whose target is not there")
+			}
+		}
 		return err
 	}
 	if fi.IsDir() {
