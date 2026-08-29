@@ -116,8 +116,9 @@ func printLine(s string) error {
 	return err
 }
 
-// nameHelp states the rule these commands share: a name is taken whole. Said
-// once, so that the five cannot come to word it differently.
+// nameHelp states the rule shared by every command that names a vault as an
+// operand: the name is taken whole. Said once, so that they cannot come to word
+// it differently.
 const nameHelp = "A name is taken whole, never as a prefix."
 
 func init() {
@@ -126,8 +127,9 @@ func init() {
 	create := &cobra.Command{
 		Use:   "add <name>",
 		Short: "Add a vault",
-		Long: "Add a vault under the given name, encrypted with a password you are asked\n" +
-			"for twice. It holds no secrets unless --import-file seeds it with some.\n" +
+		Long: "Add a vault under the given name, encrypted with a password: typed twice\n" +
+			"at the prompt, or read from --password-file. The vault holds no secrets\n" +
+			"unless --import-file seeds it with some.\n" +
 			nameHelp,
 		Example: "  mrs vault add personal\n  mrs vault add work --import-file secrets.txt",
 		Args:    cli.RequireArgs(1, "a name for the new vault"),
@@ -165,9 +167,9 @@ func init() {
 		Long: "Re-encrypt a vault under a new password.\n" + nameHelp + "\n" +
 			"The backup written by this save still opens with the old password, so\n" +
 			"delete it if that password is no longer trusted.",
-		Example:               "  mrs vault change-password work\n  mrs vault change-password work -n new-password",
+		Example:               "  mrs vault change-password work\n  mrs vault change-password work -p old.pw -n new.pw",
 		Args:                  cli.RequireArgs(1, "the name of a vault"),
-		ValidArgsFunction:     cli.CompleteVaultNames,
+		ValidArgsFunction:     cli.CompleteFirstVaultName,
 		DisableFlagsInUseLine: true,
 		RunE: func(c *cobra.Command, args []string) error {
 			return opts.runChangePassword(args[0])
@@ -182,7 +184,7 @@ func init() {
 			"holds it.",
 		Example:               "  mrs vault rm work\n  mrs vault rm work --yes",
 		Args:                  cli.RequireArgs(1, "the name of a vault"),
-		ValidArgsFunction:     cli.CompleteVaultNames,
+		ValidArgsFunction:     cli.CompleteFirstVaultName,
 		DisableFlagsInUseLine: true,
 		RunE: func(c *cobra.Command, args []string) error {
 			v, unlock, err := opts.locked(args[0])
@@ -228,7 +230,8 @@ func init() {
 		Use:   "ls",
 		Short: "List every vault",
 		Long: "List the vaults in the vault directory, sorted by name ignoring case.\n" +
-			"A vault kept elsewhere and named with --path is not listed.",
+			"A vault kept elsewhere is not listed; add, edit, search and export name\n" +
+			"one with their own --path, which is a different flag from this one.",
 		Example:               "  mrs vault ls\n  mrs vault ls --path",
 		Args:                  cli.NoArgs,
 		DisableFlagsInUseLine: true,

@@ -123,9 +123,10 @@ func CompleteVaultNames(_ *cobra.Command, _ []string, toComplete string) ([]stri
 	return names, cobra.ShellCompDirectiveNoFileComp
 }
 
-// CompleteFirstVaultName offers vault names for the first operand only, for a
-// command whose later operands name no vault, as rename's target is a name that
-// no vault has yet.
+// CompleteFirstVaultName offers vault names for the first operand only. Every
+// command that takes one names a vault with it and with nothing after it:
+// rename's target is a name no vault has yet, and change-password and rm take
+// no second operand at all.
 func CompleteFirstVaultName(c *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 	if len(args) > 0 {
 		return nil, cobra.ShellCompDirectiveNoFileComp

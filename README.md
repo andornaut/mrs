@@ -81,9 +81,9 @@ Flag | Commands | Supplies
 --- | --- | ---
 `-v`, `--vault` | `add`, `edit`, `search`, `export` | the vault's name, or the start of it
 `--path` | `add`, `edit`, `search`, `export` | the path of a vault file, instead of a name
-`-p`, `--password-file` | `add`, `edit`, `search`, `export`, `vault add`, `vault change-password` | the vault's current password
-`-n`, `--new-password-file` | `vault change-password` | the password to change it to
-`-i`, `--import-file` | `vault add` | unencrypted secrets to seed the vault with
+`-p`, `--password-file` | `add`, `edit`, `search`, `export`, `vault add`, `vault change-password` | a file holding the vault's current password
+`-n`, `--new-password-file` | `vault change-password` | a file holding the password to change it to
+`-i`, `--import-file` | `vault add` | a file of unencrypted secrets to seed the vault with
 `-f`, `--full` | `search` | match values as well as keys
 `-y`, `--yes` | `edit`, `vault rm` | the answer to the confirmation
 `--force` | `add`, `edit`, `vault add`, `vault change-password`, `vault rm`, `vault rename` | permission to repair a lock file that cannot be used
