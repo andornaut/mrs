@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -35,7 +36,7 @@ func gcm(t *testing.T, password, salt string, iterations int) cipher.AEAD {
 }
 
 // Capability 6: vault files written by earlier versions of mrs, which are
-// upgraded in place, and the backup that is the way back from a save.
+// upgraded in place.
 //
 // The fixtures are written the way the version that made them would have,
 // because current mrs cannot write an out-of-date vault at all. Every assertion
@@ -249,57 +250,43 @@ func TestAPasswordThatEndsInANewlineIsStillAccepted(t *testing.T) {
 		AssertNoOutput("ends in a newline")
 }
 
-func TestTheBackupHoldsTheVersionBeforeTheSave(t *testing.T) {
+// A save replaces the vault and writes nothing else. There is no copy of the
+// secrets to guard, to move on a rename, or to leave holding an old password
+// after change-password.
+func TestASaveWritesNoCopyOfTheVault(t *testing.T) {
 	l := newLab(t)
 	pwFile := l.seedVault("personal", "a password", "a key\nfirst-value\n")
 	vaultPath := l.VaultPath("personal")
 	l.editorWrites("a key\nsecond-value\n")
 
 	l.Run("edit", "-v", "personal", "-p", pwFile).AssertOK()
-	l.Run("export", "-v", "personal", "-p", pwFile).
-		AssertOK().
-		AssertStdoutExactly("a key\nsecond-value\n")
 
-	// Copying the backup over the vault is the documented way back from an
-	// edit, so it has to decrypt and hold what was there before.
-	copyFile(t, vaultPath+".bak", vaultPath)
-	l.Run("export", "-v", "personal", "-p", pwFile).
-		AssertOK().
-		AssertStdoutExactly("a key\nfirst-value\n")
+	assertNotExists(t, vaultPath+".bak")
+	assertFileMode(t, vaultPath, 0600)
+	want := []string{filepath.Base(vaultPath), "personal.lock"}
+	if got := l.Vaults(); !slices.Equal(got, want) {
+		t.Fatalf("after a save got %v, want %v", got, want)
+	}
 }
 
-// A backup that cannot be written is a warning, not a failed save. The save is
-// what the user asked for; the backup is only the way back from it, and saying
-// nothing would leave them believing they had one.
-func TestASaveWhoseBackupCannotBeWrittenIsStillSaved(t *testing.T) {
+// A .bak that an earlier release wrote is not mrs's file any more: it is
+// reported as a stray file and left where it is, never taken for a vault.
+func TestABackupFromAnEarlierReleaseIsReportedAsStray(t *testing.T) {
 	l := newLab(t)
-	pwFile := l.seedVault("personal", "a password", "a key\nfirst-value\n")
-	// A directory where the backup should be, so that the copy is written and
-	// only the rename onto the backup's name fails.
-	if err := os.Mkdir(l.VaultPath("personal")+".bak", 0700); err != nil {
-		t.Fatalf("failed to create the directory: %s", err)
+	l.seedVault("personal", "a password", "a key\na-value\n")
+	stale := l.VaultPath("personal") + ".bak"
+	if err := os.WriteFile(stale, []byte("old ciphertext"), 0600); err != nil {
+		t.Fatalf("failed to write %s: %s", stale, err)
 	}
 
-	l.editorWrites("a key\nsecond-value\n")
-	l.Run("edit", "-v", "personal", "-p", pwFile).
+	l.Run("vault", "ls").
 		AssertOK().
-		AssertStderr("failed to create backup for vault personal")
+		AssertStdoutEquals("personal").
+		AssertStderr("a vault file is named <name>.<salt>")
 
-	l.Run("export", "-v", "personal", "-p", pwFile).
-		AssertOK().
-		AssertStdoutExactly("a key\nsecond-value\n")
-}
-
-func TestTheBackupIsNotReadableByOthers(t *testing.T) {
-	l := newLab(t)
-	pwFile := l.seedVault("personal", "a password", "a key\na-value\n")
-	l.editorAppends("b key\nb-value\n")
-
-	l.Run("edit", "-v", "personal", "-p", pwFile).AssertOK()
-
-	// A backup holds the same secrets as the vault, so it is guarded the same.
-	assertFileMode(t, l.VaultPath("personal"), 0600)
-	assertFileMode(t, l.VaultPath("personal")+".bak", 0600)
+	if _, err := os.Stat(stale); err != nil {
+		t.Fatalf("expected the stray file to be left alone: %s", err)
+	}
 }
 
 func TestALeftoverTemporaryFileIsRemovedOnSave(t *testing.T) {
@@ -318,16 +305,4 @@ func TestALeftoverTemporaryFileIsRemovedOnSave(t *testing.T) {
 
 	assertNotExists(t, stale)
 	l.Run("vault", "ls").AssertOK().AssertStdoutEquals("personal")
-}
-
-// copyFile copies a file, which is how a user restores a backup.
-func copyFile(t *testing.T, src, dst string) {
-	t.Helper()
-	b, err := os.ReadFile(src)
-	if err != nil {
-		t.Fatalf("failed to read %s: %s", src, err)
-	}
-	if err := os.WriteFile(dst, b, 0600); err != nil {
-		t.Fatalf("failed to write %s: %s", dst, err)
-	}
 }

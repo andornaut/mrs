@@ -258,7 +258,7 @@ func TestSearchLeavesTheVaultUntouched(t *testing.T) {
 	if after := readFile(t, l.VaultPath("work")); after != before {
 		t.Fatal("expected a search to leave the vault file unchanged")
 	}
-	// A read is not a write, so it must not roll a backup either.
+	// mrs writes no copy of a vault, and a read least of all.
 	assertNotExists(t, l.VaultPath("work")+".bak")
 }
 

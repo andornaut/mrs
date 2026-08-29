@@ -107,14 +107,14 @@ func Named(prefix string) (Vault, error) {
 //
 // The filename still has to be <name>.<salt>, because a vault's key is derived
 // from the salt its filename carries and there is nowhere else to read it
-// from. The lock, the backup and the temporary files of an atomic write are
-// its siblings, so mrs writes in the directory the vault is in.
+// from. The lock and the temporary files of an atomic write are its siblings,
+// so mrs writes in the directory the vault is in.
 func AtPath(p string) (Vault, error) {
 	if p == "" {
 		return "", errors.New("vault path cannot be empty")
 	}
 	// Absolute, so that the vault has one identity in what is reported and in
-	// the lock file, backup and temporary files named after it.
+	// the lock file and temporary files named after it.
 	abs, err := filepath.Abs(p)
 	if err != nil {
 		return "", fmt.Errorf("could not resolve vault path %q: %w", p, err)
@@ -279,21 +279,18 @@ func Create(contents []byte, repair bool, name string, password func() ([]byte, 
 	return u, nil
 }
 
-// Delete deletes a vault, along with its backup and temporary files
+// Delete deletes a vault, along with its temporary files
 func Delete(v Vault) error {
 	if err := os.Remove(v.Path()); err != nil {
 		return err
 	}
 	// The vault itself is gone. Removing the temporary files is best-effort and
-	// only warns, but a leftover backup still holds the secrets, so failing to
-	// remove it is reported as an error that makes clear the vault was deleted.
-	// The lock file is left in place, as by other commands, and is harmless
-	// because it is re-lockable once no process holds it.
+	// only warns, because a save that was interrupted leaves one holding
+	// ciphertext, not secrets. The lock file is left in place, as by other
+	// commands, and is harmless because it is re-lockable once no process holds
+	// it.
 	if err := fs.RemoveTempFiles(v.Path()); err != nil {
 		warnf("failed to remove temporary files for vault %s: %s", v.Name(), err)
-	}
-	if err := os.Remove(v.backupPath()); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("deleted vault %s but failed to remove its backup, which still contains your secrets: %w", v.Name(), err)
 	}
 	return nil
 }
@@ -326,17 +323,13 @@ func Rename(targetName string, repair bool, sourceVault Vault) error {
 	if err := os.Rename(sourceVault.Path(), targetPath); err != nil {
 		return err
 	}
-	// The vault itself is renamed. Removing the temporary files is best-effort
-	// and only warns, but the backup still holds the secrets, so failing to move
-	// it out from under the old name is reported as an error that makes clear
-	// the vault was renamed. The lock file is left in place, as by other
-	// commands, and is harmless because it is re-lockable once no process holds
-	// it.
+	// The vault itself is renamed. Removing the temporary files left under the
+	// old name is best-effort and only warns, because a save that was
+	// interrupted leaves one holding ciphertext, not secrets. The lock file is
+	// left in place, as by other commands, and is harmless because it is
+	// re-lockable once no process holds it.
 	if err := fs.RemoveTempFiles(sourceVault.Path()); err != nil {
 		warnf("failed to remove temporary files for vault %s: %s", sourceName, err)
-	}
-	if err := os.Rename(sourceVault.backupPath(), Vault(targetPath).backupPath()); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("renamed vault %s to %s but failed to move its backup, which still contains your secrets under the old name: %w", sourceName, targetName, err)
 	}
 	return nil
 }
@@ -408,10 +401,12 @@ func findVaults(warn bool, prefix string) ([]Vault, error) {
 
 	var vs []Vault
 	for _, p := range matchedPaths {
-		// Skip lock, backup, and leftover temporary files
+		// Skip lock and leftover temporary files. A .bak left by a release that
+		// wrote backups is not skipped: it is warned about as the stray file it
+		// now is, and never taken for a vault, because <salt>.bak is not a salt.
 		base := filepath.Base(p)
 		ext := filepath.Ext(base)
-		if ext == lockSuffix || ext == backupSuffix || ext == fs.TempSuffix {
+		if ext == lockSuffix || ext == fs.TempSuffix {
 			continue
 		}
 		// Skip stray files that do not match the vault filename shape instead of

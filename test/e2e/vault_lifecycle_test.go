@@ -289,17 +289,11 @@ func TestAVaultWhoseTargetIsAwayIsStillAVault(t *testing.T) {
 	l.Run("vault", "ls").AssertOK().AssertStdoutEquals("personal")
 }
 
-func TestListIgnoresLockBackupAndTempFiles(t *testing.T) {
+func TestListIgnoresLockAndTempFiles(t *testing.T) {
 	l := newLab(t)
-	pwFile := l.createVault("personal", "a password")
-	// Provoke a real backup by writing to the vault a second time.
-	l.editorAppends("a key\na value\n")
-	l.Run("edit", "-v", "personal", "-p", pwFile).AssertOK()
+	l.createVault("personal", "a password")
 
 	vaultPath := l.VaultPath("personal")
-	if _, err := os.Stat(vaultPath + ".bak"); err != nil {
-		t.Fatalf("expected a backup file next to the vault: %s", err)
-	}
 	// A leftover temporary file from an interrupted write.
 	if err := os.WriteFile(vaultPath+".1234.tmp", []byte("x"), 0600); err != nil {
 		t.Fatalf("failed to write temp file: %s", err)
@@ -379,25 +373,6 @@ func TestRenameReportsAMissingVault(t *testing.T) {
 		AssertStderr("not found")
 }
 
-func TestRenameMovesTheBackupFile(t *testing.T) {
-	l := newLab(t)
-	pwFile := l.createVault("personal", "a password")
-	l.editorAppends("a key\na value\n")
-	l.Run("edit", "-v", "personal", "-p", pwFile).AssertOK()
-
-	oldBackup := l.VaultPath("personal") + ".bak"
-	if _, err := os.Stat(oldBackup); err != nil {
-		t.Fatalf("expected a backup to exist before the rename: %s", err)
-	}
-
-	l.Run("vault", "rename", "personal", "renamed").AssertOK()
-
-	assertNotExists(t, oldBackup)
-	if _, err := os.Stat(l.VaultPath("renamed") + ".bak"); err != nil {
-		t.Fatalf("expected the backup to move with the vault: %s", err)
-	}
-}
-
 func TestDeleteRemovesTheVaultWhenConfirmed(t *testing.T) {
 	l := newLab(t)
 	l.createVault("personal", "a password")
@@ -425,22 +400,6 @@ func TestDeleteWithoutAnAnswerKeepsTheVault(t *testing.T) {
 			AssertStderr("Use --yes")
 		l.Run("vault", "ls").AssertOK().AssertStdoutEquals("personal")
 	}
-}
-
-func TestDeleteRemovesTheBackupFile(t *testing.T) {
-	l := newLab(t)
-	pwFile := l.createVault("personal", "a password")
-	l.editorAppends("a key\na value\n")
-	l.Run("edit", "-v", "personal", "-p", pwFile).AssertOK()
-
-	backup := l.VaultPath("personal") + ".bak"
-	if _, err := os.Stat(backup); err != nil {
-		t.Fatalf("expected a backup to exist before the delete: %s", err)
-	}
-
-	l.Run("vault", "rm", "personal", "--yes").AssertOK()
-
-	assertNotExists(t, backup)
 }
 
 // Removing the temporary files an interrupted write left behind is best effort.

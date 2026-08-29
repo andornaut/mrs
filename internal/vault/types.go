@@ -173,21 +173,13 @@ func (v Vault) repairLock() error {
 	return nil
 }
 
-// lockSuffix and backupSuffix end the names of the two files mrs keeps beside
-// a vault. findVaults skips its siblings by these constants, so renaming one
-// cannot silently turn lock or backup files into stray entries the listing
-// warns about.
-const (
-	lockSuffix   = ".lock"
-	backupSuffix = ".bak"
-)
+// lockSuffix ends the name of the lock file, the one file mrs keeps beside a
+// vault. findVaults skips it by this constant, so renaming the constant cannot
+// silently turn lock files into stray entries the listing warns about.
+const lockSuffix = ".lock"
 
 func (v Vault) lockPath() string {
 	return filepath.Join(filepath.Dir(v.Path()), v.Name()+lockSuffix)
-}
-
-func (v Vault) backupPath() string {
-	return v.Path() + backupSuffix
 }
 
 func (v Vault) basename() string {
@@ -261,13 +253,6 @@ func (v *UnlockedVault) Write(plaintext []byte) error {
 	ciphertext, err := crypto.Encrypt(plaintext, v.password, v.Salt())
 	if err != nil {
 		return fmt.Errorf("failed to encrypt secrets, so vault %s is unchanged", v)
-	}
-
-	// A vault being written for the first time has nothing to back up.
-	if _, statErr := os.Stat(v.Path()); statErr == nil {
-		if copyErr := fs.CopyFile(v.Path(), v.backupPath()); copyErr != nil {
-			warnf("failed to create backup for vault %s: %s", v, copyErr)
-		}
 	}
 
 	// Remove leftover temporary files from previously interrupted writes.

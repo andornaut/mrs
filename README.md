@@ -53,7 +53,7 @@ make install
 ## Commands
 
 Commands that read or write the secrets in a vault name it with `--vault`,
-which accepts a prefix, or with `--path`, which names a vault file wherever it
+which accepts a prefix, or with `--file`, which names a vault file wherever it
 is kept. Commands that create, rename or destroy a vault take its whole name as
 an argument.
 
@@ -80,7 +80,7 @@ arguments are joined, so `mrs search bank account` matches `bank account`.
 Flag | Commands | Supplies
 --- | --- | ---
 `-v`, `--vault` | `add`, `edit`, `search`, `export` | the vault's name, or the start of it
-`--path` | `add`, `edit`, `search`, `export` | the path of a vault file, instead of a name
+`--file` | `add`, `edit`, `search`, `export` | the path of a vault file, instead of a name
 `-p`, `--password-file` | `add`, `edit`, `search`, `export`, `vault add`, `vault change-password` | a file holding the vault's current password
 `-n`, `--new-password-file` | `vault change-password` | a file holding the password to change it to
 `-i`, `--import-file` | `vault add` | a file of unencrypted secrets to seed the vault with
@@ -89,11 +89,11 @@ Flag | Commands | Supplies
 `--force` | `add`, `edit`, `vault add`, `vault change-password`, `vault rm`, `vault rename` | permission to repair a lock file that cannot be used
 `--path` | `vault ls`, `vault default` | paths instead of names
 
-A short flag means the same thing on every command. `--force` and `--path` have
-no short form, because `-p` is the password file wherever there is one and
-`--force` is worth spelling out. `--path` names a vault file for the commands
-that read and write secrets, and asks `vault ls` and `vault default` to print
-paths rather than names.
+A short flag means the same thing on every command. `--file`, `--force` and
+`--path` have no short form, because `-p` is the password file wherever there is
+one, `-f` is `--full` on `search`, and `--force` is worth spelling out. `--path`
+takes no value: it asks `vault ls` and `vault default` to print paths rather
+than names.
 
 `--force` repairs a lock file that cannot be opened, because its mode forbids
 it, a directory sits in its place, or it is a symlink that does not resolve. It
@@ -140,13 +140,13 @@ Names may hold ASCII letters, digits, `_` and `-`, up to 200 characters.
 
 ## A vault kept elsewhere
 
-`add`, `edit`, `search` and `export` also take `--path`, which names a vault
+`add`, `edit`, `search` and `export` also take `--file`, which names a vault
 file directly: one on removable media, or in a directory that is synced
 elsewhere. Nothing is looked up, so it names no prefix and falls back to no
 default, and it is refused alongside `-v`:
 
 ```console
-$ mrs search --path /mnt/usb/work.<salt> aws
+$ mrs search --file /mnt/usb/work.<salt> aws
 Vault password:
 1 secret matched "aws" in vault /mnt/usb/work.<salt>
 ```
@@ -154,7 +154,7 @@ Vault password:
 The file still has to be named `<name>.<salt>`, because the key is derived from
 the salt the filename carries and there is nowhere else to read it from. Copy or
 move a vault with its salt intact and it opens with the password it always had.
-Its lock file, backup and the temporary file of a save are its siblings, so
+Its lock file and the temporary file of a save are its siblings, so
 `mrs` writes in the directory the vault is in and needs to be able to write
 there. A vault outside the vault directory is not listed by `vault ls`, and
 `$MRS_DEFAULT_VAULT_NAME` cannot name one.
@@ -167,9 +167,9 @@ there. A vault outside the vault directory is not listed by `vault ls`, and
 - Without a terminal there is nothing to prompt from, so pass
   `--password-file`. A trailing newline is trimmed, so `echo 'pw' > pw` works;
   other whitespace is part of the password.
-- Saving an existing vault first copies it to `<name>.<salt>.bak`. After
-  `vault change-password` that backup still opens with the old password until
-  the next save, so delete it if that password is no longer trusted.
+- A save replaces the vault and writes no copy of it. Nothing beside a vault
+  goes on opening with a password it no longer has, and nothing is a way back
+  from an edit: keep your own copy if you want one.
 
 ## Confirmations
 
@@ -215,7 +215,6 @@ ran and failed does not. `mrs --help` writes help to stdout and reports success.
 Path | Holds
 --- | ---
 `$MRS_HOME/vaults/<name>.<salt>` | the vault, mode 0600
-`$MRS_HOME/vaults/<name>.<salt>.bak` | the version before the last save
 `$MRS_HOME/vaults/<name>.lock` | the lock on the name, empty
 `$MRS_TEMP/mrs/<run>/` | decrypted secrets while an editor is open, mode 0700
 

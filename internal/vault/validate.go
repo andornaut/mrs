@@ -23,7 +23,7 @@ var (
 
 // maxNameLen bounds a vault name so that its filename fits within the 255 byte
 // limit that most filesystems impose. A name is followed by a "." separator, a
-// 32 character salt, and suffixes of up to 20 characters such as ".bak" and
+// 32 character salt, and suffixes of up to 20 characters such as ".lock" and
 // ".<random>.tmp". Without this, a long name fails deep inside a lock or a
 // write with an obscure "file name too long".
 const maxNameLen = 200

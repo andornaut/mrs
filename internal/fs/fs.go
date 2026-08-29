@@ -81,21 +81,6 @@ func WriteTempFile(content []byte) (string, error) {
 	return f.Name(), nil
 }
 
-// CopyFile copies a file from source to destination
-func CopyFile(src, dst string) error {
-	input, err := os.ReadFile(src)
-	if err != nil {
-		return err
-	}
-
-	// The copied content is durable even if only the parent directory could not
-	// be synced, so treat ErrDirSync as success.
-	if err := WriteFileAtomic(dst, input, 0600); err != nil && !errors.Is(err, ErrDirSync) {
-		return err
-	}
-	return nil
-}
-
 // WriteFileAtomic writes data to the file at path p by writing to a temporary
 // file in the same directory and renaming it into place, so that a crash or
 // full disk cannot leave a truncated file. If p is a symlink, the write goes

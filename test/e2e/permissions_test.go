@@ -60,21 +60,6 @@ func TestAStricterVaultModeIsKept(t *testing.T) {
 		AssertStdoutExactly("a key\na value\n")
 }
 
-func TestALoosenedBackupIsTightenedToo(t *testing.T) {
-	l := newLab(t)
-	pwFile := l.seedVault("personal", "a password", "a key\nfirst-value\n")
-	l.editorWrites("a key\nsecond-value\n")
-	l.Run("edit", "-v", "personal", "-p", pwFile).AssertOK()
-	backup := l.VaultPath("personal") + ".bak"
-
-	chmod(t, backup, 0644)
-	l.editorWrites("a key\nthird-value\n")
-	l.Run("edit", "-v", "personal", "-p", pwFile).AssertOK()
-
-	// A backup holds the same secrets as the vault, so it is guarded alike.
-	assertFileMode(t, backup, 0600)
-}
-
 func TestTheVaultDirectoryIsTightenedWhenItIsLoose(t *testing.T) {
 	l := newLab(t)
 	l.createVault("personal", "a password")

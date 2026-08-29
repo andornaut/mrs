@@ -113,7 +113,7 @@ func TestNoPlaintextIsLeftAfterAnOrdinarySession(t *testing.T) {
 	l.Run("add", "-v", "personal", "-p", pwFile).AssertOK()
 
 	assertNoPlaintextUnder(t, l.Temp, "the-secret-value", "b-value")
-	// The vault directory holds ciphertext only, backups included.
+	// The vault directory holds ciphertext only.
 	assertNoPlaintextUnder(t, l.VaultDir(), "the-secret-value", "b-value")
 	// Nor is the directory mrs made for the session left behind empty.
 	entries, err := os.ReadDir(filepath.Join(l.Temp, "mrs"))

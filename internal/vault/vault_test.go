@@ -81,13 +81,15 @@ func TestFindVaultsIgnoresEverythingThatIsNotAVault(t *testing.T) {
 	}
 }
 
-func TestDeleteLeavesOnlyTheLockFile(t *testing.T) {
+func TestDeleteLeavesTheLockFileAndFilesMrsDoesNotOwn(t *testing.T) {
 	dir := newVaultDir(t)
 	for _, name := range []string{
 		"test." + testSalt,
-		"test." + testSalt + ".bak",
 		"test." + testSalt + ".1234.tmp",
 		"test.lock",
+		// Not mrs's file: a backup an earlier release wrote, and a stray one.
+		"test." + testSalt + ".bak",
+		"notes.txt",
 	} {
 		writeFile(t, dir, name)
 	}
@@ -101,58 +103,12 @@ func TestDeleteLeavesOnlyTheLockFile(t *testing.T) {
 	}
 
 	// The lock file is left in place, as by every other command, and is
-	// harmless because it is re-lockable once no process holds it.
-	if got := entriesIn(t, dir); len(got) != 1 || got[0] != "test.lock" {
-		t.Errorf("expected only the lock file to remain after delete, got %v", got)
-	}
-}
-
-func TestDeleteReportsBackupRemovalFailure(t *testing.T) {
-	dir := newVaultDir(t)
-	writeFile(t, dir, "test."+testSalt)
-	// A non-empty directory at the backup's path makes os.Remove fail with
-	// something other than "not exist".
-	bakDir := filepath.Join(dir, "test."+testSalt+".bak")
-	if err := os.Mkdir(bakDir, 0700); err != nil {
-		t.Fatalf("failed to create backup dir: %v", err)
-	}
-	writeFile(t, bakDir, "child")
-
-	v, err := Exact("test")
-	if err != nil {
-		t.Fatalf("Exact() failed: %v", err)
-	}
-	// A leftover backup still holds the secrets, so failing to remove it is an
-	// error rather than a warning.
-	if err = Delete(v); err == nil {
-		t.Fatal("expected Delete() to return an error when the backup cannot be removed")
-	}
-	if _, statErr := os.Stat(filepath.Join(dir, "test."+testSalt)); !os.IsNotExist(statErr) {
-		t.Errorf("expected the vault itself to be deleted, stat err = %v", statErr)
-	}
-}
-
-func TestRenameReportsBackupMoveFailure(t *testing.T) {
-	dir := newVaultDir(t)
-	writeFile(t, dir, "src."+testSalt)
-	writeFile(t, dir, "src."+testSalt+".bak")
-	// Renaming a file onto a directory fails with EISDIR.
-	targetPath := filepath.Join(dir, "dst."+testSalt)
-	if err := os.Mkdir(targetPath+".bak", 0700); err != nil {
-		t.Fatalf("failed to create target backup dir: %v", err)
-	}
-
-	src, err := Exact("src")
-	if err != nil {
-		t.Fatalf("Exact() failed: %v", err)
-	}
-	if err = Rename("dst", false, src); err == nil {
-		t.Fatal("expected Rename() to return an error when the backup cannot be moved")
-	}
-	// The vault itself must still have been renamed, so that the error names
-	// what actually happened.
-	if _, statErr := os.Stat(targetPath); statErr != nil {
-		t.Errorf("expected renamed vault at %q, stat err = %v", targetPath, statErr)
+	// harmless because it is re-lockable once no process holds it. Delete
+	// removes the vault and the temporary files of an interrupted write, and
+	// nothing else: a file mrs did not write is not mrs's to remove.
+	want := []string{"notes.txt", "test." + testSalt + ".bak", "test.lock"}
+	if got := entriesIn(t, dir); !slices.Equal(got, want) {
+		t.Errorf("after delete got %v, want %v", got, want)
 	}
 }
 

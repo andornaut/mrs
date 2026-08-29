@@ -104,10 +104,6 @@ func TestEditToEmptyIsConfirmedFirst(t *testing.T) {
 		AssertStderr("Saved changes to vault personal")
 
 	l.Run("export", "-v", "personal", "-p", pwFile).AssertOK().AssertStdoutEquals("")
-	// The backup written before the save is the user's way back.
-	if _, err := os.Stat(l.VaultPath("personal") + ".bak"); err != nil {
-		t.Fatalf("expected a backup of the emptied vault: %s", err)
-	}
 }
 
 func TestEditToEmptyIsRefusedByDefault(t *testing.T) {

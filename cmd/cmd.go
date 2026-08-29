@@ -87,7 +87,7 @@ type rootOptions struct {
 	repairLock    bool
 	includeValues bool
 	namePrefix    string
-	path          string
+	file          string
 	passwordFile  string
 }
 
@@ -101,18 +101,18 @@ func (o *rootOptions) vaultArgs(args cobra.PositionalArgs) cobra.PositionalArgs 
 		if err := args(c, a); err != nil {
 			return err
 		}
-		if o.namePrefix != "" && o.path != "" {
-			return cli.Usagef("--vault and --path both name a vault; use one")
+		if o.namePrefix != "" && o.file != "" {
+			return cli.Usagef("--vault and --file both name a vault; use one")
 		}
 		return nil
 	}
 }
 
-// vault returns the vault the command was told to work in: the one --path
+// vault returns the vault the command was told to work in: the one --file
 // names, the one --vault names by prefix, or the default vault.
 func (o *rootOptions) vault() (vault.Vault, error) {
-	if o.path != "" {
-		return vault.AtPath(o.path)
+	if o.file != "" {
+		return vault.AtPath(o.file)
 	}
 	return vault.Named(o.namePrefix)
 }
@@ -262,11 +262,11 @@ func init() {
 	// The vault may be named by a prefix, which has to fit exactly one vault.
 	for _, c := range []*cobra.Command{add, edit, search, export} {
 		c.Flags().StringVarP(&opts.namePrefix, "vault", "v", "", "name of a vault, or the start of one")
-		// --path names a vault file wherever it is kept, so it has no short
-		// form: -p is the password file on every command that takes one. It
-		// completes as a filename, which is cobra's default for a flag with no
-		// completion of its own.
-		c.Flags().StringVar(&opts.path, "path", "", "path to a vault file, instead of naming one in the vault directory")
+		// --file names a vault file wherever it is kept, so it has no short
+		// form: -p is the password file on every command that takes one, and -f
+		// is --full on search. It completes as a filename, which is cobra's
+		// default for a flag with no completion of its own.
+		c.Flags().StringVar(&opts.file, "file", "", "path to a vault file, instead of naming one in the vault directory")
 		cli.AddPasswordFileFlag(c, &opts.passwordFile)
 		// None of these takes an operand that is a filename: three take no
 		// operand at all and search takes a regular expression. Without this

@@ -164,9 +164,9 @@ func init() {
 	changePassword := &cobra.Command{
 		Use:   "change-password <name>",
 		Short: "Change a vault's password",
-		Long: "Re-encrypt a vault under a new password.\n" + nameHelp + "\n" +
-			"The backup written by this save still opens with the old password, so\n" +
-			"delete it if that password is no longer trusted.",
+		Long: "Re-encrypt a vault under a new password. The vault is the only copy:\n" +
+			"once the save is done, nothing beside it still opens with the old\n" +
+			"password.\n" + nameHelp,
 		Example:               "  mrs vault change-password work\n  mrs vault change-password work -p old.pw -n new.pw",
 		Args:                  cli.RequireArgs(1, "the name of a vault"),
 		ValidArgsFunction:     cli.CompleteFirstVaultName,
@@ -179,7 +179,7 @@ func init() {
 	deleteCmd := &cobra.Command{
 		Use:   "rm <name>",
 		Short: "Delete a vault",
-		Long: "Delete a vault and its backup, after confirming.\n" + nameHelp + "\n" +
+		Long: "Delete a vault, after confirming.\n" + nameHelp + "\n" +
 			"The lock on the name is left in place, and is re-lockable once no process\n" +
 			"holds it.",
 		Example:               "  mrs vault rm work\n  mrs vault rm work --yes",
@@ -231,7 +231,7 @@ func init() {
 		Short: "List every vault",
 		Long: "List the vaults in the vault directory, sorted by name ignoring case.\n" +
 			"A vault kept elsewhere is not listed; add, edit, search and export name\n" +
-			"one with their own --path, which is a different flag from this one.",
+			"one with their own --file.",
 		Example:               "  mrs vault ls\n  mrs vault ls --path",
 		Args:                  cli.NoArgs,
 		DisableFlagsInUseLine: true,
@@ -252,7 +252,7 @@ func init() {
 	rename := &cobra.Command{
 		Use:   "rename <source-name> <target-name>",
 		Short: "Rename a vault",
-		Long: "Rename a vault, along with its backup.\n" + nameHelp + "\n" +
+		Long: "Rename a vault.\n" + nameHelp + "\n" +
 			"The vault keeps its salt and so its password: renaming does not decrypt it.",
 		Example: "  mrs vault rename work work-archive",
 		Args:    cli.RequireArgs(2, "a source name and a target name"),
@@ -297,7 +297,8 @@ func init() {
 	// --path has no short form, so that -p means the password file on every
 	// command that has one. These two never take a password, but -p meaning
 	// two things under `mrs vault` is a trap for the person typing, not for
-	// the parser.
+	// the parser. It is a bool here and names nothing: the content commands
+	// name a vault file with --file.
 	getDefault.Flags().BoolVar(&opts.isPath, "path", false, "print the vault path instead of the name")
 	list.Flags().BoolVar(&opts.isPath, "path", false, "print vault paths instead of names")
 

@@ -125,27 +125,6 @@ func TestADamagedVaultIsRefusedRatherThanGuessedAt(t *testing.T) {
 		AssertNoOutput("the-secret-value")
 }
 
-func TestATamperedBackupIsRefused(t *testing.T) {
-	l := newLab(t)
-	pwFile := l.seedVault("personal", "a password", "a key\nfirst-value\n")
-	l.editorWrites("a key\nsecond-value\n")
-	l.Run("edit", "-v", "personal", "-p", pwFile).AssertOK()
-
-	backup := l.VaultPath("personal") + ".bak"
-	tamper(t, backup, func(b []byte) []byte {
-		b[len(b)/2] ^= 0x01
-		return b
-	})
-
-	// A backup is restored by copying it over the vault, so it is protected
-	// exactly as the vault is and fails the same way.
-	copyFile(t, backup, l.VaultPath("personal"))
-	l.Run("export", "-v", "personal", "-p", pwFile).
-		AssertFailed().
-		AssertStderr("failed to decrypt").
-		AssertNoOutput("first-value")
-}
-
 func TestAWrongPasswordRevealsNothingAboutTheSecrets(t *testing.T) {
 	l := newLab(t)
 	l.seedVault("personal", "a password", "my bank\npin: 4321\n")
