@@ -16,7 +16,7 @@ func TestCreateVaultWritesAnEncryptedFile(t *testing.T) {
 
 	l.Run("vault", "add", "personal", "-p", pwFile).
 		AssertOK().
-		AssertStderr("Created vault personal")
+		AssertStderr("Added vault personal")
 
 	p := l.VaultPath("personal")
 	salt, ok := strings.CutPrefix(filepath.Base(p), "personal.")

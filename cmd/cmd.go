@@ -175,6 +175,7 @@ func init() {
 		Short: "Add secrets to a vault",
 		Long: editorHelp + "add secrets to a vault.\n" +
 			secretFormatHelp,
+		Example:               "  mrs add\n  mrs add -v work",
 		Args:                  opts.vaultArgs(noEditorArgs),
 		DisableFlagsInUseLine: true,
 		RunE: func(c *cobra.Command, args []string) error {
@@ -198,6 +199,7 @@ func init() {
 		Short: "Edit secrets in a vault",
 		Long: editorHelp + "edit the secrets in a vault.\n" +
 			secretFormatHelp,
+		Example:               "  mrs edit\n  mrs edit -v work",
 		Args:                  opts.vaultArgs(noEditorArgs),
 		DisableFlagsInUseLine: true,
 		RunE: func(c *cobra.Command, args []string) error {
@@ -222,19 +224,22 @@ func init() {
 		Long: "Search a vault for secrets whose key matches a regular expression.\n" +
 			"Several arguments are joined, so \"mrs search aws key\" matches \"aws key\"\n" +
 			"with any amount of whitespace between the words.",
+		Example: "  mrs search aws\n  mrs search -f bank account",
 		Args: opts.vaultArgs(func(c *cobra.Command, args []string) error {
 			if len(args) == 0 {
 				return cli.Usagef("%s requires a regular expression, as in \"%s aws\"", c.CommandPath(), c.CommandPath())
 			}
 			return nil
 		}),
-		RunE: opts.runSearch,
+		DisableFlagsInUseLine: true,
+		RunE:                  opts.runSearch,
 	}
 
 	export := &cobra.Command{
 		Use:                   "export",
 		Short:                 "Print every secret in a vault",
-		Long:                  "Print a vault's secrets to stdout, in the shape a vault is written in",
+		Long:                  "Print a vault's secrets to stdout, in the shape a vault is written in.",
+		Example:               "  mrs export\n  mrs export -v work > work.txt",
 		Args:                  opts.vaultArgs(cli.NoArgs),
 		DisableFlagsInUseLine: true,
 		RunE: func(c *cobra.Command, args []string) error {
@@ -263,6 +268,11 @@ func init() {
 		// completion of its own.
 		c.Flags().StringVar(&opts.path, "path", "", "path to a vault file, instead of naming one in the vault directory")
 		cli.AddPasswordFileFlag(c, &opts.passwordFile)
+		// None of these takes an operand that is a filename: three take no
+		// operand at all and search takes a regular expression. Without this
+		// cobra completes the operand as a path, which names nothing any of
+		// them accepts.
+		c.ValidArgsFunction = cobra.NoFileCompletions
 		// The only error this returns is a flag that was not registered, which
 		// the StringVarP for --vault above just registered.
 		_ = c.RegisterFlagCompletionFunc("vault", cli.CompleteVaultNames)

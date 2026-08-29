@@ -188,7 +188,7 @@ func TestATypedPasswordIsCheckedBeforeItIsConfirmed(t *testing.T) {
 	l.RunTTY("a good password\na good password\n", "vault", "add", "personal").
 		AssertOK().
 		AssertOutput("Confirm password").
-		AssertOutput("Created vault personal")
+		AssertOutput("Added vault personal")
 }
 
 // A password is typed twice and the two must agree: a typo would otherwise
@@ -200,7 +200,7 @@ func TestTwoTypedPasswordsThatDisagreeAreRefused(t *testing.T) {
 		AssertFailed().
 		AssertOutput("Confirm password").
 		AssertOutput("password mismatch").
-		AssertNoOutput("Created vault")
+		AssertNoOutput("Added vault")
 	l.Run("vault", "ls").AssertOK().AssertStdoutEquals("")
 }
 

@@ -116,13 +116,21 @@ func printLine(s string) error {
 	return err
 }
 
+// nameHelp states the rule these commands share: a name is taken whole. Said
+// once, so that the five cannot come to word it differently.
+const nameHelp = "A name is taken whole, never as a prefix."
+
 func init() {
 	opts := &vaultOptions{}
 
 	create := &cobra.Command{
 		Use:   "add <name>",
 		Short: "Add a vault",
-		Args:  cli.RequireArgs(1, "a name for the new vault"),
+		Long: "Add a vault under the given name, encrypted with a password you are asked\n" +
+			"for twice. It holds no secrets unless --import-file seeds it with some.\n" +
+			nameHelp,
+		Example: "  mrs vault add personal\n  mrs vault add work --import-file secrets.txt",
+		Args:    cli.RequireArgs(1, "a name for the new vault"),
 		// A vault that does not exist yet has no name to offer, and is not a
 		// file either.
 		ValidArgsFunction:     cobra.NoFileCompletions,
@@ -146,14 +154,18 @@ func init() {
 				return err
 			}
 			defer v.Wipe()
-			fmt.Fprintf(os.Stderr, "Created vault %s\n", v)
+			fmt.Fprintf(os.Stderr, "Added vault %s\n", v)
 			return nil
 		},
 	}
 
 	changePassword := &cobra.Command{
-		Use:                   "change-password <name>",
-		Short:                 "Change a vault's password",
+		Use:   "change-password <name>",
+		Short: "Change a vault's password",
+		Long: "Re-encrypt a vault under a new password.\n" + nameHelp + "\n" +
+			"The backup written by this save still opens with the old password, so\n" +
+			"delete it if that password is no longer trusted.",
+		Example:               "  mrs vault change-password work\n  mrs vault change-password work -n new-password",
 		Args:                  cli.RequireArgs(1, "the name of a vault"),
 		ValidArgsFunction:     cli.CompleteVaultNames,
 		DisableFlagsInUseLine: true,
@@ -163,8 +175,12 @@ func init() {
 	}
 
 	deleteCmd := &cobra.Command{
-		Use:                   "rm <name>",
-		Short:                 "Delete a vault",
+		Use:   "rm <name>",
+		Short: "Delete a vault",
+		Long: "Delete a vault and its backup, after confirming.\n" + nameHelp + "\n" +
+			"The lock on the name is left in place, and is re-lockable once no process\n" +
+			"holds it.",
+		Example:               "  mrs vault rm work\n  mrs vault rm work --yes",
 		Args:                  cli.RequireArgs(1, "the name of a vault"),
 		ValidArgsFunction:     cli.CompleteVaultNames,
 		DisableFlagsInUseLine: true,
@@ -195,7 +211,8 @@ func init() {
 	getDefault := &cobra.Command{
 		Use:                   "default",
 		Short:                 "Print the default vault",
-		Long:                  "Print the vault that $MRS_DEFAULT_VAULT_NAME names, or the only vault there is",
+		Long:                  "Print the vault that $MRS_DEFAULT_VAULT_NAME names, or the only vault there is.",
+		Example:               "  mrs vault default\n  mrs vault default --path",
 		Args:                  cli.NoArgs,
 		DisableFlagsInUseLine: true,
 		RunE: func(c *cobra.Command, args []string) error {
@@ -208,8 +225,11 @@ func init() {
 	}
 
 	list := &cobra.Command{
-		Use:                   "ls",
-		Short:                 "List all vaults",
+		Use:   "ls",
+		Short: "List every vault",
+		Long: "List the vaults in the vault directory, sorted by name ignoring case.\n" +
+			"A vault kept elsewhere and named with --path is not listed.",
+		Example:               "  mrs vault ls\n  mrs vault ls --path",
 		Args:                  cli.NoArgs,
 		DisableFlagsInUseLine: true,
 		RunE: func(c *cobra.Command, args []string) error {
@@ -229,7 +249,10 @@ func init() {
 	rename := &cobra.Command{
 		Use:   "rename <source-name> <target-name>",
 		Short: "Rename a vault",
-		Args:  cli.RequireArgs(2, "a source name and a target name"),
+		Long: "Rename a vault, along with its backup.\n" + nameHelp + "\n" +
+			"The vault keeps its salt and so its password: renaming does not decrypt it.",
+		Example: "  mrs vault rename work work-archive",
+		Args:    cli.RequireArgs(2, "a source name and a target name"),
 		// The source names a vault; the target is a name no vault has yet.
 		ValidArgsFunction:     cli.CompleteFirstVaultName,
 		DisableFlagsInUseLine: true,
@@ -260,6 +283,11 @@ func init() {
 		cli.AddForceFlag(c, &opts.repairLock)
 	}
 	cli.AddYesFlag(deleteCmd, &opts.assumeYes, "the confirmation")
+	// Neither takes an operand, so neither offers a filename for one, as
+	// create already does not.
+	for _, c := range []*cobra.Command{getDefault, list} {
+		c.ValidArgsFunction = cobra.NoFileCompletions
+	}
 
 	changePassword.Flags().StringVarP(&opts.newPasswordFile, "new-password-file", "n", "", "path to a file that contains your new password")
 	create.Flags().StringVarP(&opts.importFile, "import-file", "i", "", "path to a file that contains unencrypted secrets")

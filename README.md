@@ -67,7 +67,7 @@ Command | Does
 `mrs vault default` | Print the default vault
 `mrs vault add <name>` | Add a vault
 `mrs vault change-password <name>` | Re-encrypt under a new password
-`mrs vault rename <source> <target>` | Rename a vault
+`mrs vault rename <source-name> <target-name>` | Rename a vault
 `mrs vault rm <name>` | Delete a vault, after confirming
 
 `search` matches keys only, unless `--full`. Matching is case insensitive, and
