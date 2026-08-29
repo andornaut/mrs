@@ -263,8 +263,13 @@ func TestASaveWritesNoCopyOfTheVault(t *testing.T) {
 
 	assertNotExists(t, vaultPath+".bak")
 	assertFileMode(t, vaultPath, 0600)
+	// Sorted, because os.ReadDir orders by filename and whether the vault or
+	// its lock comes first depends on the salt the vault was given.
 	want := []string{filepath.Base(vaultPath), "personal.lock"}
-	if got := l.Vaults(); !slices.Equal(got, want) {
+	slices.Sort(want)
+	got := l.Vaults()
+	slices.Sort(got)
+	if !slices.Equal(got, want) {
 		t.Fatalf("after a save got %v, want %v", got, want)
 	}
 }
