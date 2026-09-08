@@ -4,7 +4,7 @@ go 1.27
 
 require (
 	github.com/creack/pty v1.1.24
-	github.com/gofrs/flock v0.13.0
+	github.com/gofrs/flock v0.13.1
 	github.com/spf13/cobra v1.10.2
 	golang.org/x/crypto v0.55.0
 	golang.org/x/term v0.45.0
