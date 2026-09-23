@@ -348,6 +348,53 @@ func TestASignalAtThePasswordPromptRestoresTheTerminal(t *testing.T) {
 	}
 }
 
+// Ctrl-Z at a password prompt stops mrs with echo off, and the shell puts its
+// own settings back, with echo on, while mrs is stopped. Resuming must switch
+// echo off again, or the rest of the password is shown as it is typed.
+func TestAPasswordPromptResumedAfterAStopHidesTheInputAgain(t *testing.T) {
+	l := newLab(t)
+	l.seedVault("personal", "a password", "a key\na value\n")
+
+	ptmx, tty, err := pty.Open()
+	if err != nil {
+		t.Fatalf("failed to open a terminal: %s", err)
+	}
+	defer func() { _ = ptmx.Close() }()
+	fd := int(ptmx.Fd())
+	shellState, err := term.GetState(fd)
+	if err != nil {
+		t.Fatalf("failed to read the terminal state: %s", err)
+	}
+	before := terminalState(t, fd)
+
+	cmd := l.configured(exec.Command(mrsBin, "export", "-v", "personal"))
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = tty, tty, tty
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true, Setctty: true}
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("failed to start mrs on a terminal: %s", err)
+	}
+	_ = tty.Close()
+	go func() { _, _ = io.Copy(io.Discard, ptmx) }()
+
+	waitForTerminalState(t, fd, func(s string) bool { return s != before })
+	prompting := terminalState(t, fd)
+
+	// What a shell does between Ctrl-Z and fg.
+	if err := cmd.Process.Signal(syscall.SIGSTOP); err != nil {
+		t.Fatalf("failed to stop mrs: %s", err)
+	}
+	if err := term.Restore(fd, shellState); err != nil {
+		t.Fatalf("failed to restore the shell's terminal state: %s", err)
+	}
+	if err := cmd.Process.Signal(syscall.SIGCONT); err != nil {
+		t.Fatalf("failed to resume mrs: %s", err)
+	}
+
+	waitForTerminalState(t, fd, func(s string) bool { return s == prompting })
+	_ = cmd.Process.Signal(syscall.SIGINT)
+	waitForExit(t, cmd)
+}
+
 // waitForExit waits for a signalled mrs to end.
 func waitForExit(t *testing.T, cmd *exec.Cmd) {
 	t.Helper()

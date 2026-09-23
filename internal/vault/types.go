@@ -189,8 +189,10 @@ func (v Vault) lockPath() string {
 
 // resolved returns the vault a symlink points to, which is the file
 // WriteFileAtomic replaces, or v itself when v is not a symlink or its target
-// does not resolve. Only the final component is resolved: a lock is taken on an
-// inode, so a directory reached by two paths still yields one lock.
+// does not resolve. A vault that is not itself a symlink is left as it is,
+// even in a directory reached through one: a lock is taken on an inode, so a
+// directory reached by two paths still yields one lock. One that is resolves
+// in full, as WriteFileAtomic resolves it.
 func (v Vault) resolved() Vault {
 	if fi, err := os.Lstat(v.Path()); err != nil || fi.Mode()&os.ModeSymlink == 0 {
 		return v
@@ -218,16 +220,24 @@ type UnlockedVault struct {
 // so that no copy of the plaintext exists without an owner that can wipe it: a
 // bytes.Reader hides the buffer it reads from, and nothing could reach it.
 func (v *UnlockedVault) Decrypt() ([]byte, error) {
+	b, _, err := v.DecryptForSave()
+	return b, err
+}
+
+// DecryptForSave is Decrypt for a caller that skips saving a vault it did not
+// change. stale reports that the vault must be saved regardless, because it
+// opened only with a password that a save replaces.
+func (v *UnlockedVault) DecryptForSave() (plaintext []byte, stale bool, err error) {
 	b, err := os.ReadFile(v.Path())
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	salt := v.Salt()
 	if salt == "" {
 		// A vault's key is derived from the salt in its filename, so there is
 		// nothing to decrypt with. findVaults rejects such a file, so reaching
 		// here means a Vault was built from a path directly.
-		return nil, fmt.Errorf("vault %s has no salt in its filename", v)
+		return nil, false, fmt.Errorf("vault %s has no salt in its filename", v)
 	}
 	decrypted, err := crypto.Decrypt(b, v.password, salt)
 	if err != nil {
@@ -245,6 +255,7 @@ func (v *UnlockedVault) Decrypt() ([]byte, error) {
 			decrypted, err = crypto.Decrypt(b, legacyPassword, salt)
 			crypto.Wipe(legacyPassword)
 			if err == nil {
+				stale = true
 				warnf("vault %s was encrypted with a password that ends in a newline. "+
 					"It will be re-encrypted with the trimmed password the next time you save it.",
 					v)
@@ -257,14 +268,14 @@ func (v *UnlockedVault) Decrypt() ([]byte, error) {
 		// not reported as a mistyped password. The two are the same failure to
 		// AES-GCM and nothing else tells them apart.
 		if crypto.SealedAtOldIterations(b, v.password, salt) {
-			return nil, fmt.Errorf(
+			return nil, false, fmt.Errorf(
 				"vault %s was written at a key derivation that mrs no longer reads. "+
 					"Your password is correct: open and save the vault with mrs v0.1.7, "+
 					"which re-encrypts it at the derivation mrs reads now", v)
 		}
-		return nil, fmt.Errorf("failed to decrypt vault %s", v)
+		return nil, false, fmt.Errorf("failed to decrypt vault %s", v)
 	}
-	return decrypted, nil
+	return decrypted, stale, nil
 }
 
 // Write encrypts plaintext into the vault. The caller owns plaintext and is

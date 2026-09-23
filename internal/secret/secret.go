@@ -14,7 +14,7 @@ import (
 
 // Add prompts the user to add secrets to a vault
 func Add(v vault.UnlockedVault) (int, error) {
-	b, err := readSecrets(v)
+	b, stale, err := readSecretsForSave(v)
 	if err != nil {
 		return 0, err
 	}
@@ -26,6 +26,9 @@ func Add(v vault.UnlockedVault) (int, error) {
 		return 0, err
 	}
 	defer nb.Wipe()
+	if nb.Len() == 0 && !stale {
+		return 0, nil
+	}
 
 	// Combined holds the same secrets as both, so wiping those two wipes it.
 	if err := save(v, b.Combined(nb)); err != nil {
@@ -34,24 +37,44 @@ func Add(v vault.UnlockedVault) (int, error) {
 	return nb.Len(), nil
 }
 
+// EditOutcome is what an edit session came to.
+type EditOutcome int
+
+const (
+	// Saved means the edited secrets were written to the vault.
+	Saved EditOutcome = iota
+	// Unchanged means the editor returned the secrets as they were, so nothing
+	// was written. An editor that returns before the user has saved, as a GUI
+	// editor started without its wait flag does, ends here rather than in a
+	// report that changes were saved.
+	Unchanged
+	// Cancelled means the user declined to empty the vault.
+	Cancelled
+)
+
 // Edit prompts the user to edit secrets in a vault. assumeYes accepts emptying
-// it without asking. It reports whether the changes were saved, which is false
-// when the user declines to empty the vault.
-func Edit(assumeYes bool, v vault.UnlockedVault) (bool, error) {
-	b, err := readSecrets(v)
+// it without asking.
+func Edit(assumeYes bool, v vault.UnlockedVault) (EditOutcome, error) {
+	b, stale, err := readSecretsForSave(v)
 	if err != nil {
-		return false, err
+		return 0, err
 	}
 	defer b.Wipe()
 	before := b.Len()
 
 	current := b.Bytes()
+	defer crypto.Wipe(current)
 	edited, err := editSecrets(current)
-	crypto.Wipe(current)
 	if err != nil {
-		return false, err
+		return 0, err
 	}
 	defer edited.Wipe()
+	after := edited.Bytes()
+	unchanged := bytes.Equal(after, current)
+	crypto.Wipe(after)
+	if unchanged && !stale {
+		return Unchanged, nil
+	}
 
 	// Emptying a vault discards every secret in it at once, so confirm it
 	// rather than treating it as an ordinary edit.
@@ -60,17 +83,17 @@ func Edit(assumeYes bool, v vault.UnlockedVault) (bool, error) {
 			before, cli.Plural(before, "secret"), v)
 		confirmed, err := prompt.Confirm(assumeYes, msg)
 		if err != nil {
-			return false, err
+			return 0, err
 		}
 		if !confirmed {
-			return false, nil
+			return Cancelled, nil
 		}
 	}
 
 	if err := save(v, edited); err != nil {
-		return false, err
+		return 0, err
 	}
-	return true, nil
+	return Saved, nil
 }
 
 // save warns about duplicate keys, as every save does, and writes the secrets

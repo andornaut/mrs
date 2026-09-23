@@ -7,10 +7,12 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
+	"syscall"
 
 	"golang.org/x/term"
 
@@ -147,7 +149,9 @@ func Password(msg string) ([]byte, error) {
 	// only a run that never returns leaves it off. The state is recorded for
 	// RestoreTerminal, which the signal handler calls.
 	forget := rememberTerminal(fd)
+	stopWatching := reEchoOffOnResume(fd, func() { _, _ = fmt.Fprint(out, "\n"+msg+": ") })
 	b, err := term.ReadPassword(fd)
+	stopWatching()
 	forget()
 	// Since user input is not echoed, we must add a newline manually
 	_, _ = fmt.Fprint(out, "\n")
@@ -155,6 +159,35 @@ func Password(msg string) ([]byte, error) {
 		return nil, fmt.Errorf("input error: %w", err)
 	}
 	return b, nil
+}
+
+// reEchoOffOnResume switches echo off again, and calls reprompt, each time mrs
+// is resumed after a stop while a password is being read. Ctrl-Z stops mrs
+// with echo off; the shell then restores the settings it keeps, with echo on,
+// and `fg` would otherwise resume the prompt showing the password as it is
+// typed. It returns the function that stops watching, which returns once no
+// reprompt is running.
+func reEchoOffOnResume(fd int, reprompt func()) func() {
+	resumed := make(chan os.Signal, 1)
+	signal.Notify(resumed, syscall.SIGCONT)
+	done := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Go(func() {
+		for {
+			select {
+			case <-resumed:
+				_ = disableEcho(fd)
+				reprompt()
+			case <-done:
+				return
+			}
+		}
+	})
+	return func() {
+		signal.Stop(resumed)
+		close(done)
+		wg.Wait()
+	}
 }
 
 // terminalState is the state to put the terminal back into, recorded while a

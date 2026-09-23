@@ -36,12 +36,13 @@ func TestAVaultLoosenedByHandIsTightenedWhenItIsSaved(t *testing.T) {
 	// itself is checked in internal/fs; this is the one case end to end.
 	chmod(t, path, 0644)
 
+	l.editorAppends("\nb key\nb value\n")
 	l.Run("edit", "-v", "personal", "-p", pwFile).AssertOK()
 
 	assertFileMode(t, path, 0600)
 	l.Run("export", "-v", "personal", "-p", pwFile).
 		AssertOK().
-		AssertStdoutExactly("a key\na value\n")
+		AssertStdoutExactly("a key\na value\n\nb key\nb value\n")
 }
 
 func TestAStricterVaultModeIsKept(t *testing.T) {

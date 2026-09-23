@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/andornaut/mrs/internal/crypto"
@@ -88,12 +89,31 @@ func withFlagHint(err error, flag string) error {
 	return err
 }
 
+// maxPasswordFileLen is the most a password file may hold. A password is a
+// line, so this is generous; it bounds a device or FIFO that never ends, which
+// would otherwise be read until memory runs out.
+const maxPasswordFileLen = 4096
+
+// readPasswordFile reads a password into one buffer sized up front, so that no
+// growing read leaves an unwipeable copy of it behind. The caller is
+// responsible for wiping the returned slice.
 func readPasswordFile(passwordFile string) ([]byte, error) {
-	password, err := os.ReadFile(passwordFile)
+	f, err := os.Open(passwordFile)
 	if err != nil {
 		return nil, fmt.Errorf("could not read from password file %q: %w", passwordFile, err)
 	}
+	defer func() { _ = f.Close() }()
+	buf := make([]byte, maxPasswordFileLen+1)
+	n, err := io.ReadFull(f, buf)
+	if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
+		crypto.Wipe(buf)
+		return nil, fmt.Errorf("could not read from password file %q: %w", passwordFile, err)
+	}
+	if n > maxPasswordFileLen {
+		crypto.Wipe(buf)
+		return nil, fmt.Errorf("password file %q holds more than %d bytes", passwordFile, maxPasswordFileLen)
+	}
 	// Trim trailing newlines, which editors and `echo` append, to match what
 	// the interactive password prompt returns.
-	return bytes.TrimRight(password, "\r\n"), nil
+	return bytes.TrimRight(buf[:n], "\r\n"), nil
 }

@@ -4,8 +4,11 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"regexp"
+	"slices"
 	"strings"
+	"syscall"
 
 	"github.com/spf13/cobra"
 
@@ -55,6 +58,10 @@ const (
 	exitNoMatch = 3
 )
 
+// Signals are the signals mrs catches to remove decrypted secrets before it
+// exits, reporting 128+signum as a shell does for a command a signal killed.
+var Signals = []os.Signal{syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP, syscall.SIGQUIT}
+
 // ExitCode returns the status that mrs should exit with for the given error,
 // and 0 for no error.
 func ExitCode(err error) int {
@@ -63,6 +70,15 @@ func ExitCode(err error) int {
 	}
 	if errors.Is(err, errNoMatch) {
 		return exitNoMatch
+	}
+	// A terminal sends Ctrl-C to its whole foreground process group, so the
+	// signal that interrupts mrs can kill the editor first, and the editor's
+	// failure reach here before mrs's own handler exits. The status is the
+	// same either way, rather than whichever of the two gets there first.
+	if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {
+		if ws, ok := exitErr.Sys().(syscall.WaitStatus); ok && ws.Signaled() && slices.Contains(Signals, os.Signal(ws.Signal())) {
+			return 128 + int(ws.Signal())
+		}
 	}
 	if _, ok := errors.AsType[cli.UsageError](err); ok {
 		return exitUsage
@@ -214,15 +230,18 @@ func init() {
 		DisableFlagsInUseLine: true,
 		RunE: func(c *cobra.Command, args []string) error {
 			return opts.unlocked(func(uv vault.UnlockedVault) error {
-				saved, err := secret.Edit(opts.assumeYes, uv)
+				outcome, err := secret.Edit(opts.assumeYes, uv)
 				if err != nil {
 					return err
 				}
-				if !saved {
+				switch outcome {
+				case secret.Cancelled:
 					fmt.Fprintln(os.Stderr, "Cancelled")
-					return nil
+				case secret.Unchanged:
+					fmt.Fprintf(os.Stderr, "No changes to vault %s\n", uv.Vault)
+				default:
+					fmt.Fprintf(os.Stderr, "Saved changes to vault %s\n", uv.Vault)
 				}
-				fmt.Fprintf(os.Stderr, "Saved changes to vault %s\n", uv.Vault)
 				return nil
 			})
 		},

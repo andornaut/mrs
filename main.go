@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 
 	"github.com/andornaut/mrs/cmd"
@@ -21,21 +22,11 @@ func main() {
 }
 
 func run() int {
-	// Setup cleanup
-	cleanup := func() {
-		// The decrypted secrets first. Restoring the terminal matters to
-		// whoever is at it and nothing else, so it never stands between a
-		// signal and the removal of plaintext from disk.
-		if err := fs.RemoveTempDir(); err != nil {
-			fmt.Fprintf(os.Stderr, "SECURITY WARNING: a directory that contains secrets was not removed: %s\n", err)
-		}
-		// A password prompt switches echo off, and a signal that arrives while
-		// one is open would otherwise leave the shell mrs returns to echoing
-		// nothing of what is typed.
-		if err := prompt.RestoreTerminal(); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: the terminal was not restored: %s\n", err)
-		}
-	}
+	// Once, because the signal handler and the deferred call can both reach it
+	// when a signal kills the editor and mrs alike: the second waits for the
+	// first rather than removing the directory alongside it.
+	var once sync.Once
+	cleanup := func() { once.Do(removeSecretsAndRestoreTerminal) }
 	defer cleanup()
 
 	// Handle signals to ensure cleanup on interrupt. SIGHUP matters as much as
@@ -46,7 +37,7 @@ func run() int {
 	// caught, so secrets being edited when one arrives are left in the
 	// temporary directory.
 	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP, syscall.SIGQUIT)
+	signal.Notify(c, cmd.Signals...)
 	go func() {
 		s := <-c
 		cleanup()
@@ -63,4 +54,21 @@ func run() int {
 
 	cmd.Cmd.Version = version.Version
 	return cmd.ExitCode(cmd.Cmd.Execute())
+}
+
+// removeSecretsAndRestoreTerminal is what mrs does on the way out, whether it
+// finished or a signal cut it short.
+func removeSecretsAndRestoreTerminal() {
+	// The decrypted secrets first. Restoring the terminal matters to
+	// whoever is at it and nothing else, so it never stands between a
+	// signal and the removal of plaintext from disk.
+	if err := fs.RemoveTempDir(); err != nil {
+		fmt.Fprintf(os.Stderr, "SECURITY WARNING: a directory that contains secrets was not removed: %s\n", err)
+	}
+	// A password prompt switches echo off, and a signal that arrives while
+	// one is open would otherwise leave the shell mrs returns to echoing
+	// nothing of what is typed.
+	if err := prompt.RestoreTerminal(); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: the terminal was not restored: %s\n", err)
+	}
 }

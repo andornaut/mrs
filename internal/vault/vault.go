@@ -41,6 +41,11 @@ var errNoDefault = errors.New("several vaults exist, so there is no default")
 // $MRS_DEFAULT_VAULT_NAME names, or the only vault there is.
 func Default() (Vault, error) {
 	if name := config.DefaultVaultName(); name != "" {
+		// Named, because the command that fails was given no vault name, and
+		// the one it read is in a shell profile.
+		if err := ValidateName(name); err != nil {
+			return "", fmt.Errorf("$MRS_DEFAULT_VAULT_NAME: %w", err)
+		}
 		// Exactly, unlike --vault. A name written into a shell profile is read
 		// on every run and looked at almost never, so a typo that reaches a
 		// neighbouring vault would go on doing so unnoticed.
@@ -332,13 +337,30 @@ func Rename(targetName string, repair bool, sourceVault Vault) error {
 		return err
 	}
 
-	// The source is locked under a different name, so the two locks cannot be
-	// the same one, and both are taken without blocking.
-	unlock, err := claimName(repair, targetName)
+	// Both locks are taken without blocking, so the target's must not be the
+	// source's, which the caller holds. It is on a case-insensitive
+	// filesystem when the names differ only in case, and taking it again would
+	// refuse the rename as locked by another process. The source's lock then
+	// covers the target name, which only needs to be free.
+	targetLock, err := toPath(targetName)
 	if err != nil {
 		return err
 	}
-	defer unlock()
+	if sameFile(sourceVault.lockPath(), Vault(targetLock).lockPath()) {
+		exists, existsErr := Exists(targetName)
+		if existsErr != nil {
+			return existsErr
+		}
+		if exists {
+			return fmt.Errorf("a vault named %q already exists", targetName)
+		}
+	} else {
+		unlock, claimErr := claimName(repair, targetName)
+		if claimErr != nil {
+			return claimErr
+		}
+		defer unlock()
+	}
 
 	// The target keeps the source's salt, because renaming does not decrypt.
 	targetPath, err := toPathWithSalt(targetName, sourceVault.Salt())
@@ -359,6 +381,20 @@ func Rename(targetName string, repair bool, sourceVault Vault) error {
 		warnf("failed to remove temporary files for vault %s: %s", sourceName, err)
 	}
 	return nil
+}
+
+// sameFile reports whether a and b are one file, and false when either cannot
+// be read.
+func sameFile(a, b string) bool {
+	fa, err := os.Stat(a)
+	if err != nil {
+		return false
+	}
+	fb, err := os.Stat(b)
+	if err != nil {
+		return false
+	}
+	return os.SameFile(fa, fb)
 }
 
 // warnf prints a best-effort warning to stderr for cleanup failures that must

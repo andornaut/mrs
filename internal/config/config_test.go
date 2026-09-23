@@ -205,3 +205,30 @@ func TestTheTempDirParentMustBeAPrivateDirectory(t *testing.T) {
 		}
 	})
 }
+
+// A relative data directory would name a different directory from each working
+// directory. $MRS_HOME is refused, naming the variable; a relative
+// $XDG_DATA_HOME is ignored, as the XDG Base Directory specification says.
+func TestARelativeDataDirectoryIsNotUsed(t *testing.T) {
+	t.Run("MRS_HOME", func(t *testing.T) {
+		for _, v := range []string{"~/secrets", "secrets"} {
+			t.Setenv("MRS_HOME", v)
+			if _, err := VaultDir(); err == nil || !strings.Contains(err.Error(), "$MRS_HOME must be an absolute path") {
+				t.Errorf("VaultDir() with MRS_HOME=%q error = %v, want a refusal naming the variable", v, err)
+			}
+		}
+	})
+	t.Run("XDG_DATA_HOME", func(t *testing.T) {
+		home := t.TempDir()
+		t.Setenv("MRS_HOME", "")
+		t.Setenv("HOME", home)
+		t.Setenv("XDG_DATA_HOME", "rel/data")
+		got, err := VaultDir()
+		if err != nil {
+			t.Fatalf("VaultDir() error: %v", err)
+		}
+		if want := filepath.Join(home, ".local", "share", "mrs", "vaults"); got != want {
+			t.Errorf("VaultDir() = %q, want %q", got, want)
+		}
+	})
+}

@@ -360,3 +360,40 @@ func TestChangePasswordChecksTheCurrentPasswordFirst(t *testing.T) {
 		t.Error("ChangePassword() asked for a new password before checking the current one")
 	}
 }
+
+// On a case-insensitive filesystem a name that differs from another only in
+// case has the same lock file. Renaming a vault to such a name must not refuse
+// itself as locked by another process over the lock its caller holds. The
+// filesystem is stood in for by a symlink joining the two lock files.
+func TestRenamingToANameThatSharesTheSourcesLockSucceeds(t *testing.T) {
+	dir := newVaultDir(t)
+	uv, err := Create(nil, false, "Work", givenPassword("a password"))
+	if err != nil {
+		t.Fatalf("Create() error: %v", err)
+	}
+	unlock, err := uv.ExclusiveLockRepair(false)
+	if err != nil {
+		t.Fatalf("ExclusiveLockRepair() error: %v", err)
+	}
+	defer unlock()
+	if err := os.Symlink("Work.lock", filepath.Join(dir, "work.lock")); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Rename("work", false, uv.Vault); err != nil {
+		t.Fatalf("Rename() error: %v", err)
+	}
+	if _, err := Exact("work"); err != nil {
+		t.Errorf("Exact(\"work\") after the rename: %v", err)
+	}
+}
+
+// An invalid $MRS_DEFAULT_VAULT_NAME is reported as the variable's, since the
+// command that fails was given no vault name of its own.
+func TestAnInvalidDefaultVaultNameNamesTheVariable(t *testing.T) {
+	newVaultDir(t)
+	t.Setenv("MRS_DEFAULT_VAULT_NAME", "my vault")
+	if _, err := Named(""); err == nil || !strings.HasPrefix(err.Error(), "$MRS_DEFAULT_VAULT_NAME: ") {
+		t.Errorf("Named(\"\") error = %v, want it to name $MRS_DEFAULT_VAULT_NAME", err)
+	}
+}

@@ -47,8 +47,14 @@ make install
   `mrs` warns when they do, on import as well as on save.
 - A file given to `vault add --import-file` is stored as it is written, so it
   keeps its own order until the vault is next saved.
-- `mrs add` and `mrs edit` open `$VISUAL` or `$EDITOR` on the secrets alone,
-  and encrypt whatever the editor saves. `mrs add --help` states the format.
+- A byte order mark at the start of a file is dropped rather than read as part
+  of the first key.
+- `mrs add` opens `$VISUAL` or `$EDITOR` on an empty buffer and `mrs edit` on
+  the secrets alone, and each encrypts whatever the editor saves.
+  `mrs add --help` states the format.
+- An edit that leaves the secrets as they were writes nothing and reports no
+  changes, as does an add that adds nothing. An editor that returns before
+  you save, such as `code` without `--wait`, is reported the same way.
 
 ## Commands
 
@@ -83,7 +89,7 @@ Flag | Commands | Supplies
 --- | --- | ---
 `-v`, `--vault` | `add`, `edit`, `search`, `export` | the vault's name, or the start of it
 `--file` | `add`, `edit`, `search`, `export` | the path of a vault file, instead of a name
-`-p`, `--password-file` | `add`, `edit`, `search`, `export`, `vault add`, `vault change-password` | a file holding the vault's current password
+`-p`, `--password-file` | `add`, `edit`, `search`, `export`, `vault add`, `vault change-password` | a file holding the vault's password (the new vault's, on `vault add`)
 `-n`, `--new-password-file` | `vault change-password` | a file holding the password to change it to
 `-i`, `--import-file` | `vault add` | a file of unencrypted secrets to seed the vault with
 `-f`, `--full` | `search` | match values as well as keys
@@ -131,7 +137,8 @@ vaults, or several with nothing configured, is an error rather than a guess.
 `vault add`, `vault change-password`, `vault rename` and `vault rm` name
 the vault as an argument instead, and take no prefix at all: each one creates,
 re-keys, moves or destroys a vault, so a name short of the whole thing must not
-reach a neighbouring one. They name the closest vault when given a prefix:
+reach a neighbouring one. Those that name an existing vault suggest the
+closest one when given a prefix:
 
 ```text
 $ mrs vault rm alph
@@ -168,8 +175,9 @@ through the link and through `--file` has one lock. A vault outside the vault di
   newline. A password mrs will not accept is refused before it asks you to
   confirm it.
 - Without a terminal there is nothing to prompt from, so pass
-  `--password-file`. A trailing newline is trimmed, so `echo 'pw' > pw` works;
-  other whitespace is part of the password.
+  `--password-file`. Trailing newlines and carriage returns are trimmed, so
+  `echo 'a password' > pw` works; other whitespace is part of the password. A
+  password file holds at most 4096 bytes.
 - A save replaces the vault and writes no copy of it. Nothing beside a vault
   goes on opening with a password it no longer has, and nothing is a way back
   from an edit: keep your own copy if you want one.
@@ -206,7 +214,7 @@ Code | Meaning
 --- | ---
 0 | it worked
 1 | it failed
-2 | it was typed wrong: no command, an unknown command or flag, or a missing or extra argument
+2 | it was typed wrong: no command, an unknown command or flag, a missing or extra argument, or `--vault` and `--file` together or empty
 3 | `mrs search` ran and matched nothing
 128+n | a signal ended it: 129 SIGHUP, 130 SIGINT, 131 SIGQUIT, 143 SIGTERM
 
@@ -234,8 +242,8 @@ Path | Holds
   SIGKILL or a power loss leaves the decrypted file behind, because nothing runs
   to remove it and no later run sweeps it up; delete it by hand.
 
-A file in the vault directory that is not shaped like a vault is named on stderr
-and otherwise left alone. A vault that mrs cannot read is a different thing: a
+A file in the vault directory that is not shaped like a vault, other than a
+hidden one, is named on stderr and otherwise left alone. A vault that mrs cannot read is a different thing: a
 symlink whose target is not there, a directory where a file should be, or a
 vault written by a release that derived its key differently. Those are listed
 with a warning saying why, keep their names, and can be renamed or deleted like
@@ -247,7 +255,7 @@ Environment variable | Description
 --- | ---
 `EDITOR` | The editor `add` and `edit` open, if `$VISUAL` is unset (default: the first of `vim`, `vi`, `nano` that is on `PATH`; `vim` is run with `-n -i NONE`, so it keeps no swap file and no viminfo). May carry arguments, such as `vim -n`. Quote a path that contains spaces.
 `MRS_DEFAULT_VAULT_NAME` | The vault to use when `--vault` is not given. Must name one exactly (default: the only vault, if there is just one).
-`MRS_HOME` | Where vaults are stored (default: `$XDG_DATA_HOME/mrs`, else `$HOME/.local/share/mrs`).
+`MRS_HOME` | Where vaults are stored, as an absolute path (default: `$XDG_DATA_HOME/mrs` when that is absolute, else `$HOME/.local/share/mrs`).
 `MRS_TEMP` | Where decrypted secrets are written while an editor is open (default: `$XDG_RUNTIME_DIR`, else the system temporary directory).
 `VISUAL` | The editor `add` and `edit` open, in preference to `$EDITOR`. Same form.
 

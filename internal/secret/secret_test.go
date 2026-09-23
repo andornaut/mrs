@@ -263,3 +263,17 @@ func FuzzParseSecretsRoundTripsWhatItAccepts(f *testing.F) {
 		}
 	})
 }
+
+// A byte order mark, which an editor on Windows may begin a file with, is not
+// part of the first key: the key is found by a search anchored at its start,
+// and is the same key as one typed without it.
+func TestALeadingByteOrderMarkIsNotPartOfTheFirstKey(t *testing.T) {
+	b, err := parseSecrets([]byte("\xef\xbb\xbfaws\r\nkey one\r\n\r\nbank\r\nacct\r\n"))
+	if err != nil {
+		t.Fatalf("parseSecrets() error: %v", err)
+	}
+	defer b.Wipe()
+	if got, want := string(b.Bytes()), "aws\nkey one\n\nbank\nacct\n"; got != want {
+		t.Errorf("parseSecrets() wrote back %q, want %q", got, want)
+	}
+}

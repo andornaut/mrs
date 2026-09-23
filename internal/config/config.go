@@ -130,9 +130,17 @@ func splitArgs(s string) []string {
 // baseDir returns the directory where mrs stores its files
 func baseDir() (string, error) {
 	if b := os.Getenv("MRS_HOME"); b != "" {
+		// A relative path, including one that begins with a ~ the shell did
+		// not expand, would name a different directory from each working
+		// directory, so the vaults found would depend on where mrs was run.
+		if !filepath.IsAbs(b) {
+			return "", fmt.Errorf("$MRS_HOME must be an absolute path, but is %q", b)
+		}
 		return b, nil
 	}
-	if dataDir := os.Getenv("XDG_DATA_HOME"); dataDir != "" {
+	// The XDG Base Directory specification makes a relative path here invalid,
+	// to be ignored.
+	if dataDir := os.Getenv("XDG_DATA_HOME"); filepath.IsAbs(dataDir) {
 		return filepath.Join(dataDir, "mrs"), nil
 	}
 	homeDir, err := os.UserHomeDir()

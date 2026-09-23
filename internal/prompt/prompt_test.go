@@ -133,6 +133,30 @@ func TestAMissingPasswordFileIsNamed(t *testing.T) {
 	}
 }
 
+// A password file is read up to a bound, so that a device or FIFO that never
+// ends is refused rather than read until memory runs out.
+func TestAPasswordFileLongerThanTheBoundIsRefused(t *testing.T) {
+	exact := filepath.Join(t.TempDir(), "exact")
+	if err := os.WriteFile(exact, bytes.Repeat([]byte("a"), maxPasswordFileLen), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := readPasswordFile(exact); err != nil || len(got) != maxPasswordFileLen {
+		t.Fatalf("readPasswordFile() of %d bytes = %d bytes, %v", maxPasswordFileLen, len(got), err)
+	}
+
+	for _, p := range []string{"/dev/zero", filepath.Join(t.TempDir(), "long")} {
+		if p != "/dev/zero" {
+			if err := os.WriteFile(p, bytes.Repeat([]byte("a"), maxPasswordFileLen+1), 0600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		_, err := readPasswordFile(p)
+		if err == nil || !strings.Contains(err.Error(), "holds more than") {
+			t.Errorf("readPasswordFile(%q) error = %v, want a refusal", p, err)
+		}
+	}
+}
+
 // acceptAny stands in for the caller's validator where a test is not about
 // what a password has to be.
 func acceptAny([]byte) error { return nil }

@@ -38,7 +38,7 @@ func RemoveTempFiles(p string) error {
 	var errs []error
 	for _, e := range entries {
 		name := e.Name()
-		if !strings.HasPrefix(name, prefix) || !strings.HasSuffix(name, TempSuffix) {
+		if !isTempName(prefix, name) {
 			continue
 		}
 		if err := os.Remove(filepath.Join(dir, name)); err != nil && !errors.Is(err, os.ErrNotExist) {
@@ -46,6 +46,27 @@ func RemoveTempFiles(p string) error {
 		}
 	}
 	return errors.Join(errs...)
+}
+
+// isTempName reports whether name is one os.CreateTemp gives the pattern
+// prefix+"*"+TempSuffix: the random part is decimal digits. Matching exactly
+// that leaves alone a file of the user's that happens to share the prefix and
+// the suffix, which beside a symlinked vault's target can be anything.
+func isTempName(prefix, name string) bool {
+	middle, ok := strings.CutPrefix(name, prefix)
+	if !ok {
+		return false
+	}
+	middle, ok = strings.CutSuffix(middle, TempSuffix)
+	if !ok || middle == "" {
+		return false
+	}
+	for _, r := range middle {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 // RemoveTempDir removes the temporary directory if it was created.

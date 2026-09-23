@@ -74,7 +74,7 @@ func TestEditShowsTheEditorTheExistingSecrets(t *testing.T) {
 
 	l.Run("edit", "-v", "personal", "-p", pwFile).
 		AssertOK().
-		AssertStderr("Saved changes to vault personal")
+		AssertStderr("No changes to vault personal")
 
 	if got := input(); !strings.Contains(got, "a value") {
 		t.Fatalf("expected edit to show the existing secrets, got %q", got)
@@ -408,4 +408,24 @@ func TestDuplicateKeysAreReportedOnImport(t *testing.T) {
 	l.Run("vault", "add", "other", "-p", pwFile, "-i", clean).
 		AssertOK().
 		AssertNoOutput("share the key")
+}
+
+// An edit that changes nothing writes nothing, and says so. An editor that
+// returns before the user has saved, as a GUI editor started without its wait
+// flag does, is then reported as no change rather than as a save.
+func TestAnEditThatChangesNothingWritesNothing(t *testing.T) {
+	l := newLab(t)
+	pwFile := l.seedVault("personal", "a password", "a key\na value\n")
+	path := l.VaultPath("personal")
+	before := readFile(t, path)
+	l.Setenv("FAKE_EDITOR_MODE", "noop")
+
+	l.Run("edit", "-v", "personal", "-p", pwFile).
+		AssertOK().
+		AssertStderr("No changes to vault personal").
+		AssertNoOutput("Saved changes")
+
+	if readFile(t, path) != before {
+		t.Error("expected an unchanged edit to leave the vault's bytes as they were")
+	}
 }

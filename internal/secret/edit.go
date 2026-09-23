@@ -12,14 +12,29 @@ import (
 )
 
 func readSecrets(v vault.UnlockedVault) (*secretList, error) {
-	plaintext, err := v.Decrypt()
+	b, _, err := readSecretsForSave(v)
+	return b, err
+}
+
+// readSecretsForSave is readSecrets for a caller that skips saving a vault it
+// did not change. stale reports that the vault must be saved regardless: it
+// opened only with a password a save replaces, or it holds secrets in a shape
+// other than the one a save writes, as an import does until it is next saved.
+func readSecretsForSave(v vault.UnlockedVault) (*secretList, bool, error) {
+	plaintext, stale, err := v.DecryptForSave()
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	// parseSecrets copies what it keeps, so the vault's own plaintext is wiped
 	// here rather than left for the secretList's owner to remember.
 	defer crypto.Wipe(plaintext)
-	return parseSecrets(plaintext)
+	b, err := parseSecrets(plaintext)
+	if err != nil {
+		return nil, false, err
+	}
+	written := b.Bytes()
+	defer crypto.Wipe(written)
+	return b, stale || !bytes.Equal(written, plaintext), nil
 }
 
 func editSecrets(content []byte) (*secretList, error) {
@@ -63,6 +78,9 @@ func parseSecrets(plaintext []byte) (*secretList, error) {
 		size    int      // its size once each line is terminated by '\n'
 		secrets []secret
 	)
+	// A file saved by an editor on Windows may begin with a byte order mark,
+	// which would otherwise become part of the first key.
+	plaintext = bytes.TrimPrefix(plaintext, []byte("\ufeff"))
 	flush := func() {
 		if size == 0 {
 			return
@@ -84,6 +102,8 @@ func parseSecrets(plaintext []byte) (*secretList, error) {
 		// time would shed another on each save from a value that ends in one.
 		line = bytes.TrimRight(line, "\r\n")
 		if len(line) > maxLineLen {
+			// The secrets already copied have no other owner to wipe them.
+			newSecretList(secrets).Wipe()
 			return nil, fmt.Errorf("a line of secrets is longer than the %d MiB limit", maxLineLen/(1024*1024))
 		}
 		// A line is stored as it was typed. Only the test for a blank line -

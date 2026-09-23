@@ -269,3 +269,36 @@ func TestAnAtomicWriteReplacesTheFileRatherThanRewritingIt(t *testing.T) {
 		t.Errorf("a reader of the old file read %q, want %q", got, "old contents")
 	}
 }
+
+// The sweep removes only the names WriteFileAtomic's temporary files are given.
+// Beside a symlinked vault's target it runs in a directory of the user's, where
+// a file that merely shares the prefix and the suffix is theirs.
+func TestRemoveTempFilesRemovesOnlyAtomicWriteLeftovers(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "report.txt")
+	f, err := os.CreateTemp(dir, "report.txt.*"+TempSuffix)
+	if err != nil {
+		t.Fatal(err)
+	}
+	leftover := f.Name()
+	_ = f.Close()
+	kept := []string{"report.txt.draft.tmp", "report.txt..tmp", "report.txt.12a.tmp", "other.txt.123.tmp"}
+	for _, name := range kept {
+		if err := os.WriteFile(filepath.Join(dir, name), nil, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if err := RemoveTempFiles(p); err != nil {
+		t.Fatalf("RemoveTempFiles() error = %v", err)
+	}
+
+	if _, err := os.Stat(leftover); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("expected %s to be removed, stat err = %v", leftover, err)
+	}
+	for _, name := range kept {
+		if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
+			t.Errorf("expected %s to be kept, stat err = %v", name, err)
+		}
+	}
+}

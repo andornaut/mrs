@@ -46,9 +46,14 @@ func TestSavingTheSameSecretsTwiceWritesDifferentBytes(t *testing.T) {
 	pwFile := l.seedVault("personal", "a password", "a key\na value\n")
 	path := l.VaultPath("personal")
 
-	// The editor changes nothing, so both saves encrypt identical plaintext
-	// under the same key: the salt is in the filename and does not change.
+	// An edit that changes nothing is not saved, so the secrets are changed
+	// and changed back: the first and last saves encrypt identical plaintext
+	// under the same key, since the salt is in the filename and does not
+	// change.
 	first := readFile(t, path)
+	l.editorWrites("another key\nanother value\n")
+	l.Run("edit", "-v", "personal", "-p", pwFile).AssertOK()
+	l.editorWrites("a key\na value\n")
 	l.Run("edit", "-v", "personal", "-p", pwFile).AssertOK()
 	second := readFile(t, path)
 
