@@ -363,8 +363,9 @@ func TestChangePasswordChecksTheCurrentPasswordFirst(t *testing.T) {
 
 // On a case-insensitive filesystem a name that differs from another only in
 // case has the same lock file. Renaming a vault to such a name must not refuse
-// itself as locked by another process over the lock its caller holds. The
-// filesystem is stood in for by a symlink joining the two lock files.
+// itself as locked by another process over the lock its caller holds. On a
+// case-sensitive filesystem that is stood in for by a symlink joining the two
+// lock files.
 func TestRenamingToANameThatSharesTheSourcesLockSucceeds(t *testing.T) {
 	dir := newVaultDir(t)
 	uv, err := Create(nil, false, "Work", givenPassword("a password"))
@@ -376,8 +377,10 @@ func TestRenamingToANameThatSharesTheSourcesLockSucceeds(t *testing.T) {
 		t.Fatalf("ExclusiveLockRepair() error: %v", err)
 	}
 	defer unlock()
-	if err := os.Symlink("Work.lock", filepath.Join(dir, "work.lock")); err != nil {
-		t.Fatal(err)
+	if _, err := os.Stat(filepath.Join(dir, "work.lock")); err != nil {
+		if err := os.Symlink("Work.lock", filepath.Join(dir, "work.lock")); err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	if err := Rename("work", false, uv.Vault); err != nil {
