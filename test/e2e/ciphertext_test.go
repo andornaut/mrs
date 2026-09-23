@@ -89,16 +89,11 @@ func TestADamagedVaultIsRefusedRatherThanGuessedAt(t *testing.T) {
 	pwFile := l.seedVault("personal", "a password", "a key\nthe-secret-value\n")
 	path := l.VaultPath("personal")
 
+	// Two shapes end to end; every shape of damage is refused in
+	// internal/crypto, where the key is derived once rather than per case.
 	damage := map[string]func([]byte) []byte{
-		"one bit":      func(b []byte) []byte { b[len(b)/2] ^= 0x01; return b },
-		"truncated":    func(b []byte) []byte { return b[:len(b)/2] },
-		"emptied":      func(b []byte) []byte { return nil },
-		"appended to":  func(b []byte) []byte { return append(b, 'x') },
-		"overwritten":  func(b []byte) []byte { return bytes.Repeat([]byte{'x'}, len(b)) },
-		"single byte":  func(b []byte) []byte { return []byte{'x'} },
-		"first byte":   func(b []byte) []byte { b[0] ^= 0xff; return b },
-		"last byte":    func(b []byte) []byte { b[len(b)-1] ^= 0xff; return b },
-		"leading null": func(b []byte) []byte { return append([]byte{0}, b...) },
+		"one bit":   func(b []byte) []byte { b[len(b)/2] ^= 0x01; return b },
+		"truncated": func(b []byte) []byte { return b[:len(b)/2] },
 	}
 	for name, f := range damage {
 		before := tamper(t, path, f)

@@ -30,7 +30,8 @@ type vaultOptions struct {
 	assumeYes       bool
 	repairLock      bool
 	importFile      string
-	isPath          bool
+	defaultPath     bool
+	listPaths       bool
 	newPasswordFile string
 	passwordFile    string
 }
@@ -101,8 +102,8 @@ func (o *vaultOptions) runChangePassword(name string) error {
 
 // display returns what these commands print for a vault: its path when --path
 // was given, and its name otherwise.
-func (o *vaultOptions) display(v vault.Vault) string {
-	if o.isPath {
+func display(path bool, v vault.Vault) string {
+	if path {
 		return v.Path()
 	}
 	return v.Name()
@@ -223,7 +224,7 @@ func init() {
 			if err != nil {
 				return err
 			}
-			return printLine(opts.display(v))
+			return printLine(display(opts.defaultPath, v))
 		},
 	}
 
@@ -242,7 +243,7 @@ func init() {
 				return err
 			}
 			for _, v := range vaults {
-				if err := printLine(opts.display(v)); err != nil {
+				if err := printLine(display(opts.listPaths, v)); err != nil {
 					return err
 				}
 			}
@@ -300,8 +301,8 @@ func init() {
 	// two things under `mrs vault` is a trap for the person typing, not for
 	// the parser. It is a bool here and names nothing: the content commands
 	// name a vault file with --file.
-	getDefault.Flags().BoolVar(&opts.isPath, "path", false, "print the vault path instead of the name")
-	list.Flags().BoolVar(&opts.isPath, "path", false, "print vault paths instead of names")
+	getDefault.Flags().BoolVar(&opts.defaultPath, "path", false, "print the vault path instead of the name")
+	list.Flags().BoolVar(&opts.listPaths, "path", false, "print vault paths instead of names")
 
 	Cmd.AddCommand(changePassword, create, deleteCmd, getDefault, list, rename)
 }

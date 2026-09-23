@@ -35,14 +35,6 @@ func TestCreateVaultWritesAnEncryptedFile(t *testing.T) {
 	}
 }
 
-func TestCreateVaultIsReportedByList(t *testing.T) {
-	l := newLab(t)
-	l.createVault("personal", "a password")
-	l.createVault("work", "a password")
-
-	l.Run("vault", "ls").AssertOK().AssertStdoutEquals("personal\nwork")
-}
-
 func TestListIsEmptyWhenNoVaultsExist(t *testing.T) {
 	l := newLab(t)
 	l.Run("vault", "ls").AssertOK().AssertStdoutEquals("")

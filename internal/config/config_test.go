@@ -64,7 +64,8 @@ func TestTheEditorCommandIsSplitAsAShellWouldSplitIt(t *testing.T) {
 		{"Tab between arguments", "emacsclient\t-t", []string{"emacsclient", "-t"}},
 		{"Quoted path", `"/opt/my editor/bin" -n`, []string{"/opt/my editor/bin", "-n"}},
 		{"Single quoted argument", `vim '+set noswapfile'`, []string{"vim", "+set noswapfile"}},
-		{"Escaped space", `/opt/my\ editor`, []string{"/opt/my editor"}},
+		{"Escaped space", `/opt/my\ editor -n`, []string{"/opt/my editor", "-n"}},
+		{"Argument that is only an escape", `vim \+`, []string{"vim", "+"}},
 		{"Backslash inside single quotes", `vim '\n'`, []string{"vim", `\n`}},
 	}
 
@@ -147,11 +148,12 @@ func TestTheTempDirParentMustBeAPrivateDirectory(t *testing.T) {
 		base := t.TempDir()
 		t.Setenv("MRS_TEMP", base)
 		parent := filepath.Join(base, "mrs")
-		if err := os.Mkdir(parent, 0755); err != nil {
+		if err := os.Mkdir(parent, 0705); err != nil {
 			t.Fatal(err)
 		}
-		// The umask may have narrowed the Mkdir.
-		if err := os.Chmod(parent, 0755); err != nil {
+		// The umask may have narrowed the Mkdir. Open to others and not to the
+		// group, so that clearing only the group's bits would leave it open.
+		if err := os.Chmod(parent, 0705); err != nil {
 			t.Fatal(err)
 		}
 

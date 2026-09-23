@@ -180,3 +180,46 @@ func TestWipingLeavesEveryByteZero(t *testing.T) {
 		}
 	}
 }
+
+// Damage of every shape is refused rather than opened into part of a secret, or
+// into something that looks like one.
+func TestDamagedCiphertextIsRefused(t *testing.T) {
+	t.Parallel()
+	salt, err := Salt()
+	if err != nil {
+		t.Fatal(err)
+	}
+	k, err := key([]byte("a password"), salt, CurrentIterations)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sealed, err := seal([]byte("a key\nthe-secret-value\n"), k)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tt := range []struct {
+		name   string
+		damage func([]byte) []byte
+	}{
+		{"one bit", func(b []byte) []byte { b[len(b)/2] ^= 0x01; return b }},
+		{"truncated", func(b []byte) []byte { return b[:len(b)/2] }},
+		{"emptied", func([]byte) []byte { return nil }},
+		{"appended to", func(b []byte) []byte { return append(b, 'x') }},
+		{"overwritten", func(b []byte) []byte { return bytes.Repeat([]byte{'x'}, len(b)) }},
+		{"single byte", func([]byte) []byte { return []byte{'x'} }},
+		{"shorter than a nonce", func(b []byte) []byte { return b[:11] }},
+		{"first byte", func(b []byte) []byte { b[0] ^= 0xff; return b }},
+		{"last byte", func(b []byte) []byte { b[len(b)-1] ^= 0xff; return b }},
+		{"leading null", func(b []byte) []byte { return append([]byte{0}, b...) }},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := open(tt.damage(bytes.Clone(sealed)), k)
+			if err == nil {
+				t.Fatalf("open() of ciphertext %s = %q, want a refusal", tt.name, got)
+			}
+		})
+	}
+	if _, err := open(sealed, k); err != nil {
+		t.Fatalf("open() of the undamaged ciphertext: %v", err)
+	}
+}

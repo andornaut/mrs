@@ -280,8 +280,11 @@ func TestRemoveTempFilesRemovesOnlyAtomicWriteLeftovers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	leftover := f.Name()
+	leftovers := []string{f.Name(), filepath.Join(dir, "report.txt.09.tmp")}
 	_ = f.Close()
+	if err := os.WriteFile(leftovers[1], nil, 0600); err != nil {
+		t.Fatal(err)
+	}
 	kept := []string{"report.txt.draft.tmp", "report.txt..tmp", "report.txt.12a.tmp", "other.txt.123.tmp"}
 	for _, name := range kept {
 		if err := os.WriteFile(filepath.Join(dir, name), nil, 0600); err != nil {
@@ -293,8 +296,10 @@ func TestRemoveTempFilesRemovesOnlyAtomicWriteLeftovers(t *testing.T) {
 		t.Fatalf("RemoveTempFiles() error = %v", err)
 	}
 
-	if _, err := os.Stat(leftover); !errors.Is(err, os.ErrNotExist) {
-		t.Errorf("expected %s to be removed, stat err = %v", leftover, err)
+	for _, p := range leftovers {
+		if _, err := os.Stat(p); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("expected %s to be removed, stat err = %v", p, err)
+		}
 	}
 	for _, name := range kept {
 		if _, err := os.Stat(filepath.Join(dir, name)); err != nil {

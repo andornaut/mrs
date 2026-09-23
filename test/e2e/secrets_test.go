@@ -385,6 +385,26 @@ func assertNoPlaintextUnder(t *testing.T, dir string, secrets ...string) {
 	}
 }
 
+// Keys are duplicates when they are exactly equal, not when they differ only in
+// case, and each group is reported once with its size. The case-only pairs sit
+// together in the sorted list, which is where a looser comparison would join
+// them, and a group of three is where one secret could be counted twice.
+func TestOnlyExactlyEqualKeysAreReportedAsDuplicates(t *testing.T) {
+	l := newLab(t)
+	pwFile := l.PasswordFile("pw", "a password")
+	importFile := l.WriteFile("import.txt",
+		"a\n1\n\na\n2\n\nA\n3\n\nA\n4\n\nB\n5\n\nb\n6\n\nc\n7\n\nc\n8\n\nc\n9\n")
+
+	l.Run("vault", "add", "personal", "-p", pwFile, "-i", importFile).
+		AssertOK().
+		AssertStderr(`2 secrets share the key "a"`).
+		AssertStderr(`2 secrets share the key "A"`).
+		AssertStderr(`3 secrets share the key "c"`).
+		AssertNoOutput(`the key "B"`).
+		AssertNoOutput(`the key "b"`).
+		AssertNoOutput(`2 secrets share the key "c"`)
+}
+
 func TestDuplicateKeysAreReportedOnImport(t *testing.T) {
 	l := newLab(t)
 	pwFile := l.PasswordFile("pw", "a password")

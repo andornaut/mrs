@@ -193,3 +193,33 @@ func TestExclusiveLockRepairFixesAnUnusableLockFile(t *testing.T) {
 		})
 	}
 }
+
+// A save whose only failure is syncing the directory afterwards has replaced
+// the vault, so it is reported as saved rather than as a failed save.
+func TestASaveThatCannotSyncTheDirectoryStillSucceeds(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("running as root, which permission bits do not restrain")
+	}
+	dir := t.TempDir()
+	uv := Vault(filepath.Join(dir, "work."+testSalt)).Unlocked([]byte("a password"))
+	// Writable and enterable but not readable, so the vault is written and
+	// renamed and only opening the directory to sync it fails.
+	if err := os.Chmod(dir, 0300); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dir, 0700) })
+
+	if err := uv.Write([]byte("a key\na value\n")); err != nil {
+		t.Fatalf("Write() error = %v, want the save reported as done", err)
+	}
+	if err := os.Chmod(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	got, err := uv.Decrypt()
+	if err != nil {
+		t.Fatalf("Decrypt() error: %v", err)
+	}
+	if string(got) != "a key\na value\n" {
+		t.Errorf("Decrypt() = %q, want what was written", got)
+	}
+}

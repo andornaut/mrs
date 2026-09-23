@@ -292,7 +292,8 @@ func TestSearchReportsAMissingVault(t *testing.T) {
 
 	l.Run("search", "-v", "nosuch", "-p", pwFile, "github").
 		AssertFailed().
-		AssertStderr("not found")
+		AssertStderr("not found").
+		AssertStderr(`Run "mrs vault add <name>" to create one`)
 }
 
 func TestSearchLeavesTheVaultUntouched(t *testing.T) {

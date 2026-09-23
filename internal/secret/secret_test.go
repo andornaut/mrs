@@ -98,9 +98,13 @@ func TestSecretsAreSortedIgnoringCase(t *testing.T) {
 		secret("apple\nvalue"),
 		secret("Banana\nvalue"),
 		secret("app\nvalue"),
+		// Already in order, so the sort compares the longer key against the
+		// one it begins, which the pair above does not reach.
+		secret("aws\nvalue"),
+		secret("aws key\nvalue"),
 	})
 
-	want := []string{"app", "apple", "Banana", "Zebra"}
+	want := []string{"app", "apple", "aws", "aws key", "Banana", "Zebra"}
 	got := make([]string, 0, b.Len())
 	for _, s := range b.secrets {
 		got = append(got, string(s.Key()))
@@ -275,5 +279,18 @@ func TestALeadingByteOrderMarkIsNotPartOfTheFirstKey(t *testing.T) {
 	defer b.Wipe()
 	if got, want := string(b.Bytes()), "aws\nkey one\n\nbank\nacct\n"; got != want {
 		t.Errorf("parseSecrets() wrote back %q, want %q", got, want)
+	}
+}
+
+// A line of exactly the limit is a secret; one byte more is refused.
+func TestALineIsRefusedOnlyBeyondTheLimit(t *testing.T) {
+	line := bytes.Repeat([]byte("x"), maxLineLen)
+	b, err := parseSecrets(append([]byte("key\n"), append(line, '\n')...))
+	if err != nil {
+		t.Fatalf("parseSecrets() of a %d-byte line: %v", maxLineLen, err)
+	}
+	b.Wipe()
+	if _, err := parseSecrets(append([]byte("key\nx"), append(line, '\n')...)); err == nil {
+		t.Fatalf("parseSecrets() of a %d-byte line succeeded, want a refusal", maxLineLen+1)
 	}
 }

@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -374,7 +375,27 @@ func TestAPasswordPromptResumedAfterAStopHidesTheInputAgain(t *testing.T) {
 		t.Fatalf("failed to start mrs on a terminal: %s", err)
 	}
 	_ = tty.Close()
-	go func() { _, _ = io.Copy(io.Discard, ptmx) }()
+	var (
+		mu     sync.Mutex
+		output bytes.Buffer
+	)
+	go func() {
+		buf := make([]byte, 4096)
+		for {
+			n, err := ptmx.Read(buf)
+			mu.Lock()
+			output.Write(buf[:n])
+			mu.Unlock()
+			if err != nil {
+				return
+			}
+		}
+	}()
+	prompts := func() int {
+		mu.Lock()
+		defer mu.Unlock()
+		return strings.Count(output.String(), "Vault password:")
+	}
 
 	waitForTerminalState(t, fd, func(s string) bool { return s != before })
 	prompting := terminalState(t, fd)
@@ -391,6 +412,9 @@ func TestAPasswordPromptResumedAfterAStopHidesTheInputAgain(t *testing.T) {
 	}
 
 	waitForTerminalState(t, fd, func(s string) bool { return s == prompting })
+	// The prompt is asked again, since the shell's output since the stop has
+	// scrolled it out of the line being typed on.
+	waitFor(t, 10*time.Second, func() bool { return prompts() >= 2 }, "the prompt was not asked again")
 	_ = cmd.Process.Signal(syscall.SIGINT)
 	waitForExit(t, cmd)
 }
