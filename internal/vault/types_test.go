@@ -223,3 +223,28 @@ func TestASaveThatCannotSyncTheDirectoryStillSucceeds(t *testing.T) {
 		t.Errorf("Decrypt() = %q, want what was written", got)
 	}
 }
+
+// A lock file that cannot be created is a matter of its directory's
+// permissions, which --force cannot repair, so it is not suggested.
+func TestALockFileThatCannotBeCreatedDoesNotSuggestForce(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("running as root, which permission bits do not restrain")
+	}
+	dir := t.TempDir()
+	v := Vault(filepath.Join(dir, "work."+testSalt))
+	if err := os.Chmod(dir, 0500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dir, 0700) })
+
+	_, err := v.ExclusiveLockRepair(false)
+	if !errors.Is(err, ErrLockUnusable) {
+		t.Fatalf("ExclusiveLockRepair() error = %v, want ErrLockUnusable", err)
+	}
+	if strings.Contains(err.Error(), "--force") {
+		t.Errorf("ExclusiveLockRepair() error = %q, want no --force suggestion", err)
+	}
+	if !strings.Contains(err.Error(), dir+", cannot be written to") {
+		t.Errorf("ExclusiveLockRepair() error = %q, want it to name %s", err, dir)
+	}
+}

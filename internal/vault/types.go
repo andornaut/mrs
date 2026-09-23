@@ -110,6 +110,13 @@ func (v Vault) ExclusiveLockRepair(repair bool) (func(), error) {
 		// called again after a repair: a second failure must not tell a user
 		// who already typed --force to use it.
 		if errors.Is(err, ErrLockUnusable) {
+			// Repairing makes a lock file that exists usable. One that does
+			// not exist could not be created, which is its directory's
+			// permissions, and nothing --force does reaches those.
+			if _, statErr := os.Lstat(v.lockPath()); errors.Is(statErr, os.ErrNotExist) {
+				return nil, fmt.Errorf("%w. The directory it belongs in, %s, cannot be written to",
+					err, filepath.Dir(v.lockPath()))
+			}
 			return nil, fmt.Errorf("%w. Use --force to repair it", err)
 		}
 		return nil, err
