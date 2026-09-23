@@ -178,8 +178,28 @@ func (v Vault) repairLock() error {
 // silently turn lock files into stray entries the listing warns about.
 const lockSuffix = ".lock"
 
+// lockPath returns the path of the vault's lock file, beside the file a save
+// replaces: a vault that is a symlink is locked beside its target, so that a
+// vault reached through the link and through --file shares one lock. One whose
+// target does not resolve is locked beside the link.
 func (v Vault) lockPath() string {
-	return filepath.Join(filepath.Dir(v.Path()), v.Name()+lockSuffix)
+	r := v.resolved()
+	return filepath.Join(filepath.Dir(r.Path()), r.Name()+lockSuffix)
+}
+
+// resolved returns the vault a symlink points to, which is the file
+// WriteFileAtomic replaces, or v itself when v is not a symlink or its target
+// does not resolve. Only the final component is resolved: a lock is taken on an
+// inode, so a directory reached by two paths still yields one lock.
+func (v Vault) resolved() Vault {
+	if fi, err := os.Lstat(v.Path()); err != nil || fi.Mode()&os.ModeSymlink == 0 {
+		return v
+	}
+	target, err := filepath.EvalSymlinks(v.Path())
+	if err != nil {
+		return v
+	}
+	return Vault(target)
 }
 
 func (v Vault) basename() string {
@@ -257,7 +277,8 @@ func (v *UnlockedVault) Write(plaintext []byte) error {
 
 	// Remove leftover temporary files from previously interrupted writes.
 	// Callers hold the vault's exclusive lock, so any matching file is stale.
-	_ = fs.RemoveTempFiles(v.Path())
+	// They are beside the target of a symlinked vault, where the write goes.
+	_ = fs.RemoveTempFiles(v.resolved().Path())
 
 	if err := fs.WriteFileAtomic(v.Path(), ciphertext, 0600); err != nil {
 		if errors.Is(err, fs.ErrDirSync) {
@@ -274,15 +295,4 @@ func (v *UnlockedVault) Write(plaintext []byte) error {
 // Wipe wipes the vault's password from memory.
 func (v *UnlockedVault) Wipe() {
 	crypto.Wipe(v.password)
-}
-
-func (v *UnlockedVault) changePassword(p []byte) error {
-	b, err := v.Decrypt()
-	if err != nil {
-		return err
-	}
-	defer crypto.Wipe(b)
-
-	v.password = p
-	return v.Write(b)
 }

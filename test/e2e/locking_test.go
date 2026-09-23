@@ -276,3 +276,53 @@ func TestAReleasedLockDoesNotBlockLaterWrites(t *testing.T) {
 		t.Fatalf("expected the later edit to be saved, got %q", got)
 	}
 }
+
+// A vault in the vault directory that is a symlink is locked beside its target,
+// which is the file a save replaces, so that the vault reached through the
+// link and through --file is one vault to the lock.
+func TestASymlinkedVaultSharesItsLockWithItsTarget(t *testing.T) {
+	l := newLab(t)
+	pwFile := l.seedVault("work", "a password", "a key\na value\n")
+	p := outside(l, "work", "work")
+	if err := os.Symlink(p, filepath.Join(l.VaultDir(), filepath.Base(p))); err != nil {
+		t.Fatalf("failed to link the vault: %s", err)
+	}
+
+	release := l.heldVault("work", pwFile)
+	defer release()
+
+	l.Run("edit", "--file", p, "-p", pwFile).
+		AssertFailed().
+		AssertStderr("locked by another process")
+}
+
+// An interrupted save of a symlinked vault leaves its temporary file beside the
+// target, where the write went, so removing or renaming the link sweeps it
+// from there.
+func TestRemovingOrRenamingASymlinkedVaultSweepsTheTargetsTemporaryFiles(t *testing.T) {
+	for _, args := range [][]string{
+		{"vault", "rm", "work", "--yes"},
+		{"vault", "rename", "work", "renamed"},
+	} {
+		t.Run(args[1], func(t *testing.T) {
+			l := newLab(t)
+			l.seedVault("work", "a password", "a key\na value\n")
+			p := outside(l, "work", "work")
+			if err := os.Symlink(p, filepath.Join(l.VaultDir(), filepath.Base(p))); err != nil {
+				t.Fatalf("failed to link the vault: %s", err)
+			}
+			stale := p + ".123456.tmp"
+			if err := os.WriteFile(stale, []byte("stale"), 0600); err != nil {
+				t.Fatalf("failed to write %s: %s", stale, err)
+			}
+
+			l.Run(args...).AssertOK()
+
+			assertNotExists(t, stale)
+			// The link is what was removed or renamed; the target stays.
+			if _, err := os.Stat(p); err != nil {
+				t.Errorf("expected the target to be left in place, stat err = %s", err)
+			}
+		})
+	}
+}

@@ -87,7 +87,7 @@ jobs:
       # everything about the binary matches a tagged one, and a dev archive is
       # meant to report the "dev" its source declares rather than a version.
       - name: Build
-        run: go build -ldflags="-s -w" -trimpath -o mrs ./main.go
+        run: go build -ldflags="-s -w" -trimpath -o mrs .
         env:
           CGO_ENABLED: 0
           GOOS: ${{ matrix.goos }}

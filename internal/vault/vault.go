@@ -75,7 +75,7 @@ func Default() (Vault, error) {
 // would read one vault while the user meant another, and write to one while
 // they meant another.
 //
-// It is the one way a command resolves a vault by name or prefix: --path
+// It is the one way a command resolves a vault by name or prefix: --file
 // names one outright through AtPath, and the commands that create, destroy or
 // move a vault take a whole name and use Exact.
 func Named(prefix string) (Vault, error) {
@@ -176,16 +176,36 @@ func named(vs []Vault, name string) (Vault, bool) {
 }
 
 // ChangePassword changes a vault's password, re-keying it under the new one.
-func ChangePassword(oldPassword, newPassword []byte, v Vault) (UnlockedVault, error) {
-	if err := ValidateNewPassword(newPassword); err != nil {
+//
+// The new password is asked for through a function, called only once the
+// current password has decrypted the vault, so that nobody types a new password
+// for a change a mistyped current one cannot make. The caller owns both
+// passwords; on success the returned UnlockedVault carries the new one.
+func ChangePassword(oldPassword []byte, newPassword func() ([]byte, error), v Vault) (UnlockedVault, error) {
+	u := v.Unlocked(oldPassword)
+	b, err := u.Decrypt()
+	if err != nil {
 		return UnlockedVault{}, err
 	}
-	u := v.Unlocked(oldPassword)
-	if err := u.changePassword(newPassword); err != nil {
+	defer crypto.Wipe(b)
+
+	pw, err := newPassword()
+	if err != nil {
+		return UnlockedVault{}, err
+	}
+	if err := ValidateNewPassword(pw); err != nil {
+		return UnlockedVault{}, err
+	}
+	u.password = pw
+	if err := u.Write(b); err != nil {
 		return UnlockedVault{}, err
 	}
 	return u, nil
 }
+
+// nameLocked is the test seam between claimName taking the lock and asking
+// again whether the name is taken, which is where a concurrent claim lands.
+var nameLocked = func(string) {}
 
 // claimName takes the lock on name and confirms that no vault holds the name,
 // returning the unlock the caller releases once its write is done. The lock
@@ -218,6 +238,7 @@ func claimName(repair bool, name string) (func(), error) {
 	if err != nil {
 		return nil, err
 	}
+	nameLocked(name)
 	exists, err := Exists(name)
 	if err != nil {
 		unlock()
@@ -281,6 +302,10 @@ func Create(contents []byte, repair bool, name string, password func() ([]byte, 
 
 // Delete deletes a vault, along with its temporary files
 func Delete(v Vault) error {
+	// Resolved before the removal, which takes a symlink's target out of reach:
+	// an interrupted save of a symlinked vault leaves its temporary files
+	// beside the target, and the caller holds the lock taken there.
+	written := v.resolved().Path()
 	if err := os.Remove(v.Path()); err != nil {
 		return err
 	}
@@ -289,7 +314,7 @@ func Delete(v Vault) error {
 	// ciphertext, not secrets. The lock file is left in place, as by other
 	// commands, and is harmless because it is re-lockable once no process holds
 	// it.
-	if err := fs.RemoveTempFiles(v.Path()); err != nil {
+	if err := fs.RemoveTempFiles(written); err != nil {
 		warnf("failed to remove temporary files for vault %s: %s", v.Name(), err)
 	}
 	return nil
@@ -320,6 +345,8 @@ func Rename(targetName string, repair bool, sourceVault Vault) error {
 	if err != nil {
 		return err
 	}
+	// Resolved before the rename, as Delete does.
+	written := sourceVault.resolved().Path()
 	if err := os.Rename(sourceVault.Path(), targetPath); err != nil {
 		return err
 	}
@@ -328,7 +355,7 @@ func Rename(targetName string, repair bool, sourceVault Vault) error {
 	// interrupted leaves one holding ciphertext, not secrets. The lock file is
 	// left in place, as by other commands, and is harmless because it is
 	// re-lockable once no process holds it.
-	if err := fs.RemoveTempFiles(sourceVault.Path()); err != nil {
+	if err := fs.RemoveTempFiles(written); err != nil {
 		warnf("failed to remove temporary files for vault %s: %s", sourceName, err)
 	}
 	return nil

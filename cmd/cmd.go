@@ -101,8 +101,18 @@ func (o *rootOptions) vaultArgs(args cobra.PositionalArgs) cobra.PositionalArgs 
 		if err := args(c, a); err != nil {
 			return err
 		}
-		if o.namePrefix != "" && o.file != "" {
+		vaultGiven, fileGiven := c.Flags().Changed("vault"), c.Flags().Changed("file")
+		if vaultGiven && fileGiven {
 			return cli.Usagef("--vault and --file both name a vault; use one")
+		}
+		// An empty value is refused rather than read as the flag being absent,
+		// which would fall back to the default vault: `--file "$UNSET"` in a
+		// script must not act on a vault it did not name.
+		if vaultGiven && o.namePrefix == "" {
+			return cli.Usagef("--vault requires a vault name")
+		}
+		if fileGiven && o.file == "" {
+			return cli.Usagef("--file requires a path")
 		}
 		return nil
 	}
@@ -298,13 +308,28 @@ func init() {
 func (o *rootOptions) runSearch(c *cobra.Command, args []string) error {
 	// The shell split the query into arguments, so they are rejoined to match
 	// any amount of whitespace between the words; quoting one argument keeps
-	// its whitespace exact. (?i) makes the match case-insensitive.
-	rs := "(?i)" + strings.Join(args, "\\s+")
-	// What the user typed, for reporting back. The pattern above adds a
-	// case-insensitivity flag and joins the arguments, so echoing it would show
-	// them a search they did not write.
+	// its whitespace exact. Each is grouped, so that an alternation in one
+	// argument does not swallow the others. (?i) makes the match
+	// case-insensitive, and (?m) lets ^ and $ match at each line of a --full
+	// search.
+	groups := make([]string, len(args))
+	for i, a := range args {
+		// Compiled alone first, so that an error names the argument the user
+		// typed rather than the pattern built from it.
+		if _, err := regexp.Compile(a); err != nil {
+			return fmt.Errorf("invalid regular expression %q: %w", a, err)
+		}
+		groups[i] = "(?:" + a + ")"
+		// A \Q that the argument never closes would quote the group's closing
+		// parenthesis too. \E closes it, and is added only then, because a \E
+		// with no \Q open is an error.
+		if _, err := regexp.Compile(groups[i]); err != nil {
+			groups[i] = "(?:" + a + `\E)`
+		}
+	}
+	// What the user typed, for reporting back.
 	query := strings.Join(args, " ")
-	r, err := regexp.Compile(rs)
+	r, err := regexp.Compile("(?im)" + strings.Join(groups, `\s+`))
 	if err != nil {
 		return fmt.Errorf("invalid regular expression %q: %w", query, err)
 	}

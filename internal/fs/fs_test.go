@@ -2,6 +2,7 @@ package fs
 
 import (
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -10,7 +11,10 @@ import (
 )
 
 func TestATemporaryFileIsWrittenReadableOnlyByItsOwner(t *testing.T) {
-	// Ensure config points to a test-specific temp dir
+	// The temp dir is remembered for the process, so a previous test's must be
+	// forgotten for this one's MRS_TEMP to be read.
+	config.Reset()
+	t.Cleanup(config.Reset)
 	tmpRoot := t.TempDir()
 	t.Setenv("MRS_TEMP", tmpRoot)
 
@@ -225,5 +229,43 @@ func TestCleanupOfARunThatDecryptedNothingCreatesNoTempDir(t *testing.T) {
 	}
 	if len(entries) != 0 {
 		t.Errorf("expected the cleanup to create nothing, found %v", entries)
+	}
+}
+
+// A write replaces the file rather than rewriting it in place: a reader that
+// opened the old file goes on reading the old contents, and never a mixture of
+// old and new or a truncated file.
+func TestAnAtomicWriteReplacesTheFileRatherThanRewritingIt(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "vault")
+	if err := os.WriteFile(p, []byte("old contents"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.Stat(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reader, err := os.Open(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = reader.Close() }()
+
+	if err = WriteFileAtomic(p, []byte("new"), 0600); err != nil {
+		t.Fatalf("WriteFileAtomic() error = %v", err)
+	}
+
+	after, err := os.Stat(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if os.SameFile(before, after) {
+		t.Error("WriteFileAtomic() rewrote the file in place rather than replacing it")
+	}
+	got, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "old contents" {
+		t.Errorf("a reader of the old file read %q, want %q", got, "old contents")
 	}
 }

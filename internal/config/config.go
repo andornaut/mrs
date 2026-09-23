@@ -1,11 +1,13 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"unicode"
 )
 
@@ -60,13 +62,26 @@ func Editor() []string {
 	}
 	for _, name := range fallbackEditors {
 		if _, err := lookPath(name); err == nil {
-			return []string{name}
+			return fallbackArgv(name)
 		}
 	}
 	// Nothing on PATH: name the first fallback anyway, so that the failure the
 	// user is shown is an editor that could not be run rather than an empty
 	// command.
-	return []string{fallbackEditors[0]}
+	return fallbackArgv(fallbackEditors[0])
+}
+
+// fallbackArgv returns the command for a fallback editor. Vim is told to keep
+// no swap file (-n) and no viminfo (-i NONE), which would otherwise store the
+// registers a secret was yanked or deleted into, and the searches typed, in
+// the user's home directory after mrs has removed the file. Only vim is given
+// them: vi may be an implementation that rejects them, and an editor the user
+// named is run as they named it.
+func fallbackArgv(name string) []string {
+	if name == "vim" {
+		return []string{name, "-n", "-i", "NONE"}
+	}
+	return []string{name}
 }
 
 func splitArgs(s string) []string {
@@ -175,11 +190,20 @@ func GetTempDir() (string, error) {
 	if p == "" {
 		p = os.Getenv("XDG_RUNTIME_DIR")
 	}
+	parent := "mrs"
 	if p == "" {
 		p = os.TempDir()
+		// The system temporary directory is shared by every user, so the
+		// parent is named for this one: another user's must not stand in the
+		// way of this user's.
+		parent = fmt.Sprintf("mrs-%d", os.Geteuid())
 	}
-	p = filepath.Join(p, "mrs")
+	p = filepath.Join(p, parent)
 	if err := os.MkdirAll(p, 0700); err != nil {
+		errTempDir = err
+		return "", errTempDir
+	}
+	if err := ensurePrivateDir(p); err != nil {
 		errTempDir = err
 		return "", errTempDir
 	}
@@ -190,6 +214,28 @@ func GetTempDir() (string, error) {
 	}
 	tempDir = p
 	return tempDir, nil
+}
+
+// ensurePrivateDir refuses p unless it is a directory, not a symlink to one,
+// owned by this user, and narrows its mode to 0700. MkdirAll accepts a
+// directory that already exists whoever made it, and a parent another user
+// owns lets that user rename the per-run directory holding plaintext and put
+// one of their own in its place.
+func ensurePrivateDir(p string) error {
+	fi, err := os.Lstat(p)
+	if err != nil {
+		return err
+	}
+	st, ok := fi.Sys().(*syscall.Stat_t)
+	if !fi.IsDir() || !ok || int(st.Uid) != os.Geteuid() {
+		return fmt.Errorf("temporary directory %s is not a directory owned by you; remove it or set $MRS_TEMP", p)
+	}
+	if fi.Mode().Perm()&0077 != 0 {
+		if err := os.Chmod(p, fi.Mode().Perm()&^0077); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // CreatedTempDir returns the temporary directory this run created, or the empty

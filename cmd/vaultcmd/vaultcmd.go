@@ -65,8 +65,8 @@ func (o *vaultOptions) runChangePassword(name string) error {
 
 	// A new password given as a file is read and checked before the current one
 	// is asked for: a change that cannot succeed must not first make the user
-	// type the password they already have. One that is typed cannot be checked
-	// before it is typed, so that order is unchanged.
+	// type the password they already have. One that is typed is asked for only
+	// once the current password has decrypted the vault.
 	var newPassword []byte
 	defer func() { crypto.Wipe(newPassword) }()
 	// vault.ChangePassword checks the new password again, which is the answer
@@ -83,13 +83,14 @@ func (o *vaultOptions) runChangePassword(name string) error {
 	}
 	defer crypto.Wipe(oldPassword)
 
-	if newPassword == nil {
-		if newPassword, err = prompt.GivenOrPromptNewPassword(vault.ValidateNewPassword, o.newPasswordFile); err != nil {
-			return err
+	uv, err := vault.ChangePassword(oldPassword, func() ([]byte, error) {
+		if newPassword != nil {
+			return newPassword, nil
 		}
-	}
-
-	uv, err := vault.ChangePassword(oldPassword, newPassword, v)
+		pw, promptErr := prompt.GivenOrPromptNewPassword(vault.ValidateNewPassword, o.newPasswordFile)
+		newPassword = pw
+		return pw, promptErr
+	}, v)
 	if err != nil {
 		return err
 	}

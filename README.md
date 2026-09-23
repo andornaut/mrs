@@ -70,8 +70,10 @@ Command | Does
 `mrs vault rename <source-name> <target-name>` | Rename a vault
 `mrs vault rm <name>` | Delete a vault, after confirming
 
-`search` matches keys only, unless `--full`. Matching is case insensitive, and
-arguments are joined, so `mrs search bank account` matches `bank account`.
+`search` matches keys only, unless `--full`, where `^` and `$` match at each
+line. Matching is case insensitive, and arguments are joined, so
+`mrs search bank account` matches `bank account`. Each argument is a pattern of
+its own, so `mrs search 'aws|gcp' prod` requires `prod`.
 `vault ls` prints names sorted ignoring case, as secrets are sorted by key.
 `mrs --version` prints the version, and `-h`, `--help` works on every command.
 
@@ -143,7 +145,7 @@ Names may hold ASCII letters, digits, `_` and `-`, up to 200 characters.
 `add`, `edit`, `search` and `export` also take `--file`, which names a vault
 file directly: one on removable media, or in a directory that is synced
 elsewhere. Nothing is looked up, so it names no prefix and falls back to no
-default, and it is refused alongside `-v`:
+default, and it is refused alongside `-v`, as is an empty `--file` or `-v`:
 
 ```console
 $ mrs search --file /mnt/usb/work.<salt> aws
@@ -156,7 +158,8 @@ the salt the filename carries and there is nowhere else to read it from. Copy or
 move a vault with its salt intact and it opens with the password it always had.
 Its lock file and the temporary file of a save are its siblings, so
 `mrs` writes in the directory the vault is in and needs to be able to write
-there. A vault outside the vault directory is not listed by `vault ls`, and
+there. A vault that is a symlink is locked beside its target, so a vault reached
+through the link and through `--file` has one lock. A vault outside the vault directory is not listed by `vault ls`, and
 `$MRS_DEFAULT_VAULT_NAME` cannot name one.
 
 ## Passwords
@@ -216,7 +219,7 @@ Path | Holds
 --- | ---
 `$MRS_HOME/vaults/<name>.<salt>` | the vault, mode 0600
 `$MRS_HOME/vaults/<name>.lock` | the lock on the name, empty
-`$MRS_TEMP/mrs/<run>/` | decrypted secrets while an editor is open, mode 0700
+`$MRS_TEMP/mrs/<run>/` | decrypted secrets while an editor is open, mode 0700 (`mrs-<uid>` in place of `mrs` under the system temporary directory)
 
 - The vault directory is mode 0700. `mrs` narrows permissions it finds wider
   than that and never widens them.
@@ -224,6 +227,8 @@ Path | Holds
   and every write is atomic, so a reader never sees a half-written vault.
 - A lock file outlives the vault it is named for, because removing it would
   leave two processes holding two different files.
+- The directory holding the per-run directories must be a directory the user
+  owns, not a symlink, and is narrowed to 0700.
 - The temporary directory is created only when secrets are decrypted, and
   removed when `mrs` exits, including on SIGHUP, SIGINT, SIGQUIT and SIGTERM. A
   SIGKILL or a power loss leaves the decrypted file behind, because nothing runs
@@ -240,7 +245,7 @@ any other; only the commands that have to read them fail.
 
 Environment variable | Description
 --- | ---
-`EDITOR` | The editor `add` and `edit` open, if `$VISUAL` is unset (default: the first of `vim`, `vi`, `nano` that is on `PATH`). May carry arguments, such as `vim -n`. Quote a path that contains spaces.
+`EDITOR` | The editor `add` and `edit` open, if `$VISUAL` is unset (default: the first of `vim`, `vi`, `nano` that is on `PATH`; `vim` is run with `-n -i NONE`, so it keeps no swap file and no viminfo). May carry arguments, such as `vim -n`. Quote a path that contains spaces.
 `MRS_DEFAULT_VAULT_NAME` | The vault to use when `--vault` is not given. Must name one exactly (default: the only vault, if there is just one).
 `MRS_HOME` | Where vaults are stored (default: `$XDG_DATA_HOME/mrs`, else `$HOME/.local/share/mrs`).
 `MRS_TEMP` | Where decrypted secrets are written while an editor is open (default: `$XDG_RUNTIME_DIR`, else the system temporary directory).

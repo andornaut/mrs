@@ -3,6 +3,7 @@ package e2e
 import (
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/pbkdf2"
 	"crypto/rand"
 	"crypto/sha256"
 	"io"
@@ -11,8 +12,6 @@ import (
 	"slices"
 	"strings"
 	"testing"
-
-	"golang.org/x/crypto/pbkdf2"
 
 	"github.com/andornaut/mrs/internal/crypto"
 )
@@ -23,7 +22,10 @@ import (
 // that package currently does.
 func gcm(t *testing.T, password, salt string, iterations int) cipher.AEAD {
 	t.Helper()
-	k := pbkdf2.Key([]byte(password), []byte(salt), iterations, 32, sha256.New)
+	k, err := pbkdf2.Key(sha256.New, password, []byte(salt), iterations, 32)
+	if err != nil {
+		t.Fatalf("failed to derive the fixture key: %s", err)
+	}
 	block, err := aes.NewCipher(k)
 	if err != nil {
 		t.Fatalf("failed to build the fixture cipher: %s", err)
@@ -231,23 +233,31 @@ func TestAnOldVaultKeepsItsSaltWhenRenamed(t *testing.T) {
 }
 
 func TestAPasswordThatEndsInANewlineIsStillAccepted(t *testing.T) {
-	l := newLab(t)
 	// Before trailing newlines were trimmed from a password file, `echo a
-	// password > pw` encrypted the vault with the newline included.
-	salt := strings.Repeat("b", 32)
-	l.writeVaultFile("personal."+salt, "a password\n", "a key\na-value\n", salt, crypto.CurrentIterations)
-	pwFile := l.PasswordFile("pw", "a password\n")
+	// password > pw` encrypted the vault with the newline included, and a
+	// password file written on Windows with a CRLF.
+	for _, tt := range []struct{ name, ending string }{
+		{"LF", "\n"},
+		{"CRLF", "\r\n"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			l := newLab(t)
+			salt := strings.Repeat("b", 32)
+			l.writeVaultFile("personal."+salt, "a password"+tt.ending, "a key\na-value\n", salt, crypto.CurrentIterations)
+			pwFile := l.PasswordFile("pw", "a password"+tt.ending)
 
-	l.Run("export", "-v", "personal", "-p", pwFile).
-		AssertOK().
-		AssertStdoutExactly("a key\na-value\n").
-		AssertStderr("ends in a newline")
+			l.Run("export", "-v", "personal", "-p", pwFile).
+				AssertOK().
+				AssertStdoutExactly("a key\na-value\n").
+				AssertStderr("ends in a newline")
 
-	// Saving re-encrypts with the trimmed password, so the notice stops.
-	l.Run("edit", "-v", "personal", "-p", pwFile).AssertOK()
-	l.Run("export", "-v", "personal", "-p", pwFile).
-		AssertOK().
-		AssertNoOutput("ends in a newline")
+			// Saving re-encrypts with the trimmed password, so the notice stops.
+			l.Run("edit", "-v", "personal", "-p", pwFile).AssertOK()
+			l.Run("export", "-v", "personal", "-p", pwFile).
+				AssertOK().
+				AssertNoOutput("ends in a newline")
+		})
+	}
 }
 
 // A save replaces the vault and writes nothing else. There is no copy of the

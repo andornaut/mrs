@@ -314,3 +314,49 @@ func TestAtPathRefusesAVaultItCannotRead(t *testing.T) {
 		}
 	}
 }
+
+// The check made once the name's lock is held is the one that decides: a vault
+// that took the name between the first check and the lock must refuse the
+// claim, or two files would carry one name.
+func TestANameTakenBeforeTheLockIsHeldIsRefused(t *testing.T) {
+	dir := newVaultDir(t)
+	nameLocked = func(name string) { writeFile(t, dir, name+"."+testSalt) }
+	t.Cleanup(func() { nameLocked = func(string) {} })
+
+	asked := false
+	_, err := Create(nil, false, "work", func() ([]byte, error) {
+		asked = true
+		return []byte("a password"), nil
+	})
+	if err == nil || !strings.Contains(err.Error(), "already exists") {
+		t.Fatalf("Create() error = %v, want a refusal naming the vault as existing", err)
+	}
+	if asked {
+		t.Error("Create() asked for a password for a name it could not claim")
+	}
+	if got, want := entriesIn(t, dir), []string{"work." + testSalt, "work.lock"}; !slices.Equal(got, want) {
+		t.Errorf("vault directory = %v, want %v", got, want)
+	}
+}
+
+// A new password is asked for only once the current one has decrypted the
+// vault, so that a mistyped current password costs no further typing.
+func TestChangePasswordChecksTheCurrentPasswordFirst(t *testing.T) {
+	newVaultDir(t)
+	uv, err := Create([]byte("a key\na value\n"), false, "work", givenPassword("a password"))
+	if err != nil {
+		t.Fatalf("Create() error: %v", err)
+	}
+
+	asked := false
+	_, err = ChangePassword([]byte("wrong password"), func() ([]byte, error) {
+		asked = true
+		return []byte("a new password"), nil
+	}, uv.Vault)
+	if err == nil {
+		t.Fatal("ChangePassword() with a wrong current password succeeded")
+	}
+	if asked {
+		t.Error("ChangePassword() asked for a new password before checking the current one")
+	}
+}

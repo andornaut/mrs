@@ -118,3 +118,26 @@ func TestAPathThatDoesNotNameAVaultFileIsRefused(t *testing.T) {
 		AssertFailed().
 		AssertStderr("not found")
 }
+
+// An empty --file or --vault is a wrong invocation, not an absent flag: with
+// one vault, falling back to the default would act on a vault the command did
+// not name, as `--file "$UNSET"` in a script would.
+func TestAnEmptyVaultOrFileIsAWrongInvocation(t *testing.T) {
+	l := newLab(t)
+	pwFile := l.seedVault("work", "a password", searchVault)
+
+	for _, tt := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"export", "--file", ""}, "--file requires a path"},
+		{[]string{"export", "-v", ""}, "--vault requires a vault name"},
+		{[]string{"edit", "--file", ""}, "--file requires a path"},
+		{[]string{"search", "--file", "", "github"}, "--file requires a path"},
+	} {
+		l.Run(append(tt.args, "-p", pwFile)...).
+			AssertUsageError().
+			AssertStderr(tt.want).
+			AssertNoOutput("abc123")
+	}
+}

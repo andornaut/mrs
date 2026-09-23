@@ -12,7 +12,7 @@ builds:
     ignore:
       - goos: darwin
         goarch: amd64
-    main: ./main.go
+    main: .
     binary: mrs
     # -trimpath keeps the build machine's absolute paths out of the binary, and
     # -s -w drops the symbol table and DWARF. Declaring ldflags replaces

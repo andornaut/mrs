@@ -3,6 +3,7 @@ package crypto
 import (
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/pbkdf2"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
@@ -10,8 +11,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-
-	"golang.org/x/crypto/pbkdf2"
 )
 
 const (
@@ -142,7 +141,13 @@ func key(password []byte, salt string, iterations int) (*[32]byte, error) {
 		return nil, fmt.Errorf("salt must be at least %d characters, but is %d", minSaltLen, len(salt))
 	}
 	var arr [32]byte
-	k := pbkdf2.Key(password, []byte(salt), iterations, 32, sha256.New)
+	// The standard library takes the password as a string, a copy that cannot
+	// be wiped. HMAC keeps a copy of its own key regardless, so a []byte API
+	// would not leave fewer.
+	k, err := pbkdf2.Key(sha256.New, string(password), []byte(salt), iterations, len(arr))
+	if err != nil {
+		return nil, err
+	}
 	copy(arr[:], k)
 	Wipe(k)
 	return &arr, nil

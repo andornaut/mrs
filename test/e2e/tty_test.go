@@ -215,6 +215,18 @@ func TestARefusedNewPasswordIsNamed(t *testing.T) {
 		AssertNoOutput("Confirm password")
 }
 
+// The current password is checked before a new one is asked for, so that a
+// mistyped one costs no further typing.
+func TestAWrongCurrentPasswordIsRefusedBeforeANewOneIsAskedFor(t *testing.T) {
+	l := newLab(t)
+	l.createVault("personal", "a password")
+
+	l.RunTTY("wrong password\n", "vault", "change-password", "personal").
+		AssertFailed().
+		AssertOutput("failed to decrypt vault personal").
+		AssertNoOutput("New password")
+}
+
 // Prompts go to the terminal, not to stderr: redirecting stderr must not leave
 // mrs waiting for a password with nothing on screen.
 func TestPromptsGoToTheTerminalNotToStderr(t *testing.T) {

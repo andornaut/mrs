@@ -211,9 +211,56 @@ func TestSearchRejectsAnInvalidRegularExpression(t *testing.T) {
 	l := newLab(t)
 	pwFile := l.seedVault("work", "a password", searchVault)
 
-	l.Run("search", "-v", "work", "-p", pwFile, "[").
+	// The error names what the user typed, not the pattern built from it.
+	l.Run("search", "-v", "work", "-p", pwFile, "github", "[").
 		AssertFailed().
-		AssertStderr("invalid regular expression")
+		AssertStderr("invalid regular expression \"[\"").
+		AssertNoOutput("(?")
+}
+
+// Each argument is grouped before they are joined, so an alternation in one
+// argument does not swallow the arguments after it.
+func TestSearchKeepsAnAlternationWithinItsArgument(t *testing.T) {
+	l := newLab(t)
+	pwFile := l.seedVault("work", "a password", "aws dev\nk: 1\n\naws prod\nk: 2\n\ngcp prod\nk: 3\n")
+
+	l.Run("search", "-v", "work", "-p", pwFile, "aws|gcp", "prod").
+		AssertOK().
+		AssertStderr("2 secrets matched").
+		AssertNoOutput("aws dev")
+}
+
+// A \Q that runs to the end of an argument quotes that argument alone: the
+// group mrs wraps around it, and the arguments after it, are not quoted with
+// it.
+func TestSearchClosesAQuoteLeftOpenInAnArgument(t *testing.T) {
+	l := newLab(t)
+	pwFile := l.seedVault("work", "a password", "example.com login\nk: 1\n\nexamplexcom\nk: 2\n")
+
+	l.Run("search", "-v", "work", "-p", pwFile, `\Q.com`).
+		AssertOK().
+		AssertStderr("1 secret matched").
+		AssertNoOutput("examplexcom")
+	l.Run("search", "-v", "work", "-p", pwFile, `\Q.com`, "log.n").
+		AssertOK().
+		AssertStderr("1 secret matched").
+		AssertStdout("example.com login")
+}
+
+// A full search matches ^ and $ at each line, so a value line is anchored as a
+// key is.
+func TestSearchFullAnchorsMatchEachLine(t *testing.T) {
+	l := newLab(t)
+	pwFile := l.seedVault("work", "a password", searchVault)
+
+	l.Run("search", "-v", "work", "-p", pwFile, "-f", "abc123$").
+		AssertOK().
+		AssertStderr("1 secret matched").
+		AssertStdout("github")
+	l.Run("search", "-v", "work", "-p", pwFile, "-f", "^pin:").
+		AssertOK().
+		AssertStderr("1 secret matched").
+		AssertStdout("bank account")
 }
 
 func TestSearchRequiresAPattern(t *testing.T) {
