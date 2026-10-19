@@ -181,7 +181,11 @@ func TestAReaderNeverSeesAPartiallyWrittenVault(t *testing.T) {
 	// A failed assertion below ends the test without reads reaching wantReads,
 	// so the writer is stopped and waited for here rather than left saving into
 	// a directory the test is about to remove.
-	t.Cleanup(func() { close(stop); <-writes })
+	t.Cleanup(func() {
+		close(stop)
+		for range writes {
+		}
+	})
 
 	for reads.Load() < wantReads {
 		// Never a partial file, never a decryption failure, never an empty

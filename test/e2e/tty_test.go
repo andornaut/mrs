@@ -81,8 +81,8 @@ func (l *lab) runTTY(configure func(*exec.Cmd), answer string, args ...string) *
 // the test binary's own timeout kills it ten minutes later. It reports whether
 // mrs ended on its own, so the caller fails with what only it knows.
 func waitOrKill(cmd *exec.Cmd) bool {
-	done := make(chan error, 1)
-	go func() { done <- cmd.Wait() }()
+	done := make(chan struct{})
+	go func() { defer close(done); _ = cmd.Wait() }()
 	select {
 	case <-done:
 		return true
