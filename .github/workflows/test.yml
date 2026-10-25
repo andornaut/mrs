@@ -87,7 +87,7 @@ jobs:
           -fuzztime 60s ./internal/secret/
 
       - name: Upload coverage
-        uses: actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@v7.0.2
         if: matrix.os == 'ubuntu-latest'
         with:
           name: coverage
