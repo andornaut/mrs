@@ -30,6 +30,7 @@ case "$command" in
         exec /bin/sh -ec "$COMMAND"
         ;;
     lint)
+        shellcheck -x -P SCRIPTDIR tests/container/run tests/container/check
         unset GOPROXY GOSUMDB
         git config --global --add safe.directory /work
         git init --quiet --initial-branch=main .
