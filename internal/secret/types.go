@@ -97,10 +97,19 @@ func (s *secretList) Bytes() []byte {
 		return nil
 	}
 	n := len(s.secrets) - 1
+	// A literal leading mark needs a file marker so parsing consumes no key data.
+	const byteOrderMark = "\ufeff"
+	leadingMark := bytes.HasPrefix(s.secrets[0], []byte(byteOrderMark))
+	if leadingMark {
+		n += len(byteOrderMark)
+	}
 	for _, secret := range s.secrets {
 		n += len(secret)
 	}
 	out := make([]byte, 0, n)
+	if leadingMark {
+		out = append(out, byteOrderMark...)
+	}
 	for i, secret := range s.secrets {
 		if i > 0 {
 			out = append(out, '\n')

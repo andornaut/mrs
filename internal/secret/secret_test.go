@@ -224,6 +224,7 @@ func FuzzParseSecretsRoundTripsWhatItAccepts(f *testing.F) {
 		"key\n\x00binary\n",
 		"#not a comment\nvalue\n",
 		"  indented\ntrailing   \n",
+		"\n\ufeff",
 	} {
 		f.Add([]byte(seed))
 	}
@@ -279,6 +280,48 @@ func TestALeadingByteOrderMarkIsNotPartOfTheFirstKey(t *testing.T) {
 	defer b.Wipe()
 	if got, want := string(b.Bytes()), "aws\nkey one\n\nbank\nacct\n"; got != want {
 		t.Errorf("parseSecrets() wrote back %q, want %q", got, want)
+	}
+}
+
+func TestByteOrderMarksInContentSurviveSerialization(t *testing.T) {
+	for name, tt := range map[string]struct {
+		input string
+		want  []string
+	}{
+		"a key after a blank line":     {"\n\ufeff", []string{"\ufeff\n"}},
+		"a key after the file marker":  {"\ufeff\ufeffkey\nvalue", []string{"\ufeffkey\nvalue\n"}},
+		"a key moved first by sorting": {"\uffff\n\n\ufeffkey", []string{"\ufeffkey\n", "\uffff\n"}},
+		"a mark inside a value":        {"key\n\ufeffvalue", []string{"key\n\ufeffvalue\n"}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			first, err := parseSecrets([]byte(tt.input))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer first.Wipe()
+			out := first.Bytes()
+			defer crypto.Wipe(out)
+			second, err := parseSecrets(out)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer second.Wipe()
+			for _, parsed := range []*secretList{first, second} {
+				if parsed.Len() != len(tt.want) {
+					t.Fatalf("parsed %d secrets, want %d", parsed.Len(), len(tt.want))
+				}
+				for i, want := range tt.want {
+					if !bytes.Equal(parsed.secrets[i], []byte(want)) {
+						t.Errorf("secret %d = %q, want %q", i, parsed.secrets[i], want)
+					}
+				}
+			}
+			again := second.Bytes()
+			defer crypto.Wipe(again)
+			if !bytes.Equal(out, again) {
+				t.Errorf("serialization changed from %q to %q", out, again)
+			}
+		})
 	}
 }
 
