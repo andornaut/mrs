@@ -287,6 +287,12 @@ make lint           # dependency, Go, Markdown, vulnerability, and release check
 make build          # export the stripped mrs binary to the checkout
 ```
 
+`make test` exports `coverage.txt`; aggregate `make check` exports no artifacts.
+
+`make test-native` is reserved for macOS CI. It runs native checks inside a
+filesystem sandbox that permits writes only to the checkout and scratch. Positive
+and negative write probes verify enforcement before the suite starts.
+
 The project owns [`tests/container/Dockerfile`](./tests/container/Dockerfile) and
 its check commands. Verification uses a frozen source snapshot and writable
 container scratch, without host credentials or a Docker socket. Focused tests
