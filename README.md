@@ -276,7 +276,23 @@ The ciphertext is `nonce|ciphertext|tag` with a random 96-bit nonce per save.
 
 ## Developing
 
-See the [Makefile](./Makefile). `make test` runs both layers:
+The [Makefile](./Makefile) provides the same container interface for each check:
+
+```bash
+make check          # lint, race-enabled tests, fuzzing, and release-platform builds
+make check-info     # machine-readable declarations of the available checks
+make test           # both test layers, coverage report, and a minute of fuzzing
+make test TEST_ARGS='-run TestName ./...'
+make lint           # dependency, Go, Markdown, vulnerability, and release checks
+make build          # export the stripped mrs binary to the checkout
+```
+
+The project owns [`tests/container/Dockerfile`](./tests/container/Dockerfile) and
+its check commands. Verification uses a frozen source snapshot and writable
+container scratch, without host credentials or a Docker socket. Focused tests
+skip fuzzing and do not satisfy the full gate. `make exec COMMAND='go get
+example.org/module@version'` runs dependency commands with project files writable
+and Git metadata read-only. `make test` runs both test layers:
 
 - [`internal/`](./internal) holds unit tests, beside the code they exercise.
 - [`test/e2e`](./test/e2e) drives a compiled `mrs` against real vault files, a
